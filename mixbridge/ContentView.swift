@@ -109,19 +109,19 @@ struct ContentView: View {
 struct NativeTabView: View {
     var body: some View {
         TabView {
-            Tab("", systemImage: "house.fill") {
+            Tab("Home", systemImage: "house.fill") {
                 HomeView()
             }
 
-            Tab("", systemImage: "square.grid.2x2") {
+            Tab("Library", systemImage: "square.grid.2x2") {
                 LibraryView()
             }
 
-            Tab("", systemImage: "heart.fill") {
+            Tab("Liked", systemImage: "heart.fill") {
                 LikedView()
             }
 
-            Tab("", systemImage: "magnifyingglass", role: .search) {
+            Tab("Search", systemImage: "magnifyingglass", role: .search) {
                 SearchView()
             }
         }

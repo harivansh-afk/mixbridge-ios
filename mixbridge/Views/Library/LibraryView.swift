@@ -8,7 +8,15 @@
 import SwiftUI
 
 struct LibraryView: View {
-    var tracks = (1...50).map { "Track \($0)" }
+    // Generate 50 sample tracks
+    let tracks: [Track] = (1...50).map { index in
+        Track(
+            title: "Track \(index)",
+            artist: "Artist \(index)",
+            album: "Album \(index)",
+            artwork: "music.note"
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -19,15 +27,20 @@ struct LibraryView: View {
 
     private var content: some View {
         List {
-            Tracks
+            tracksSection
         }
+        .listStyle(.plain)
     }
 
-    private var Tracks: some View {
-        Section() {
-            ForEach(tracks, id: \.self) { track in
-                Text(track)
+    private var tracksSection: some View {
+        Section {
+            ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                TrackRow(track, number: index + 1, showCover: true)
             }
         }
     }
+}
+
+#Preview {
+    LibraryView()
 }
