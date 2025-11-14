@@ -56,6 +56,12 @@ struct HomeView: View {
     }
 }
 
-#Preview {
+#Preview("Light Mode") {
     HomeView()
+        .preferredColorScheme(.light)
+}
+
+#Preview("Dark Mode") {
+    HomeView()
+        .preferredColorScheme(.dark)
 }

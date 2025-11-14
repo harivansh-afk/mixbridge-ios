@@ -43,6 +43,12 @@ struct SearchView: View {
     }
 }
 
-#Preview {
+#Preview("Light Mode") {
     SearchView()
+        .preferredColorScheme(.light)
+}
+
+#Preview("Dark Mode") {
+    SearchView()
+        .preferredColorScheme(.dark)
 }

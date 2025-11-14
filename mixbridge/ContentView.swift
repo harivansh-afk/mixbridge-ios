@@ -65,14 +65,21 @@ struct ContentView: View {
     func PlayerInfo(_ size: CGSize) -> some View {
         HStack(spacing: 12) {
             RoundedRectangle(cornerRadius: size.height/4)
-                .fill(.blue.gradient)
+                .fill(
+                    LinearGradient(
+                        colors: [.blue, .indigo],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
                 .frame(width: size.width, height: size.height)
             VStack(alignment: .leading, spacing: 4){
                 Text("Some Music Title")
                     .font(.callout)
+                    .foregroundStyle(.primary)
                 Text("Some Artist Name")
                     .font(.caption2)
-                    .foregroundStyle(.gray)
+                    .foregroundStyle(.secondary)
             }
             .lineLimit(1)
         }
@@ -128,6 +135,12 @@ struct NativeTabView: View {
     }
 }
 
-#Preview {
+#Preview("Light Mode") {
     ContentView()
+        .preferredColorScheme(.light)
+}
+
+#Preview("Dark Mode") {
+    ContentView()
+        .preferredColorScheme(.dark)
 }

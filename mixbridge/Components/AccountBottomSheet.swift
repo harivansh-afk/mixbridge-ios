@@ -104,7 +104,7 @@ struct AccountBottomSheet: View {
 }
 
 // MARK: - Preview
-#Preview {
+#Preview("Light Mode") {
     struct PreviewWrapper: View {
         @State private var showSheet = true
 
@@ -122,4 +122,26 @@ struct AccountBottomSheet: View {
     }
 
     return PreviewWrapper()
+        .preferredColorScheme(.light)
+}
+
+#Preview("Dark Mode") {
+    struct PreviewWrapper: View {
+        @State private var showSheet = true
+
+        var body: some View {
+            Color.gray
+                .ignoresSafeArea()
+                .sheet(isPresented: $showSheet) {
+                    AccountBottomSheet(
+                        isPresented: $showSheet,
+                        userName: "Harivansh Rathi",
+                        userEmail: "hari@phia.com"
+                    )
+                }
+        }
+    }
+
+    return PreviewWrapper()
+        .preferredColorScheme(.dark)
 }

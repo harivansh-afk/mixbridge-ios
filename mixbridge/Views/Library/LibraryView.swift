@@ -41,6 +41,12 @@ struct LibraryView: View {
     }
 }
 
-#Preview {
+#Preview("Light Mode") {
     LibraryView()
+        .preferredColorScheme(.light)
+}
+
+#Preview("Dark Mode") {
+    LibraryView()
+        .preferredColorScheme(.dark)
 }

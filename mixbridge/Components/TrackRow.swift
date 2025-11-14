@@ -98,7 +98,13 @@ struct TrackRow: View {
             } else {
                 // Gradient placeholder
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(.blue.gradient)
+                    .fill(
+                        LinearGradient(
+                            colors: [.blue, .indigo],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
                     .frame(width: coverSize, height: coverSize)
             }
         }
@@ -107,7 +113,13 @@ struct TrackRow: View {
     private var artworkPlaceholder: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 6)
-                .fill(.blue.gradient)
+                .fill(
+                    LinearGradient(
+                        colors: [.blue, .indigo],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
 
             ProgressView()
                 .progressViewStyle(.circular)
@@ -140,10 +152,22 @@ struct TrackRow: View {
     }
 }
 
-#Preview {
+#Preview("Light Mode") {
     List {
         TrackRow(Track.sampleTracks[0], number: 1, showCover: false)
         TrackRow(Track.sampleTracks[1], number: 2, showCover: true)
+        TrackRow(Track.sampleTracks[2], number: 3, showCover: true)
     }
     .listStyle(.plain)
+    .preferredColorScheme(.light)
+}
+
+#Preview("Dark Mode") {
+    List {
+        TrackRow(Track.sampleTracks[0], number: 1, showCover: false)
+        TrackRow(Track.sampleTracks[1], number: 2, showCover: true)
+        TrackRow(Track.sampleTracks[2], number: 3, showCover: true)
+    }
+    .listStyle(.plain)
+    .preferredColorScheme(.dark)
 }

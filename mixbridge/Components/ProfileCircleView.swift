@@ -43,7 +43,13 @@ struct ProfileCircleView: View {
             // User initials
             ZStack {
                 Circle()
-                    .fill(.blue.gradient)
+                    .fill(
+                        LinearGradient(
+                            colors: [.blue, .indigo],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
 
                 Text(userInitials)
                     .font(.system(size: size * 0.4, weight: .semibold, design: .rounded))
@@ -71,6 +77,8 @@ struct LiquidGlassProfileButton: View {
     let size: CGFloat
     let action: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         Button(action: action) {
             ProfileCircleView(
@@ -85,8 +93,11 @@ struct LiquidGlassProfileButton: View {
             Circle()
                 .strokeBorder(
                     LinearGradient(
-                        colors: [
-                            .white.opacity(0.3),
+                        colors: colorScheme == .dark ? [
+                            .white.opacity(0.2),
+                            .white.opacity(0.05)
+                        ] : [
+                            .white.opacity(0.4),
                             .white.opacity(0.1)
                         ],
                         startPoint: .topLeading,
@@ -95,29 +106,67 @@ struct LiquidGlassProfileButton: View {
                     lineWidth: 0.5
                 )
         )
-        .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
-      
+        .shadow(
+            color: colorScheme == .dark
+                ? .black.opacity(0.3)
+                : .black.opacity(0.1),
+            radius: 2,
+            x: 0,
+            y: 1
+        )
+
     }
 }
 
 
 
 // MARK: - Preview
-#Preview {
+#Preview("Light Mode") {
     NavigationStack {
-        VStack {
-            Text("Content")
+        VStack(spacing: 30) {
+            ProfileCircleView(
+                userName: "Harivansh Rathi",
+                size: 80
+            )
+
+            ProfileCircleView(
+                userName: "Alex Morgan",
+                size: 60
+            )
+
+            LiquidGlassProfileButton(
+                profileImage: nil,
+                userName: "Harivansh Rathi",
+                size: 44,
+                action: {}
+            )
         }
-        .navigationTitle("Home")
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                LiquidGlassProfileButton(
-                    profileImage: nil,
-                    userName: "Harivansh Rathi",
-                    size: 36,
-                    action: {}
-                )
-            }
-        }
+        .navigationTitle("Profiles")
     }
+    .preferredColorScheme(.light)
+}
+
+#Preview("Dark Mode") {
+    NavigationStack {
+        VStack(spacing: 30) {
+            ProfileCircleView(
+                userName: "Harivansh Rathi",
+                size: 80
+            )
+
+            ProfileCircleView(
+                userName: "Alex Morgan",
+                size: 60
+            )
+
+            LiquidGlassProfileButton(
+                profileImage: nil,
+                userName: "Harivansh Rathi",
+                size: 44,
+                action: {}
+            )
+        }
+        .navigationTitle("Profiles")
+    }
+    .preferredColorScheme(.dark)
 }

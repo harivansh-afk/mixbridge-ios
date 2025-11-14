@@ -89,6 +89,12 @@ struct AboutView: View {
     }
 }
 
-#Preview {
+#Preview("Light Mode") {
     ProfileView()
+        .preferredColorScheme(.light)
+}
+
+#Preview("Dark Mode") {
+    ProfileView()
+        .preferredColorScheme(.dark)
 }

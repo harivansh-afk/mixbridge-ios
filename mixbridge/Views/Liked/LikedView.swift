@@ -58,6 +58,12 @@ struct LikedView: View {
     }
 }
 
-#Preview {
+#Preview("Light Mode") {
     LikedView()
+        .preferredColorScheme(.light)
+}
+
+#Preview("Dark Mode") {
+    LikedView()
+        .preferredColorScheme(.dark)
 }
