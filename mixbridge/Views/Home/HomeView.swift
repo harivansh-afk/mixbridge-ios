@@ -23,12 +23,14 @@ struct HomeView: View {
                 .navigationTitle("Home")
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button {
+                        ProfileCircleView(
+                            profileImage: "pfp",
+                            userName: userName,
+                            size: 32
+                        )
+                        .onTapGesture {
                             showingAccount.toggle()
-                        } label: {
-                            Image("gear")
                         }
-
                     }
                 }
                 .sheet(isPresented: $showingAccount) {

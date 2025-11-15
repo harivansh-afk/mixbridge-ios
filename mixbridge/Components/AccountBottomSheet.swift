@@ -54,9 +54,18 @@ struct AccountBottomSheet: View {
                     }
                     .tint(.green)
 
+                }
+                
+                Section {
                     Button(action: {}) {
-                        Text("Logout")
-                            .foregroundStyle(.red)
+                        HStack {
+                            Image("sign-out")
+                                .renderingMode(.template)
+                                .foregroundStyle(.red)
+                                .font(.system(size: 14))
+                            Text("Logout")
+                                .foregroundStyle(.red)
+                        }
                     }
                 }
 
@@ -80,7 +89,7 @@ struct AccountBottomSheet: View {
     private var profileHeader: some View {
         HStack(spacing: 16) {
             ProfileCircleView(
-                profileImage: profileImage,
+                profileImage: "pfp",
                 userName: userName,
                 size: 50
             )

@@ -41,8 +41,8 @@ struct TrackRow: View {
             } label: {
                 Label("", systemImage: "trash")
             }
-
-                    }
+            .tint(.red)
+        }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
             } label: {
