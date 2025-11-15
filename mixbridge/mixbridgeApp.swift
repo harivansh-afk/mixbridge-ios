@@ -9,9 +9,12 @@ import SwiftUI
 
 @main
 struct mixbridgeApp: App {
+    @AppStorage("themeMode") private var themeMode: ThemeMode = .system
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .preferredColorScheme(themeMode.colorScheme)
         }
     }
 }

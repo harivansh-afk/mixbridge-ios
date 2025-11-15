@@ -11,8 +11,9 @@ struct AccountBottomSheet: View {
     // MARK: - Properties
     @Binding var isPresented: Bool
     @Environment(\.dismiss) private var dismiss
-    @State private var isDarkMode: Bool = false
+    @AppStorage("themeMode") private var themeMode: ThemeMode = .system
     @State private var Notifications: Bool = false
+    @State private var Personalization: Bool = true
 
     let userName: String
     let userEmail: String?
@@ -44,15 +45,24 @@ struct AccountBottomSheet: View {
 
                 // Settings
                 Section {
+                    Toggle(isOn: $Personalization) {
+                        Text("Personalization")
+                    }
+                    .tint(.blue)
                     Toggle(isOn: $Notifications) {
                         Text("Notifications")
                     }
-                    .tint(.green)
+                    .tint(.blue)
                     
-                    Toggle(isOn: $isDarkMode) {
-                        Text("Theme")
+                    VStack(alignment: .leading, spacing: 6) {
+                        Picker("Theme", selection: $themeMode) {
+                            ForEach(ThemeMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
                     }
-                    .tint(.green)
 
                 }
                 
@@ -83,6 +93,7 @@ struct AccountBottomSheet: View {
                 }
             }
         }
+        .preferredColorScheme(themeMode.colorScheme)
     }
 
     // MARK: - Private Views
