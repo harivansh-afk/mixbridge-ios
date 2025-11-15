@@ -12,6 +12,8 @@ struct ExpandedMusicPlayer: View {
     let track: Track
     let namespace: Namespace.ID
 
+    @Environment(\.colorScheme) var colorScheme
+
     @State private var playbackPosition: Double = 42
     @State private var isPlaying = true
     @State private var volume: Double = 0.6
@@ -51,7 +53,6 @@ struct ExpandedMusicPlayer: View {
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
-        .overlay(.thinMaterial)
         .ignoresSafeArea()
     }
 
@@ -63,12 +64,8 @@ struct ExpandedMusicPlayer: View {
 
     private var albumArtwork: some View {
         RoundedRectangle(cornerRadius: 24, style: .continuous)
-            .fill(.ultraThinMaterial)
+            .fill(Color.white.opacity(0.06))
             .frame(height: 320)
-            .background(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
-            )
             .overlay {
                 artworkContent
                     .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -77,7 +74,13 @@ struct ExpandedMusicPlayer: View {
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.3), radius: 25, x: 0, y: 18)
+            .shadow(
+                color: colorScheme == .dark
+                    ? .white.opacity(0.1)
+                    : .black.opacity(0.15),
+                radius: 8, x: 0, y: -4
+            )
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.6 : 0.2), radius: 8, x: 0, y: 4)
     }
 
     @ViewBuilder

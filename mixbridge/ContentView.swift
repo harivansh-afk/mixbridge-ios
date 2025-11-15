@@ -53,11 +53,12 @@ struct ContentView: View {
                 Text(track.title)
                     .font(.callout)
                     .foregroundStyle(.primary)
+                    .lineLimit(1)
                 Text(track.artist)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-            .lineLimit(1)
         }
     }
     
