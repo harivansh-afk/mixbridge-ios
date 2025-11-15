@@ -135,7 +135,7 @@ struct TrackRow: View {
                 .lineLimit(1)
 
             Text(track.artist)
-                .font(.subheadline)
+                .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
