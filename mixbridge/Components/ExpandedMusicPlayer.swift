@@ -19,23 +19,40 @@ struct ExpandedMusicPlayer: View {
     private var duration: Double { track.duration == 0 ? 210 : track.duration }
 
     var body: some View {
-        GeometryReader { proxy in
-            VStack(spacing: 28) {
-                dragHandle
-                albumArtwork
-                trackDetails
-                progressSection
-                transportControls
-                volumeSection
-                secondaryControls
-                Spacer(minLength: 0)
+        ZStack {
+            backgroundLayer
+
+            GeometryReader { proxy in
+                VStack(spacing: 28) {
+                    dragHandle
+                    albumArtwork
+                    trackDetails
+                    progressSection
+                    transportControls
+                    volumeSection
+                    secondaryControls
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, max(32, proxy.safeAreaInsets.bottom))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, max(32, proxy.safeAreaInsets.bottom))
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .background(Color(.secondarySystemBackground).ignoresSafeArea())
         .navigationTransition(.zoom(sourceID: "MINIPLAYER", in: namespace))
+    }
+
+    private var backgroundLayer: some View {
+        LinearGradient(
+            colors: [
+                Color.brandPrimary.opacity(0.4),
+                Color.brandSecondary.opacity(0.5),
+                Color.black.opacity(0.3)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .overlay(.thinMaterial)
+        .ignoresSafeArea()
     }
 
     private var dragHandle: some View {
@@ -48,10 +65,19 @@ struct ExpandedMusicPlayer: View {
         RoundedRectangle(cornerRadius: 24, style: .continuous)
             .fill(.ultraThinMaterial)
             .frame(height: 320)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+            )
             .overlay {
                 artworkContent
                     .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             }
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.3), radius: 25, x: 0, y: 18)
     }
 
     @ViewBuilder
@@ -91,7 +117,7 @@ struct ExpandedMusicPlayer: View {
 
     private var artworkPlaceholder: some View {
         RoundedRectangle(cornerRadius: 24, style: .continuous)
-            .fill(Color.albumGradient())
+            .fill(Color.albumGradient(light: .brandPrimary, dark: .brandSecondary))
             .overlay {
                 Image(systemName: "music.note")
                     .font(.system(size: 56, weight: .semibold))

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import PhosphorSwift
 
 struct ContentView: View {
 
@@ -92,19 +93,19 @@ struct ContentView: View {
 struct NativeTabView: View {
     var body: some View {
         TabView {
-            Tab("Home", systemImage: "house.fill") {
+            Tab("", image: "house") {
                 HomeView()
             }
 
-            Tab("Library", systemImage: "square.grid.2x2") {
+            Tab("", image: "list") {
                 LibraryView()
             }
 
-            Tab("Liked", systemImage: "heart.fill") {
+            Tab("", image: "heart") {
                 LikedView()
             }
 
-            Tab("Search", systemImage: "magnifyingglass", role: .search) {
+            Tab("", image: "magnifying-glass", role: .search) {
                 SearchView()
             }
         }

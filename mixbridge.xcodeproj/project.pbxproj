@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5E51D79E2EC82C3F00010943 /* PhosphorSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 5E51D79D2EC82C3F00010943 /* PhosphorSwift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		5E55D33D2EC1567E005A5D2C /* mixbridge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mixbridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5E51D79E2EC82C3F00010943 /* PhosphorSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +70,7 @@
 			);
 			name = mixbridge;
 			packageProductDependencies = (
+				5E51D79D2EC82C3F00010943 /* PhosphorSwift */,
 			);
 			productName = mixbridge;
 			productReference = 5E55D33D2EC1567E005A5D2C /* mixbridge.app */;
@@ -94,6 +100,9 @@
 			);
 			mainGroup = 5E55D3342EC1567E005A5D2C;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				5E51D79C2EC82C3F00010943 /* XCRemoteSwiftPackageReference "swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5E55D33E2EC1567E005A5D2C /* Products */;
 			projectDirPath = "";
@@ -328,6 +337,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		5E51D79C2EC82C3F00010943 /* XCRemoteSwiftPackageReference "swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/phosphor-icons/swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5E51D79D2EC82C3F00010943 /* PhosphorSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5E51D79C2EC82C3F00010943 /* XCRemoteSwiftPackageReference "swift" */;
+			productName = PhosphorSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 5E55D3352EC1567E005A5D2C /* Project object */;
 }

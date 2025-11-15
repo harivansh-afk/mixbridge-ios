@@ -26,9 +26,9 @@ struct HomeView: View {
                         Button {
                             showingAccount.toggle()
                         } label: {
-                            Image(systemName: "gear")
+                            Image("gear")
                         }
-                       
+
                     }
                 }
                 .sheet(isPresented: $showingAccount) {
