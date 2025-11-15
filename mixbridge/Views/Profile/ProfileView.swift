@@ -41,7 +41,7 @@ struct ProfileView: View {
     }
 
     private var settingsSection: some View {
-        Section("Settings") {
+        Section {
             NavigationLink("Preferences") {
                 PreferencesView()
             }

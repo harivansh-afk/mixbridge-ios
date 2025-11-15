@@ -11,6 +11,8 @@ struct AccountBottomSheet: View {
     // MARK: - Properties
     @Binding var isPresented: Bool
     @Environment(\.dismiss) private var dismiss
+    @State private var isDarkMode: Bool = false
+    @State private var Notifications: Bool = false
 
     let userName: String
     let userEmail: String?
@@ -41,12 +43,21 @@ struct AccountBottomSheet: View {
                 .listRowBackground(Color.clear)
 
                 // Settings
-                Section(header: Text("Settings")) {
-                    accountRow(
-                        title: "Logout",
-                        systemImage: "bell",
-                        action: {}
-                    )
+                Section {
+                    Toggle(isOn: $Notifications) {
+                        Text("Notifications")
+                    }
+                    .tint(.green)
+                    
+                    Toggle(isOn: $isDarkMode) {
+                        Text("Theme")
+                    }
+                    .tint(.green)
+
+                    Button(action: {}) {
+                        Text("Logout")
+                            .foregroundStyle(.red)
+                    }
                 }
 
             }
@@ -78,15 +89,16 @@ struct AccountBottomSheet: View {
                 Text(userName)
                     .font(.title3)
 
-                if let email = userEmail {
-                    Text(email)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-
+                Text("View Profile")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
+
+            Image(systemName: "chevron.right")
+                .foregroundStyle(.secondary)
+                .font(.title3)
         }
         .padding()
         .background(Color(UIColor.secondarySystemGroupedBackground))
