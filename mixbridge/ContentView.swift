@@ -109,6 +109,7 @@ struct NativeTabView: View {
                 SearchView()
             }
         }
+        .tint(.primary)
     }
 }
 
