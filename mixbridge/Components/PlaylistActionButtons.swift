@@ -14,26 +14,42 @@ struct PlaylistActionButtons: View {
     var body: some View {
         HStack(spacing: 16) {
             Button(action: onPlay) {
-                Label("Play", systemImage: "play.fill")
-                    .font(.callout)
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(.red)
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                HStack(spacing: 6) {
+                    Image(systemName: "play.fill")
+                        .imageScale(.small)
+                    Text("Play")
+                }
+                .font(.callout)
+                .fontWeight(.semibold)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background {
+                    Capsule()
+                        .fill(.regularMaterial)
+                        .shadow(color: .black.opacity(0.1), radius: 2, y: 1)
+                }
+                .foregroundStyle(.primary)
             }
+            .buttonStyle(.plain)
 
             Button(action: onShuffle) {
-                Label("Shuffle", systemImage: "shuffle")
-                    .font(.callout)
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(.red.opacity(0.15))
-                    .foregroundStyle(.red)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                HStack(spacing: 6) {
+                    Image(systemName: "shuffle")
+                        .imageScale(.small)
+                    Text("Shuffle")
+                }
+                .font(.callout)
+                .fontWeight(.semibold)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background {
+                    Capsule()
+                        .fill(.regularMaterial)
+                        .shadow(color: .black.opacity(0.1), radius: 2, y: 1)
+                }
+                .foregroundStyle(.primary)
             }
+            .buttonStyle(.plain)
         }
     }
 }

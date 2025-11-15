@@ -138,7 +138,7 @@ struct LibraryView: View {
                 LibraryNavigationRow(
                     icon: "music.note.list",
                     title: "Playlists",
-                    iconColor: .red
+                    iconColor: .secondary
                 )
             }
             .buttonStyle(.plain)
@@ -152,7 +152,7 @@ struct LibraryView: View {
                 LibraryNavigationRow(
                     icon: "music.mic",
                     title: "Artists",
-                    iconColor: .red
+                    iconColor: .secondary
                 )
             }
             .buttonStyle(.plain)
@@ -166,7 +166,7 @@ struct LibraryView: View {
                 LibraryNavigationRow(
                     icon: "music.note",
                     title: "Songs",
-                    iconColor: .red
+                    iconColor: .secondary
                 )
             }
             .buttonStyle(.plain)

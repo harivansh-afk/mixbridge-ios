@@ -123,7 +123,7 @@ struct PlaylistDetailView: View {
 
             Text(playlist.creator)
                 .font(.body)
-                .foregroundStyle(.red)
+                .foregroundStyle(.secondary)
         }
         .padding(.horizontal)
     }
