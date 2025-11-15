@@ -53,7 +53,7 @@ struct TrackRow: View {
             Button {
                 // Add to playlist
             } label: {
-                Label("", systemImage: "list.number")
+                Label("", systemImage: "text.line.first.and.arrowtriangle.forward")
             }
             .tint(.blue)
         }

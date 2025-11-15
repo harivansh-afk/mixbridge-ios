@@ -8,10 +8,15 @@
 import SwiftUI
 
 struct ContentView: View {
-    
+
     @State private var expandMiniPlayer: Bool = false
     @Namespace private var animation
-    
+    private let currentTrack = Track.sampleTracks.first ?? Track(
+        title: "Some Music Title",
+        artist: "Unknown Artist",
+        album: "Unknown Album"
+    )
+
     var body: some View {
         NativeTabView()
             .tabBarMinimizeBehavior(.onScrollDown)
@@ -23,46 +28,17 @@ struct ContentView: View {
                     }
                     .ignoresSafeArea(.keyboard, edges: .all)
             }
-            
-            .fullScreenCover(isPresented: $expandMiniPlayer){
-                ScrollView{
-                    
-                }
-                .safeAreaInset(edge: .top, spacing: 0){
-                    VStack(spacing: 10){
-                        Capsule()
-                            .fill(.primary)
-                            .frame(width:35, height: 3)
-                        HStack(spacing : 15){
-                            PlayerInfo(.init(width: 80, height: 80))
-                            
-                            Spacer(minLength: 0)
-                            
-                            //Expanded Actions
-                            
-                            Group{
-                                Button("", systemImage: "star.circle.fill"){
-                                    
-                                }
-                                Button("", systemImage: "ellipsis.circle.fill"){
-                                    
-                                }
-                            }
-                            .font(.title)
-                            .foregroundStyle(Color.primary, Color.primary.opacity(0.1))
-                        }
-                        .padding(.horizontal, 15)
-                    }
-                    .navigationTransition(.zoom(sourceID: "MINIPLAYER", in: animation))
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(.background)
+            .fullScreenCover(isPresented: $expandMiniPlayer) {
+                ExpandedMusicPlayer(
+                    isPresented: $expandMiniPlayer,
+                    track: currentTrack,
+                    namespace: animation
+                )
             }
-            
     }
-    
+
     @ViewBuilder
-    func PlayerInfo(_ size: CGSize) -> some View {
+    func PlayerInfo(_ track: Track, size: CGSize) -> some View {
         HStack(spacing: 12) {
             RoundedRectangle(cornerRadius: size.height/4)
                 .fill(
@@ -74,10 +50,10 @@ struct ContentView: View {
                 )
                 .frame(width: size.width, height: size.height)
             VStack(alignment: .leading, spacing: 4){
-                Text("Some Music Title")
+                Text(track.title)
                     .font(.callout)
                     .foregroundStyle(.primary)
-                Text("Some Artist Name")
+                Text(track.artist)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -88,7 +64,7 @@ struct ContentView: View {
     @ViewBuilder
     func MiniPlayerView() -> some View{
         HStack(spacing: 15){
-            PlayerInfo(.init(width: 30, height: 30))
+            PlayerInfo(currentTrack, size: .init(width: 30, height: 30))
             Spacer(minLength: 0)
             
             Button{
