@@ -87,17 +87,12 @@ struct LibraryView: View {
                                     RoundedRectangle(cornerRadius: 12)
                                         .fill(
                                             LinearGradient(
-                                                colors: [.blue, .purple],
+                                                colors: [.blue, .blue.opacity(0.7)],
                                                 startPoint: .topLeading,
                                                 endPoint: .bottomTrailing
                                             )
                                         )
                                         .aspectRatio(1, contentMode: .fit)
-                                        .overlay {
-                                            Image(systemName: playlist.artwork)
-                                                .font(.system(size: 32))
-                                                .foregroundStyle(.white.opacity(0.6))
-                                        }
                                 }
                             }
 
@@ -123,7 +118,7 @@ struct LibraryView: View {
             RoundedRectangle(cornerRadius: 12)
                 .fill(
                     LinearGradient(
-                        colors: [.blue, .purple],
+                        colors: [.blue, .blue.opacity(0.7)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -166,20 +161,6 @@ struct LibraryView: View {
                 .padding(.leading, 60)
 
             NavigationLink {
-                Text("Downloaded")
-            } label: {
-                LibraryNavigationRow(
-                    icon: "arrow.down.circle",
-                    title: "Downloaded",
-                    iconColor: .red
-                )
-            }
-            .buttonStyle(.plain)
-
-            Divider()
-                .padding(.leading, 60)
-
-            NavigationLink {
                 Text("Songs")
             } label: {
                 LibraryNavigationRow(
@@ -189,6 +170,9 @@ struct LibraryView: View {
                 )
             }
             .buttonStyle(.plain)
+
+            Divider()
+                .padding(.leading, 60)
         }
     }
 
@@ -235,17 +219,12 @@ struct LibraryView: View {
                                     RoundedRectangle(cornerRadius: 12)
                                         .fill(
                                             LinearGradient(
-                                                colors: [.blue, .purple],
+                                                colors: [.blue, .blue.opacity(0.7)],
                                                 startPoint: .topLeading,
                                                 endPoint: .bottomTrailing
                                             )
                                         )
                                         .aspectRatio(1, contentMode: .fit)
-                                        .overlay {
-                                            Image(systemName: playlist.artwork)
-                                                .font(.system(size: 48))
-                                                .foregroundStyle(.white.opacity(0.6))
-                                        }
                                 }
                             }
 

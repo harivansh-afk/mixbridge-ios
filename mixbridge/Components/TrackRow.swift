@@ -88,7 +88,7 @@ struct TrackRow: View {
                             .resizable()
                             .scaledToFill()
                             .frame(width: coverSize, height: coverSize)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
                     case .failure:
                         artworkPlaceholder
                     @unknown default:
@@ -97,7 +97,7 @@ struct TrackRow: View {
                 }
             } else {
                 // Gradient placeholder
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: 12)
                     .fill(
                         LinearGradient(
                             colors: [.blue, .indigo],
@@ -112,7 +112,7 @@ struct TrackRow: View {
 
     private var artworkPlaceholder: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: 12)
                 .fill(
                     LinearGradient(
                         colors: [.blue, .indigo],

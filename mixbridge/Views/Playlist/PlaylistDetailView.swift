@@ -47,27 +47,11 @@ struct PlaylistDetailView: View {
             }
 
             ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 16) {
-                    Button {
-                        // Add friend action
-                    } label: {
-                        Image(systemName: "person.badge.plus")
-                            .font(.body)
-                    }
-
-                    Button {
-                        // Download action
-                    } label: {
-                        Image(systemName: "arrow.down.circle")
-                            .font(.body)
-                    }
-
-                    Button {
-                        // More options
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .font(.body)
-                    }
+                Button {
+                    // More options
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.body)
                 }
             }
         }
@@ -84,9 +68,10 @@ struct PlaylistDetailView: View {
                     case .success(let image):
                         image
                             .resizable()
-                            .scaledToFill()
+                            .aspectRatio(contentMode: .fill)
                             .frame(width: artworkSize, height: artworkSize)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .clipped()
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
                             .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
                     case .failure:
                         artworkPlaceholder
@@ -95,31 +80,27 @@ struct PlaylistDetailView: View {
                     }
                 }
             } else {
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: 20)
                     .fill(
                         LinearGradient(
-                            colors: [.blue, .purple],
+                            colors: [.blue, .blue.opacity(0.7)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
+                    .aspectRatio(1, contentMode: .fit)
                     .frame(width: artworkSize, height: artworkSize)
                     .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
-                    .overlay {
-                        Image(systemName: playlist.artwork)
-                            .font(.system(size: 80))
-                            .foregroundStyle(.white.opacity(0.6))
-                    }
             }
         }
     }
 
     private var artworkPlaceholder: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 20)
                 .fill(
                     LinearGradient(
-                        colors: [.blue, .purple],
+                        colors: [.blue, .blue.opacity(0.7)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -128,6 +109,7 @@ struct PlaylistDetailView: View {
             ProgressView()
                 .progressViewStyle(.circular)
         }
+        .aspectRatio(1, contentMode: .fit)
         .frame(width: artworkSize, height: artworkSize)
         .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
     }

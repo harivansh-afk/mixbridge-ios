@@ -9,15 +9,15 @@ import SwiftUI
 
 struct ExpandedMusicPlayer: View {
     @Binding var isPresented: Bool
-    let track: Track
     let namespace: Namespace.ID
 
     @Environment(\.colorScheme) var colorScheme
+    @State private var playerState = PlayerState.shared
 
     @State private var playbackPosition: Double = 42
-    @State private var isPlaying = true
     @State private var volume: Double = 0.6
 
+    private var track: Track { playerState.currentTrack }
     private var duration: Double { track.duration == 0 ? 210 : track.duration }
 
     var body: some View {
@@ -63,17 +63,10 @@ struct ExpandedMusicPlayer: View {
     }
 
     private var albumArtwork: some View {
-        RoundedRectangle(cornerRadius: 24, style: .continuous)
-            .fill(Color.white.opacity(0.06))
-            .frame(height: 320)
-            .overlay {
-                artworkContent
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            }
-            .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
-            )
+        artworkContent
+            .aspectRatio(1, contentMode: .fit)
+            .frame(maxWidth: 320)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             .shadow(
                 color: colorScheme == .dark
                     ? .white.opacity(0.1)
@@ -93,7 +86,7 @@ struct ExpandedMusicPlayer: View {
                 case .success(let image):
                     image
                         .resizable()
-                        .scaledToFill()
+                        .aspectRatio(contentMode: .fill)
                 case .failure:
                     artworkPlaceholder
                 @unknown default:
@@ -103,16 +96,7 @@ struct ExpandedMusicPlayer: View {
         } else if let image = UIImage(named: track.artwork) {
             Image(uiImage: image)
                 .resizable()
-                .scaledToFill()
-        } else if !track.artwork.isEmpty {
-            ZStack {
-                Color.brandAccent.opacity(0.2)
-                Image(systemName: track.artwork)
-                    .resizable()
-                    .scaledToFit()
-                    .padding(60)
-                    .foregroundStyle(.primary)
-            }
+                .aspectRatio(contentMode: .fill)
         } else {
             artworkPlaceholder
         }
@@ -120,12 +104,13 @@ struct ExpandedMusicPlayer: View {
 
     private var artworkPlaceholder: some View {
         RoundedRectangle(cornerRadius: 24, style: .continuous)
-            .fill(Color.albumGradient(light: .brandPrimary, dark: .brandSecondary))
-            .overlay {
-                Image(systemName: "music.note")
-                    .font(.system(size: 56, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
+            .fill(
+                LinearGradient(
+                    colors: [.blue, .blue.opacity(0.7)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
     }
 
     private var trackDetails: some View {
@@ -169,10 +154,10 @@ struct ExpandedMusicPlayer: View {
 
             Button {
                 withAnimation(.spring) {
-                    isPlaying.toggle()
+                    playerState.isPlaying.toggle()
                 }
             } label: {
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                Image(systemName: playerState.isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 40, weight: .bold))
                     .foregroundStyle(.primary)
             }

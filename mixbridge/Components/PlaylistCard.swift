@@ -44,7 +44,7 @@ struct PlaylistCard: View {
                             .resizable()
                             .scaledToFill()
                             .frame(width: artworkSize, height: artworkSize)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
                     case .failure:
                         artworkPlaceholder
                     @unknown default:
@@ -52,30 +52,25 @@ struct PlaylistCard: View {
                     }
                 }
             } else {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 12)
                     .fill(
                         LinearGradient(
-                            colors: [.blue, .purple],
+                            colors: [.blue, .blue.opacity(0.7)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
                     .frame(width: artworkSize, height: artworkSize)
-                    .overlay {
-                        Image(systemName: playlist.artwork)
-                            .font(.system(size: 48))
-                            .foregroundStyle(.white.opacity(0.6))
-                    }
             }
         }
     }
 
     private var artworkPlaceholder: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 12)
                 .fill(
                     LinearGradient(
-                        colors: [.blue, .purple],
+                        colors: [.blue, .blue.opacity(0.7)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )

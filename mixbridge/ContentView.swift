@@ -11,11 +11,7 @@ struct ContentView: View {
 
     @State private var expandMiniPlayer: Bool = false
     @Namespace private var animation
-    private let currentTrack = Track.sampleTracks.first ?? Track(
-        title: "Some Music Title",
-        artist: "Unknown Artist",
-        album: "Unknown Album"
-    )
+    @State private var playerState = PlayerState.shared
 
     var body: some View {
         NativeTabView()
@@ -31,7 +27,6 @@ struct ContentView: View {
             .fullScreenCover(isPresented: $expandMiniPlayer) {
                 ExpandedMusicPlayer(
                     isPresented: $expandMiniPlayer,
-                    track: currentTrack,
                     namespace: animation
                 )
             }
@@ -40,15 +35,30 @@ struct ContentView: View {
     @ViewBuilder
     func PlayerInfo(_ track: Track, size: CGSize) -> some View {
         HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: size.height/4)
-                .fill(
-                    LinearGradient(
-                        colors: [.blue, .indigo],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: size.width, height: size.height)
+            Group {
+                if track.artwork.starts(with: "http"), let url = URL(string: track.artwork) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .empty:
+                            miniArtworkPlaceholder(size: size)
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: size.width, height: size.height)
+                                .clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        case .failure:
+                            miniArtworkPlaceholder(size: size)
+                        @unknown default:
+                            miniArtworkPlaceholder(size: size)
+                        }
+                    }
+                } else {
+                    miniArtworkPlaceholder(size: size)
+                }
+            }
+
             VStack(alignment: .leading, spacing: 4){
                 Text(track.title)
                     .font(.callout)
@@ -61,25 +71,38 @@ struct ContentView: View {
             }
         }
     }
+
+    @ViewBuilder
+    func miniArtworkPlaceholder(size: CGSize) -> some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(
+                LinearGradient(
+                    colors: [.blue, .blue.opacity(0.7)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .frame(width: size.width, height: size.height)
+    }
     
     @ViewBuilder
     func MiniPlayerView() -> some View{
         HStack(spacing: 15){
-            PlayerInfo(currentTrack, size: .init(width: 30, height: 30))
+            PlayerInfo(playerState.currentTrack, size: .init(width: 30, height: 30))
             Spacer(minLength: 0)
-            
+
             Button{
-                
+                playerState.isPlaying.toggle()
             }   label: {
-                Image(systemName: "play.fill")
+                Image(systemName: playerState.isPlaying ? "pause.fill" : "play.fill")
                     .contentShape(.rect)
             }
             .padding(.trailing, 10)
             .buttonStyle(.plain)
-            
-            
+
+
             Button{
-                
+
             }   label: {
                 Image(systemName: "forward.fill")
                     .contentShape(.rect)
