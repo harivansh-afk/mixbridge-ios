@@ -80,6 +80,12 @@ class BackendAPI {
     func getLikedTracks(limit: Int = 50, offset: Int = 0) async throws -> LikedTracksResponse {
         return try await makeRequest(path: "/api/mobile/tracks/liked?limit=\(limit)&offset=\(offset)")
     }
+
+    /// Search SoundCloud
+    func search(query: String, limit: Int = 20) async throws -> SearchResponse {
+        let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        return try await makeRequest(path: "/api/mobile/search?q=\(encodedQuery)&limit=\(limit)")
+    }
 }
 
 // MARK: - Response Models
@@ -97,6 +103,12 @@ struct PlaylistResponse: Codable {
 struct LikedTracksResponse: Codable {
     let tracks: [SoundCloudTrack]
     let next_href: String?
+}
+
+struct SearchResponse: Codable {
+    let tracks: [SoundCloudTrack]
+    let playlists: [SoundCloudPlaylist]
+    let users: [SoundCloudUser]
 }
 
 // MARK: - Errors

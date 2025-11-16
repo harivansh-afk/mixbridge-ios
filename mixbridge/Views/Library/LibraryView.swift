@@ -207,7 +207,7 @@ struct LibraryView: View {
     private var navigationSection: some View {
         VStack(spacing: 0) {
             NavigationLink {
-                Text("All Playlists")
+                AllPlaylistsView()
             } label: {
                 LibraryNavigationRow(
                     icon: "music.note.list",
@@ -221,7 +221,7 @@ struct LibraryView: View {
                 .padding(.leading, 60)
 
             NavigationLink {
-                Text("Artists")
+                AllArtistsView()
             } label: {
                 LibraryNavigationRow(
                     icon: "music.mic",
@@ -235,7 +235,7 @@ struct LibraryView: View {
                 .padding(.leading, 60)
 
             NavigationLink {
-                Text("Songs")
+                AllSongsView()
             } label: {
                 LibraryNavigationRow(
                     icon: "music.note",

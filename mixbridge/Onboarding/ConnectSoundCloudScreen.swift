@@ -7,94 +7,72 @@ struct ConnectSoundCloudScreen: View {
     @State private var contextProvider = PresentationContextProvider()
 
     var body: some View {
-        VStack(spacing: 32) {
-            Spacer()
-
-            // SoundCloud Logo
+        GeometryReader { geometry in
             ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(red: 1.0, green: 0.4, blue: 0.0), Color(red: 1.0, green: 0.5, blue: 0.1)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 120, height: 120)
-                    .blur(radius: 40)
+                // Background Image
+                Image("background")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+                    .grayscale(1.0)
+                    .ignoresSafeArea()
 
-                Image(systemName: "cloud.fill")
-                    .font(.system(size: 70))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Color(red: 1.0, green: 0.4, blue: 0.0), Color(red: 1.0, green: 0.5, blue: 0.1)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            .frame(height: 180)
+                // Dark overlay
+                Color.black.opacity(0.5)
+                    .ignoresSafeArea()
 
-            // Title
-            Text("Connect Your\nSoundCloud")
-                .font(.system(size: 36, weight: .bold))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
+                VStack(spacing: 0) {
+                    Spacer()
 
-            // Description
-            Text("Sign in to access your music library, likes, and playlists")
-                .font(.body)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 40)
+                    // Title
+                    Text("Welcome to\nMixbridge")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
 
-            Spacer()
+                    Spacer()
 
-            // Connect Button
-            Button {
-                startAuthentication()
-            } label: {
-                HStack(spacing: 12) {
-                    if authManager.isLoading {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "cloud.fill")
-                            .font(.title3)
+                    VStack(spacing: 16) {
+                        // Error message
+                        if let error = authManager.errorMessage {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                        }
 
-                        Text("Connect SoundCloud")
-                            .font(.headline)
+                        // Connect Button
+                        Button {
+                            startAuthentication()
+                        } label: {
+                            HStack(spacing: 12) {
+                                if authManager.isLoading {
+                                    ProgressView()
+                                        .tint(.black)
+                                } else {
+                                    Image(systemName: "cloud.fill")
+                                        .foregroundColor(.black)
+                                    Text("Login with SoundCloud")
+                                        .foregroundColor(.black)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.white)
+                        .controlSize(.large)
+                        .disabled(authManager.isLoading)
                     }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, max(geometry.safeAreaInsets.bottom, 20) + 5)
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .foregroundColor(.white)
-                .background(
-                    LinearGradient(
-                        colors: [Color(red: 1.0, green: 0.4, blue: 0.0), Color(red: 1.0, green: 0.5, blue: 0.1)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .cornerRadius(16)
             }
-            .disabled(authManager.isLoading)
-            .padding(.horizontal, 40)
-
-            // Error message
-            if let error = authManager.errorMessage {
-                Text(error)
-                    .font(.caption)
-                    .foregroundColor(.red)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-            }
-
-            Spacer()
-                .frame(height: 80)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(uiColor: .systemBackground))
+        .ignoresSafeArea()
     }
 
     private func startAuthentication() {
@@ -176,10 +154,25 @@ struct ConnectSoundCloudScreen: View {
 class PresentationContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         // Return the key window
+        if let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }),
+           let keyWindow = windowScene.windows.first(where: { $0.isKeyWindow }) {
+            return keyWindow
+        }
+
+        // Fallback: return first window or create new window with scene
+        if let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first {
+            return UIWindow(windowScene: windowScene)
+        }
+
+        // Last resort fallback
         return UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .flatMap { $0.windows }
-            .first { $0.isKeyWindow } ?? UIWindow()
+            .first ?? UIWindow(frame: .zero)
     }
 }
 
