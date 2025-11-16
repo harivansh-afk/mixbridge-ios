@@ -15,20 +15,19 @@ struct ConnectSoundCloudScreen: View {
                     .scaledToFill()
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .clipped()
-                    .grayscale(1.0)
-                    .ignoresSafeArea()
-
-                // Dark overlay
-                Color.black.opacity(0.5)
                     .ignoresSafeArea()
 
                 VStack(spacing: 0) {
                     Spacer()
 
                     // Title
-                    Text("Welcome to\nMixbridge")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
+                    Text("Welcome to")
+                        .font(.custom("InstrumentSerif-Regular", size:30))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    Text("Mixbridge")
+                        .font(.custom("InstrumentSerif-Italic", size: 46))
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
@@ -58,6 +57,7 @@ struct ConnectSoundCloudScreen: View {
                                         .foregroundColor(.black)
                                     Text("Login with SoundCloud")
                                         .foregroundColor(.black)
+                                        .font(.callout.bold())
                                 }
                             }
                             .frame(maxWidth: .infinity)

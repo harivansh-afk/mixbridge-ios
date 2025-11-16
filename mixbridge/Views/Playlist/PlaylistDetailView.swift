@@ -11,7 +11,9 @@ struct PlaylistDetailView: View {
     let playlist: Playlist
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
+    @Environment(QueueManager.self) private var queueManager
     @State private var tracks: [Track] = []
+    @State private var tracksData: [String: [String: Any]] = [:] // Track ID -> raw data
     @State private var isLoadingTracks = false
     @State private var hasLoaded = false
 
@@ -161,10 +163,15 @@ struct PlaylistDetailView: View {
                 .padding()
             } else if !tracks.isEmpty {
                 ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                    TrackRow(track, number: index + 1, showCover: true)
+                    TrackRow(
+                        track,
+                        number: index + 1,
+                        showCover: true,
+                        trackData: tracksData[track.id]
+                    )
                 }
             } else if !playlist.tracks.isEmpty {
-                // Fallback to playlist.tracks if available
+                // Fallback to playlist.tracks if available (no queue support)
                 ForEach(Array(playlist.tracks.enumerated()), id: \.element.id) { index, track in
                     TrackRow(track, number: index + 1, showCover: true)
                 }
@@ -198,20 +205,36 @@ struct PlaylistDetailView: View {
             )
 
             if let cached = cached {
-                // Convert SoundCloudTracks to Track
-                self.tracks = cached.tracks.map { soundcloudTrack in
-                    let artworkUrl = soundcloudTrack.artwork_url ?? soundcloudTrack.user.avatar_url ?? ""
-                    // Upgrade to high quality
-                    let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
+                var tracksList: [Track] = []
+                var rawData: [String: [String: Any]] = [:]
 
-                    return Track(
+                for soundcloudTrack in cached.tracks {
+                    let artworkUrl = soundcloudTrack.artwork_url ?? soundcloudTrack.user.avatar_url ?? ""
+                    let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
+                    let trackId = String(soundcloudTrack.id)
+
+                    let track = Track(
+                        id: trackId,
                         title: soundcloudTrack.title,
                         artist: soundcloudTrack.user.username,
                         album: soundcloudTrack.genre ?? "",
                         artwork: highQualityArtwork,
                         duration: Double(soundcloudTrack.duration)
                     )
+
+                    tracksList.append(track)
+
+                    // Store raw data for queue operations
+                    if let rawDict = try? JSONSerialization.jsonObject(
+                        with: JSONEncoder().encode(soundcloudTrack),
+                        options: []
+                    ) as? [String: Any] {
+                        rawData[trackId] = rawDict
+                    }
                 }
+
+                self.tracks = tracksList
+                self.tracksData = rawData
                 print("✅ [PlaylistDetail] Loaded \(tracks.count) tracks from Convex cache!")
                 hasLoaded = true
                 isLoadingTracks = false
@@ -230,19 +253,36 @@ struct PlaylistDetailView: View {
             print("📥 [PlaylistDetail] Backend response received")
 
             if let soundcloudTracks = response.playlist.tracks {
-                self.tracks = soundcloudTracks.map { soundcloudTrack in
-                    let artworkUrl = soundcloudTrack.artwork_url ?? soundcloudTrack.user.avatar_url ?? ""
-                    // Upgrade to high quality
-                    let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
+                var tracksList: [Track] = []
+                var rawData: [String: [String: Any]] = [:]
 
-                    return Track(
+                for soundcloudTrack in soundcloudTracks {
+                    let artworkUrl = soundcloudTrack.artwork_url ?? soundcloudTrack.user.avatar_url ?? ""
+                    let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
+                    let trackId = String(soundcloudTrack.id)
+
+                    let track = Track(
+                        id: trackId,
                         title: soundcloudTrack.title,
                         artist: soundcloudTrack.user.username,
                         album: soundcloudTrack.genre ?? "",
                         artwork: highQualityArtwork,
                         duration: Double(soundcloudTrack.duration)
                     )
+
+                    tracksList.append(track)
+
+                    // Store raw data for queue operations
+                    if let rawDict = try? JSONSerialization.jsonObject(
+                        with: JSONEncoder().encode(soundcloudTrack),
+                        options: []
+                    ) as? [String: Any] {
+                        rawData[trackId] = rawDict
+                    }
                 }
+
+                self.tracks = tracksList
+                self.tracksData = rawData
                 print("✅ [PlaylistDetail] Loaded \(tracks.count) tracks from backend API!")
             } else {
                 print("⚠️ [PlaylistDetail] No tracks in backend response")

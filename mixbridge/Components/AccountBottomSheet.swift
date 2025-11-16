@@ -49,9 +49,23 @@ struct AccountBottomSheet: View {
                         }
                         .padding()
                     } else if let profile = convexProfile {
-                        convexProfileHeader(profile: profile.profile)
+                        ZStack {
+                            NavigationLink(destination: ProfileStatsView(profile: profile.profile)) {
+                                EmptyView()
+                            }
+                            .opacity(0)
+
+                            convexProfileHeader(profile: profile.profile)
+                        }
                     } else {
-                        profileHeader
+                        ZStack {
+                            NavigationLink(destination: ProfileStatsView(profile: nil)) {
+                                EmptyView()
+                            }
+                            .opacity(0)
+
+                            profileHeader
+                        }
                     }
                 }
                 .listRowInsets(EdgeInsets())
@@ -163,6 +177,7 @@ struct AccountBottomSheet: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(profile.full_name ?? profile.username)
                     .font(.title3)
+                    .foregroundColor(.primary)
 
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark.circle.fill")
@@ -230,6 +245,7 @@ struct AccountBottomSheet: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(userName)
                     .font(.title3)
+                    .foregroundColor(.primary)
 
                 Text("View Profile")
                     .font(.caption)

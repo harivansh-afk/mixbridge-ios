@@ -196,6 +196,19 @@ class ConvexService {
 
         print("📥 [Queue] Response status: \(httpResponse.statusCode)")
 
+        // Handle specific error codes
+        if httpResponse.statusCode == 409 {
+            if let errorResponse = String(data: data, encoding: .utf8) {
+                print("ℹ️ [Queue] Track already in queue: \(errorResponse)")
+            }
+            throw ConvexError.alreadyInQueue
+        }
+
+        if httpResponse.statusCode == 401 {
+            print("❌ [Queue] Unauthorized")
+            throw ConvexError.unauthorized
+        }
+
         guard (200...299).contains(httpResponse.statusCode) else {
             print("❌ [Queue] HTTP error: \(httpResponse.statusCode)")
             if let errorResponse = String(data: data, encoding: .utf8) {
@@ -402,6 +415,9 @@ enum ConvexError: LocalizedError {
     case requestFailed
     case queryFailed(String)
     case noData
+    case alreadyInQueue
+    case unauthorized
+    case notFound
 
     var errorDescription: String? {
         switch self {
@@ -411,6 +427,12 @@ enum ConvexError: LocalizedError {
             return "Query failed: \(message)"
         case .noData:
             return "No data in cache"
+        case .alreadyInQueue:
+            return "Track is already in your queue"
+        case .unauthorized:
+            return "Authentication required"
+        case .notFound:
+            return "Item not found"
         }
     }
 }

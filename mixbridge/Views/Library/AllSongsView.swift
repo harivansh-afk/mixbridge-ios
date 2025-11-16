@@ -2,7 +2,9 @@ import SwiftUI
 
 struct AllSongsView: View {
     @Environment(AuthManager.self) private var authManager
+    @Environment(QueueManager.self) private var queueManager
     @State private var tracks: [Track] = []
+    @State private var tracksData: [String: [String: Any]] = [:] // Track ID -> raw data
     @State private var isLoading = false
     @State private var hasLoaded = false
 
@@ -20,7 +22,12 @@ struct AllSongsView: View {
                 List {
                     Section {
                         ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                            TrackRow(track, number: index + 1, showCover: true)
+                            TrackRow(
+                                track,
+                                number: index + 1,
+                                showCover: true,
+                                trackData: tracksData[track.id]
+                            )
                         }
                     }
                 }
@@ -48,18 +55,36 @@ struct AllSongsView: View {
             let cached = try await ConvexService.shared.getLikedTracks(userId: userId)
 
             if let cached = cached {
-                self.tracks = cached.tracks.map { soundcloudTrack in
+                var tracksList: [Track] = []
+                var rawData: [String: [String: Any]] = [:]
+
+                for soundcloudTrack in cached.tracks {
                     let artworkUrl = soundcloudTrack.artwork_url ?? soundcloudTrack.user.avatar_url ?? ""
                     let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
+                    let trackId = String(soundcloudTrack.id)
 
-                    return Track(
+                    let track = Track(
+                        id: trackId,
                         title: soundcloudTrack.title,
                         artist: soundcloudTrack.user.username,
                         album: soundcloudTrack.genre ?? "",
                         artwork: highQualityArtwork,
                         duration: Double(soundcloudTrack.duration)
                     )
+
+                    tracksList.append(track)
+
+                    // Store raw data for queue operations
+                    if let rawDict = try? JSONSerialization.jsonObject(
+                        with: JSONEncoder().encode(soundcloudTrack),
+                        options: []
+                    ) as? [String: Any] {
+                        rawData[trackId] = rawDict
+                    }
                 }
+
+                self.tracks = tracksList
+                self.tracksData = rawData
                 print("✅ [AllSongs] Loaded \(tracks.count) songs!")
             }
         } catch {

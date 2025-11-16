@@ -12,8 +12,7 @@ struct HomeView: View {
     @State private var showingAccount = false
     @Environment(AuthManager.self) private var authManager
     @Environment(UserProfileManager.self) private var profileManager
-    @State private var queueTracks: [Track] = []
-    @State private var queueTrackIds: [String: String] = [:] // Track.id -> Convex queue track ID
+    @Environment(QueueManager.self) private var queueManager
     @State private var recentlyPlayed: [Track] = []
     @State private var recentlyPlayedData: [String: [String: Any]] = [:] // Track ID -> raw data
     @State private var isLoading = false
@@ -63,7 +62,7 @@ struct HomeView: View {
         if isLoading && !hasLoaded {
             // Skeleton loading state
             skeletonLoadingView
-        } else if queueTracks.isEmpty && recentlyPlayed.isEmpty {
+        } else if queueManager.queueTracks.isEmpty && recentlyPlayed.isEmpty {
             emptyState
         } else {
             homeList
@@ -158,7 +157,7 @@ struct HomeView: View {
     private var homeList: some View {
         List {
             // Queue Section
-            if !queueTracks.isEmpty {
+            if !queueManager.queueTracks.isEmpty {
                 Section {
                     // Subheading row
                     Text("Queue")
@@ -169,24 +168,14 @@ struct HomeView: View {
                         .listRowSeparator(.hidden)
 
                     // Track rows
-                    ForEach(Array(queueTracks.enumerated()), id: \.element.id) { index, track in
+                    ForEach(Array(queueManager.queueTracks.enumerated()), id: \.element.id) { index, track in
                         TrackRow(
                             track,
                             number: index + 1,
                             showCover: true,
                             onDelete: {
-                                removeTrackFromQueue(track)
-                            },
-                            onTrackAddedToQueue: { addedTrack, queueTrackId in
-                                // Add track and store queue track ID mapping
-                                print("⚡ [HomeView] Adding track to queue with ID: \(queueTrackId)")
-                                if !queueTracks.contains(where: { $0.id == addedTrack.id }) {
-                                    queueTracks.append(addedTrack)
-                                    queueTrackIds[addedTrack.id] = queueTrackId
-                                    print("✅ [HomeView] Queue now has \(queueTracks.count) tracks")
-                                    print("✅ [HomeView] Stored mapping: \(addedTrack.id) -> \(queueTrackId)")
-                                } else {
-                                    print("⚠️ [HomeView] Track already in queue, skipping")
+                                Task {
+                                    try? await queueManager.removeTrack(track)
                                 }
                             }
                         )
@@ -211,18 +200,6 @@ struct HomeView: View {
                             track,
                             number: index + 1,
                             showCover: true,
-                            onTrackAddedToQueue: { addedTrack, queueTrackId in
-                                // Add track and store queue track ID mapping
-                                print("⚡ [HomeView] Adding track to queue with ID: \(queueTrackId)")
-                                if !queueTracks.contains(where: { $0.id == addedTrack.id }) {
-                                    queueTracks.append(addedTrack)
-                                    queueTrackIds[addedTrack.id] = queueTrackId
-                                    print("✅ [HomeView] Queue now has \(queueTracks.count) tracks")
-                                    print("✅ [HomeView] Stored mapping: \(addedTrack.id) -> \(queueTrackId)")
-                                } else {
-                                    print("⚠️ [HomeView] Track already in queue, skipping")
-                                }
-                            },
                             trackData: recentlyPlayedData[track.id]
                         )
                     }
@@ -231,43 +208,6 @@ struct HomeView: View {
         }
         .listStyle(.plain)
         .listSectionSpacing(0)
-    }
-
-    // MARK: - Queue Actions
-
-    private func removeTrackFromQueue(_ track: Track) {
-        guard let convexQueueTrackId = queueTrackIds[track.id] else {
-            print("❌ [HomeView] No Convex queue track ID found for track: \(track.id)")
-            return
-        }
-
-        print("🗑️ [HomeView] Removing track: \(track.title)")
-
-        // Store original state for rollback
-        let removedTrack = track
-        let originalIndex = queueTracks.firstIndex(where: { $0.id == track.id })
-
-        // 1. Optimistically remove from UI - INSTANT
-        queueTracks.removeAll { $0.id == track.id }
-        queueTrackIds.removeValue(forKey: track.id)
-        print("⚡ [HomeView] Optimistically removed - queue now has \(queueTracks.count) tracks")
-
-        // 2. Call API in background
-        Task {
-            do {
-                try await ConvexService.shared.removeTrackFromQueue(queueTrackId: convexQueueTrackId)
-                print("✅ [HomeView] Track deleted from server successfully")
-            } catch {
-                print("❌ [HomeView] Failed to delete track from server: \(error)")
-
-                // Rollback: re-insert track at original position
-                if let index = originalIndex {
-                    queueTracks.insert(removedTrack, at: min(index, queueTracks.count))
-                    queueTrackIds[track.id] = convexQueueTrackId
-                    print("↩️ [HomeView] Rolled back delete - restored to queue")
-                }
-            }
-        }
     }
 
     // MARK: - Data Loading
@@ -287,35 +227,9 @@ struct HomeView: View {
         isLoading = true
         print("🔄 [HomeView] Starting load...")
 
-        // Load queue
+        // Load queue via QueueManager
         do {
-            print("📡 [HomeView] Fetching queue for userId: \(userId)")
-            let queueData = try await ConvexService.shared.getQueueTracks(userId: userId)
-
-            var tracks: [Track] = []
-            var trackIdMap: [String: String] = [:]
-
-            for queueTrack in queueData {
-                let artworkUrl = queueTrack.artworkUrl ?? ""
-                let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
-
-                let track = Track(
-                    id: queueTrack.trackId, // Use SoundCloud track ID
-                    title: queueTrack.title,
-                    artist: queueTrack.artist,
-                    album: "",
-                    artwork: highQualityArtwork,
-                    duration: queueTrack.duration
-                )
-
-                tracks.append(track)
-                trackIdMap[queueTrack.trackId] = queueTrack._id // Map SoundCloud ID -> Convex queue track ID
-            }
-
-            self.queueTracks = tracks
-            self.queueTrackIds = trackIdMap
-
-            print("✅ [HomeView] Loaded \(queueTracks.count) queue tracks!")
+            try await queueManager.loadQueue(userId: userId)
         } catch {
             print("❌ [HomeView] Queue error: \(error)")
         }

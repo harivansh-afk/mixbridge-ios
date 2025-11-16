@@ -12,6 +12,7 @@ struct mixbridgeApp: App {
     @AppStorage("themeMode") private var themeMode: AppearanceMode = .system
     @State private var authManager = AuthManager.shared
     @State private var profileManager = UserProfileManager.shared
+    @State private var queueManager = QueueManager.shared
 
     var body: some Scene {
         WindowGroup {
@@ -25,6 +26,7 @@ struct mixbridgeApp: App {
             .preferredColorScheme(themeMode.colorScheme)
             .environment(authManager)
             .environment(profileManager)
+            .environment(queueManager)
         }
     }
 }

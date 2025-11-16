@@ -6,13 +6,39 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXCopyFilesBuildPhase section */
+		5EF67A762ECA7D4C00D6673D /* Copy Files */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 7;
+			files = (
+			);
+			name = "Copy Files";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		5E55D33D2EC1567E005A5D2C /* mixbridge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mixbridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5EF67A752ECA7B5900D6673D /* Exceptions for "mixbridge" folder in "mixbridge" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5E55D33C2EC1567E005A5D2C /* mixbridge */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5E55D33F2EC1567E005A5D2C /* mixbridge */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5EF67A752ECA7B5900D6673D /* Exceptions for "mixbridge" folder in "mixbridge" target */,
+			);
 			path = mixbridge;
 			sourceTree = "<group>";
 		};
@@ -55,6 +81,7 @@
 				5E55D3392EC1567E005A5D2C /* Sources */,
 				5E55D33A2EC1567E005A5D2C /* Frameworks */,
 				5E55D33B2EC1567E005A5D2C /* Resources */,
+				5EF67A762ECA7D4C00D6673D /* Copy Files */,
 			);
 			buildRules = (
 			);
@@ -257,6 +284,7 @@
 				DEVELOPMENT_TEAM = G2U3K77U5W;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = mixbridge/Info.plist;
 				INFOPLIST_KEY_CFBundleURLTypes = "{\n    CFBundleTypeRole = Editor;\n    CFBundleURLName = \"com.mixbridge.auth\";\n    CFBundleURLSchemes =     (\n        mixbridge\n    );\n}";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -292,6 +320,7 @@
 				DEVELOPMENT_TEAM = G2U3K77U5W;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = mixbridge/Info.plist;
 				INFOPLIST_KEY_CFBundleURLTypes = "{\n    CFBundleTypeRole = Editor;\n    CFBundleURLName = \"com.mixbridge.auth\";\n    CFBundleURLSchemes =     (\n        mixbridge\n    );\n}";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

@@ -11,7 +11,9 @@ struct LikedView: View {
     @State private var showingAccount = false
     @Environment(AuthManager.self) private var authManager
     @Environment(UserProfileManager.self) private var profileManager
+    @Environment(QueueManager.self) private var queueManager
     @State private var likedTracks: [Track] = []
+    @State private var likedTracksData: [String: [String: Any]] = [:] // Track ID -> raw data
     @State private var isLoading = false
     @State private var hasLoaded = false
 
@@ -68,7 +70,9 @@ struct LikedView: View {
             let cached = try await ConvexService.shared.getLikedTracks(userId: userId)
 
             if let cached = cached {
-                self.likedTracks = convertToTracks(cached.tracks)
+                let (tracks, tracksData) = convertToTracksWithData(cached.tracks)
+                self.likedTracks = tracks
+                self.likedTracksData = tracksData
                 print("✅ [LikedView] Loaded \(likedTracks.count) liked tracks from Convex cache!")
                 hasLoaded = true
                 isLoading = false
@@ -84,7 +88,9 @@ struct LikedView: View {
         print("📡 [LikedView] Fetching from backend API...")
         do {
             let response = try await BackendAPI.shared.getLikedTracks(limit: 50)
-            self.likedTracks = convertToTracks(response.tracks)
+            let (tracks, tracksData) = convertToTracksWithData(response.tracks)
+            self.likedTracks = tracks
+            self.likedTracksData = tracksData
             print("✅ [LikedView] Loaded \(likedTracks.count) liked tracks from backend!")
         } catch {
             print("❌ [LikedView] Backend error: \(error)")
@@ -94,19 +100,36 @@ struct LikedView: View {
         isLoading = false
     }
 
-    private func convertToTracks(_ soundcloudTracks: [SoundCloudTrack]) -> [Track] {
-        return soundcloudTracks.map { soundcloudTrack in
+    private func convertToTracksWithData(_ soundcloudTracks: [SoundCloudTrack]) -> ([Track], [String: [String: Any]]) {
+        var tracks: [Track] = []
+        var tracksData: [String: [String: Any]] = [:]
+
+        for soundcloudTrack in soundcloudTracks {
             let artworkUrl = soundcloudTrack.artwork_url ?? soundcloudTrack.user.avatar_url ?? ""
             let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
+            let trackId = String(soundcloudTrack.id)
 
-            return Track(
+            let track = Track(
+                id: trackId,
                 title: soundcloudTrack.title,
                 artist: soundcloudTrack.user.username,
                 album: soundcloudTrack.genre ?? "",
                 artwork: highQualityArtwork,
                 duration: Double(soundcloudTrack.duration)
             )
+
+            tracks.append(track)
+
+            // Store raw data for queue operations
+            if let rawDict = try? JSONSerialization.jsonObject(
+                with: JSONEncoder().encode(soundcloudTrack),
+                options: []
+            ) as? [String: Any] {
+                tracksData[trackId] = rawDict
+            }
         }
+
+        return (tracks, tracksData)
     }
 
     @ViewBuilder
@@ -162,8 +185,13 @@ struct LikedView: View {
         List {
             Section {
                 ForEach(Array(likedTracks.enumerated()), id: \.element.id) { index, track in
-                    TrackRow(track, number: index + 1, showCover: true)
-                        .redacted(reason: track.title.isEmpty ? .placeholder : [])
+                    TrackRow(
+                        track,
+                        number: index + 1,
+                        showCover: true,
+                        trackData: likedTracksData[track.id]
+                    )
+                    .redacted(reason: track.title.isEmpty ? .placeholder : [])
                 }
             }
         }

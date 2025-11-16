@@ -186,46 +186,42 @@ struct TrackRow: View {
 
     private func handleAddToQueue() {
         print("🎵 [TrackRow] handleAddToQueue called for track: \(track.title)")
-        print("🎵 [TrackRow] Track ID: \(track.id)")
-        print("🎵 [TrackRow] Has custom callback: \(onAddToQueue != nil)")
-        print("🎵 [TrackRow] Has trackData: \(trackData != nil)")
 
+        // Use custom callback if provided (for backward compatibility)
         if let onAddToQueue = onAddToQueue {
             print("🎵 [TrackRow] Using custom callback")
             onAddToQueue()
-        } else {
-            // Default behavior: call API directly
-            Task {
-                guard let trackData = trackData else {
-                    print("❌ [TrackRow] Track data is nil - cannot add to queue")
-                    print("❌ [TrackRow] This means the TrackRow was created without trackData parameter")
-                    errorMessage = "Track data not available. Please report this issue."
-                    showError = true
-                    return
+            return
+        }
+
+        // Standard behavior: use QueueManager
+        guard let trackData = trackData else {
+            print("❌ [TrackRow] No trackData provided - cannot add to queue")
+            errorMessage = "Unable to add track to queue"
+            showError = true
+            return
+        }
+
+        Task {
+            isLoading = true
+            do {
+                try await QueueManager.shared.addTrack(track, rawData: trackData)
+                print("✅ [TrackRow] Track added to queue via QueueManager")
+
+                // Notify parent if callback provided
+                if let onTrackAddedToQueue = onTrackAddedToQueue,
+                   let queueTrackId = QueueManager.shared.queueTracks.first(where: { $0.id == track.id })?.id {
+                    onTrackAddedToQueue(track, queueTrackId)
                 }
-
-                print("📤 [TrackRow] Calling ConvexService.addTrackToQueue")
-                isLoading = true
-
-                do {
-                    let queueTrackId = try await ConvexService.shared.addTrackToQueue(
-                        trackId: track.id,
-                        trackData: trackData
-                    )
-                    print("✅ [TrackRow] Track added! Queue track ID: \(queueTrackId)")
-
-                    // Notify parent with track AND queue track ID for mapping
-                    if let onTrackAddedToQueue = onTrackAddedToQueue {
-                        print("⚡ [TrackRow] Notifying parent with queue track ID")
-                        onTrackAddedToQueue(track, queueTrackId)
-                    }
-                } catch {
-                    print("❌ [TrackRow] Failed to add track: \(error)")
-                    errorMessage = "Failed to add track to queue: \(error.localizedDescription)"
-                    showError = true
-                }
-                isLoading = false
+            } catch ConvexError.alreadyInQueue {
+                print("ℹ️ [TrackRow] Track already in queue - silently ignoring")
+                // Don't show error for duplicates - this is expected
+            } catch {
+                print("❌ [TrackRow] Failed to add track: \(error)")
+                errorMessage = error.localizedDescription
+                showError = true
             }
+            isLoading = false
         }
     }
 

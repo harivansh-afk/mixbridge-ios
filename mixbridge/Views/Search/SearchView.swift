@@ -10,7 +10,9 @@ import SwiftUI
 struct SearchView: View {
     @State private var searchText = ""
     @Environment(AuthManager.self) private var authManager
+    @Environment(QueueManager.self) private var queueManager
     @State private var searchResults: SearchResponse?
+    @State private var searchTracksData: [String: [String: Any]] = [:] // Track ID -> raw data
     @State private var isSearching = false
     @State private var searchTask: Task<Void, Never>?
     @State private var lastSearchedQuery = ""
@@ -70,8 +72,10 @@ struct SearchView: View {
                     ForEach(Array(results.tracks.prefix(10).enumerated()), id: \.element.id) { index, soundcloudTrack in
                         let artworkUrl = soundcloudTrack.artwork_url ?? soundcloudTrack.user.avatar_url ?? ""
                         let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
+                        let trackId = String(soundcloudTrack.id)
 
                         let track = Track(
+                            id: trackId,
                             title: soundcloudTrack.title,
                             artist: soundcloudTrack.user.username,
                             album: soundcloudTrack.genre ?? "",
@@ -79,7 +83,22 @@ struct SearchView: View {
                             duration: Double(soundcloudTrack.duration)
                         )
 
-                        TrackRow(track, number: index + 1, showCover: true)
+                        TrackRow(
+                            track,
+                            number: index + 1,
+                            showCover: true,
+                            trackData: searchTracksData[trackId]
+                        )
+                        .onAppear {
+                            // Store raw data when row appears
+                            if searchTracksData[trackId] == nil,
+                               let rawDict = try? JSONSerialization.jsonObject(
+                                with: JSONEncoder().encode(soundcloudTrack),
+                                options: []
+                               ) as? [String: Any] {
+                                searchTracksData[trackId] = rawDict
+                            }
+                        }
                     }
                 }
             }
