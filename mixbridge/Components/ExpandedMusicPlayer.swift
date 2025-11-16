@@ -46,8 +46,8 @@ struct ExpandedMusicPlayer: View {
     private var backgroundLayer: some View {
         LinearGradient(
             colors: [
-                Color.brandPrimary.opacity(0.4),
-                Color.brandSecondary.opacity(0.5),
+                Color.blue.opacity(0.4),
+                Color.purple.opacity(0.5),
                 Color.black.opacity(0.3)
             ],
             startPoint: .topLeading,

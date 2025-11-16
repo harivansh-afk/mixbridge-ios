@@ -9,12 +9,20 @@ import SwiftUI
 
 @main
 struct mixbridgeApp: App {
-    @AppStorage("themeMode") private var themeMode: ThemeMode = .system
+    @AppStorage("themeMode") private var themeMode: AppearanceMode = .system
+    @State private var authManager = AuthManager.shared
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .preferredColorScheme(themeMode.colorScheme)
+            Group {
+                if authManager.isAuthenticated {
+                    ContentView()
+                } else {
+                    OnboardingView()
+                }
+            }
+            .preferredColorScheme(themeMode.colorScheme)
+            .environment(authManager)
         }
     }
 }
