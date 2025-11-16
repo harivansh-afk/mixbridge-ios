@@ -48,13 +48,13 @@ class ConvexService {
             throw ConvexError.queryFailed(convexResponse.errorMessage ?? "Unknown error")
         }
 
-        guard let value = convexResponse.value else {
-            print("❌ [Convex] No value in response")
-            throw ConvexError.requestFailed
+        if let value = convexResponse.value {
+            print("✅ [Convex] Query succeeded with value!")
+            return value
+        } else {
+            print("⚠️ [Convex] Query succeeded but value is null (not cached yet)")
+            throw ConvexError.noData
         }
-
-        print("✅ [Convex] Query succeeded!")
-        return value
     }
 
     // MARK: - User Profile
@@ -73,6 +73,16 @@ class ConvexService {
 
     func getPlaylists(userId: String) async throws -> ConvexCachedPlaylists? {
         return try await query("cache:getPlaylists", args: ["userId": userId])
+    }
+
+    func getPlaylistTracks(userId: String, playlistId: String) async throws -> ConvexPlaylistTracks? {
+        return try await query(
+            "cache:getPlaylistTracks",
+            args: [
+                "userId": userId,
+                "playlistId": playlistId
+            ]
+        )
     }
 
     // MARK: - Discoveries
@@ -113,6 +123,7 @@ struct ConvexResponse<T: Codable>: Codable {
 enum ConvexError: LocalizedError {
     case requestFailed
     case queryFailed(String)
+    case noData
 
     var errorDescription: String? {
         switch self {
@@ -120,6 +131,8 @@ enum ConvexError: LocalizedError {
             return "Request to Convex failed"
         case .queryFailed(let message):
             return "Query failed: \(message)"
+        case .noData:
+            return "No data in cache"
         }
     }
 }

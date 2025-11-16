@@ -9,42 +9,116 @@ import SwiftUI
 
 struct LibraryView: View {
     @State private var showingAccount = false
-
-    private let userName = "Harivansh Rathi"
-    private let userEmail = "harivansh@example.com"
-    private let profileImage: String? = nil
+    @Environment(UserProfileManager.self) private var profileManager
+    @Environment(AuthManager.self) private var authManager
+    @State private var playlists: [Playlist] = []
+    @State private var isLoading = true
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 24) {
-                    playlistGridSection
-                    navigationSection
-                    recentlyAddedGridSection
+                if isLoading {
+                    VStack {
+                        Spacer()
+                        ProgressView()
+                        Spacer()
+                    }
+                    .frame(maxHeight: .infinity)
+                } else {
+                    VStack(spacing: 24) {
+                        playlistGridSection
+                        navigationSection
+                        recentlyAddedGridSection
+                    }
+                    .padding(.top)
                 }
-                .padding(.top)
             }
             .navigationTitle("Library")
+            .task {
+                await loadPlaylists()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    ProfileCircleView(
-                        profileImage: "pfp",
-                        userName: userName,
-                        size: 32
-                    )
-                    .onTapGesture {
-                        showingAccount.toggle()
+                    if let avatarUrl = profileManager.avatarUrl,
+                       let url = URL(string: avatarUrl) {
+                        AsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        } placeholder: {
+                            Circle()
+                                .fill(.gray.opacity(0.3))
+                        }
+                        .frame(width: 32, height: 32)
+                        .clipShape(Circle())
+                        .onTapGesture {
+                            showingAccount.toggle()
+                        }
+                    } else {
+                        ProfileCircleView(
+                            profileImage: nil,
+                            userName: profileManager.displayName,
+                            size: 32
+                        )
+                        .onTapGesture {
+                            showingAccount.toggle()
+                        }
                     }
                 }
             }
             .sheet(isPresented: $showingAccount) {
                 AccountBottomSheet(
                     isPresented: $showingAccount,
-                    userName: userName,
-                    userEmail: userEmail,
-                    profileImage: profileImage
+                    userName: profileManager.displayName,
+                    userEmail: nil,
+                    profileImage: nil
                 )
             }
+        }
+    }
+
+    private func loadPlaylists() async {
+        guard let userId = authManager.currentUserId else {
+            print("❌ [LibraryView] No userId")
+            isLoading = false
+            return
+        }
+
+        isLoading = true
+
+        // Try Convex cache first (instant)
+        print("📡 [LibraryView] Fetching playlists from Convex for userId: \(userId)")
+        do {
+            let cached = try await ConvexService.shared.getPlaylists(userId: userId)
+
+            if let cached = cached {
+                self.playlists = convertToPlaylists(cached.playlists)
+                print("✅ [LibraryView] Loaded \(playlists.count) playlists from Convex cache!")
+                isLoading = false
+                return
+            }
+        } catch ConvexError.noData {
+            print("⚠️ [LibraryView] No cache, showing empty for now")
+        } catch {
+            print("❌ [LibraryView] Convex error: \(error)")
+        }
+
+        isLoading = false
+    }
+
+    private func convertToPlaylists(_ soundcloudPlaylists: [SoundCloudPlaylist]) -> [Playlist] {
+        return soundcloudPlaylists.map { soundcloudPlaylist in
+            let artworkUrl = soundcloudPlaylist.artwork_url ?? soundcloudPlaylist.user.avatar_url ?? ""
+            let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
+
+            return Playlist(
+                id: String(soundcloudPlaylist.id),
+                name: soundcloudPlaylist.title,
+                creator: soundcloudPlaylist.user.username,
+                artwork: highQualityArtwork,
+                tracks: [],
+                lastUpdated: Date()
+            )
         }
     }
 
@@ -58,7 +132,7 @@ struct LibraryView: View {
                 ],
                 spacing: 20
             ) {
-                ForEach(Playlist.samplePlaylists.prefix(6)) { playlist in
+                ForEach(playlists.isEmpty ? Array(Playlist.samplePlaylists.prefix(6)) : Array(playlists.prefix(6))) { playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
                     } label: {
@@ -190,7 +264,7 @@ struct LibraryView: View {
                 ],
                 spacing: 20
             ) {
-                ForEach(Playlist.samplePlaylists.prefix(4)) { playlist in
+                ForEach(playlists.isEmpty ? Array(Playlist.samplePlaylists.prefix(4)) : Array(playlists.dropFirst(6).prefix(4))) { playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
                     } label: {

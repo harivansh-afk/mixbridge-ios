@@ -18,10 +18,12 @@ class BackendAPI {
         body: [String: Any]? = nil
     ) async throws -> T {
         guard let sessionToken = keychain.getAccessToken() else {
+            print("❌ [BackendAPI] No session token")
             throw APIError.notAuthenticated
         }
 
         guard let url = URL(string: "\(baseURL)\(path)") else {
+            print("❌ [BackendAPI] Invalid URL: \(baseURL)\(path)")
             throw APIError.invalidURL
         }
 
@@ -34,17 +36,29 @@ class BackendAPI {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
 
+        print("📤 [BackendAPI] \(method) \(path)")
+
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
+            print("❌ [BackendAPI] Invalid HTTP response")
             throw APIError.invalidResponse
         }
 
+        print("📊 [BackendAPI] Status: \(httpResponse.statusCode)")
+
         guard (200...299).contains(httpResponse.statusCode) else {
+            let errorBody = String(data: data, encoding: .utf8) ?? ""
+            print("❌ [BackendAPI] Error \(httpResponse.statusCode): \(errorBody)")
+
             if httpResponse.statusCode == 401 {
                 throw APIError.notAuthenticated
             }
             throw APIError.serverError(httpResponse.statusCode)
+        }
+
+        if let responseStr = String(data: data, encoding: .utf8) {
+            print("📥 [BackendAPI] Response preview: \(String(responseStr.prefix(200)))...")
         }
 
         return try JSONDecoder().decode(T.self, from: data)
@@ -56,6 +70,16 @@ class BackendAPI {
     func getStreamURL(trackId: String) async throws -> StreamResponse {
         return try await makeRequest(path: "/api/mobile/stream/\(trackId)")
     }
+
+    /// Get playlist with tracks from backend
+    func getPlaylist(playlistId: String) async throws -> PlaylistResponse {
+        return try await makeRequest(path: "/api/mobile/playlist/\(playlistId)")
+    }
+
+    /// Get liked tracks from backend (fresh from SoundCloud)
+    func getLikedTracks(limit: Int = 50, offset: Int = 0) async throws -> LikedTracksResponse {
+        return try await makeRequest(path: "/api/mobile/tracks/liked?limit=\(limit)&offset=\(offset)")
+    }
 }
 
 // MARK: - Response Models
@@ -64,6 +88,15 @@ struct StreamResponse: Codable {
     let stream_url: String
     let stream_type: String
     let track_id: String
+}
+
+struct PlaylistResponse: Codable {
+    let playlist: SoundCloudPlaylist
+}
+
+struct LikedTracksResponse: Codable {
+    let tracks: [SoundCloudTrack]
+    let next_href: String?
 }
 
 // MARK: - Errors

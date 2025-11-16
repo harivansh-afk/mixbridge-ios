@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var expandMiniPlayer: Bool = false
     @Namespace private var animation
     @State private var playerState = PlayerState.shared
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         NativeTabView()
@@ -62,11 +63,11 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 4){
                 Text(track.title)
                     .font(.callout)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(colorScheme == .dark ? .white : .black)
                     .lineLimit(1)
                 Text(track.artist)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(colorScheme == .dark ? .white.opacity(0.7) : .black.opacity(0.6))
                     .lineLimit(1)
             }
         }
@@ -95,6 +96,7 @@ struct ContentView: View {
                 playerState.isPlaying.toggle()
             }   label: {
                 Image(systemName: playerState.isPlaying ? "pause.fill" : "play.fill")
+                    .foregroundStyle(colorScheme == .dark ? .white : .black)
                     .contentShape(.rect)
             }
             .padding(.trailing, 10)
@@ -105,6 +107,7 @@ struct ContentView: View {
 
             }   label: {
                 Image(systemName: "forward.fill")
+                    .foregroundStyle(colorScheme == .dark ? .white : .black)
                     .contentShape(.rect)
             }
         }

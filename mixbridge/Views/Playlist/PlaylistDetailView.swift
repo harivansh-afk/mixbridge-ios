@@ -10,6 +10,10 @@ import SwiftUI
 struct PlaylistDetailView: View {
     let playlist: Playlist
     @Environment(\.dismiss) private var dismiss
+    @Environment(AuthManager.self) private var authManager
+    @State private var tracks: [Track] = []
+    @State private var isLoadingTracks = false
+    @State private var hasLoaded = false
 
     private let artworkSize: CGFloat = 300
 
@@ -34,6 +38,13 @@ struct PlaylistDetailView: View {
         }
         .listStyle(.plain)
         .navigationBarBackButtonHidden(true)
+        .onAppear {
+            if !hasLoaded {
+                Task {
+                    await loadPlaylistTracks()
+                }
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
@@ -141,11 +152,109 @@ struct PlaylistDetailView: View {
 
     private var tracksSection: some View {
         Section {
-            ForEach(Array(playlist.tracks.enumerated()), id: \.element.id) { index, track in
-                TrackRow(track, number: index + 1, showCover: true)
+            if isLoadingTracks {
+                HStack {
+                    Spacer()
+                    ProgressView("Loading tracks...")
+                    Spacer()
+                }
+                .padding()
+            } else if !tracks.isEmpty {
+                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                    TrackRow(track, number: index + 1, showCover: true)
+                }
+            } else if !playlist.tracks.isEmpty {
+                // Fallback to playlist.tracks if available
+                ForEach(Array(playlist.tracks.enumerated()), id: \.element.id) { index, track in
+                    TrackRow(track, number: index + 1, showCover: true)
+                }
+            } else {
+                Text("No tracks in this playlist")
+                    .foregroundStyle(.secondary)
+                    .padding()
             }
         }
         .listSectionSeparator(.visible, edges: .top)
+    }
+
+    private func loadPlaylistTracks() async {
+        guard let userId = authManager.currentUserId else {
+            print("❌ [PlaylistDetail] No userId available")
+            return
+        }
+        guard !isLoadingTracks else {
+            print("⏭️ [PlaylistDetail] Already loading, skipping")
+            return
+        }
+
+        isLoadingTracks = true
+
+        // Try Convex cache first
+        print("📡 [PlaylistDetail] Fetching tracks for playlist \(playlist.id) from Convex")
+        do {
+            let cached = try await ConvexService.shared.getPlaylistTracks(
+                userId: userId,
+                playlistId: playlist.id
+            )
+
+            if let cached = cached {
+                // Convert SoundCloudTracks to Track
+                self.tracks = cached.tracks.map { soundcloudTrack in
+                    let artworkUrl = soundcloudTrack.artwork_url ?? soundcloudTrack.user.avatar_url ?? ""
+                    // Upgrade to high quality
+                    let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
+
+                    return Track(
+                        title: soundcloudTrack.title,
+                        artist: soundcloudTrack.user.username,
+                        album: soundcloudTrack.genre ?? "",
+                        artwork: highQualityArtwork,
+                        duration: Double(soundcloudTrack.duration)
+                    )
+                }
+                print("✅ [PlaylistDetail] Loaded \(tracks.count) tracks from Convex cache!")
+                hasLoaded = true
+                isLoadingTracks = false
+                return
+            }
+        } catch ConvexError.noData {
+            print("⚠️ [PlaylistDetail] No cache found, will try backend API")
+        } catch {
+            print("❌ [PlaylistDetail] Convex error: \(error)")
+        }
+
+        // Fallback: Fetch from backend API
+        print("📡 [PlaylistDetail] Fetching from backend API...")
+        do {
+            let response = try await BackendAPI.shared.getPlaylist(playlistId: playlist.id)
+            print("📥 [PlaylistDetail] Backend response received")
+
+            if let soundcloudTracks = response.playlist.tracks {
+                self.tracks = soundcloudTracks.map { soundcloudTrack in
+                    let artworkUrl = soundcloudTrack.artwork_url ?? soundcloudTrack.user.avatar_url ?? ""
+                    // Upgrade to high quality
+                    let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
+
+                    return Track(
+                        title: soundcloudTrack.title,
+                        artist: soundcloudTrack.user.username,
+                        album: soundcloudTrack.genre ?? "",
+                        artwork: highQualityArtwork,
+                        duration: Double(soundcloudTrack.duration)
+                    )
+                }
+                print("✅ [PlaylistDetail] Loaded \(tracks.count) tracks from backend API!")
+            } else {
+                print("⚠️ [PlaylistDetail] No tracks in backend response")
+            }
+        } catch {
+            print("❌ [PlaylistDetail] Backend API error: \(error)")
+            print("   Error type: \(type(of: error))")
+            print("   Description: \(error.localizedDescription)")
+        }
+
+        hasLoaded = true
+        isLoadingTracks = false
     }
 }
 
