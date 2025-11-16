@@ -18,7 +18,13 @@ struct LikedView: View {
     var body: some View {
         NavigationStack {
             content
-                .navigationBarTitleDisplayMode(.inline)
+                .navigationTitle("Liked")
+                .navigationBarTitleDisplayMode(.large)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        profileAvatar
+                    }
+                }
                 .sheet(isPresented: $showingAccount) {
                     AccountBottomSheet(
                         isPresented: $showingAccount,
@@ -123,15 +129,8 @@ struct LikedView: View {
         )
     }
 
-    private var header: some View {
+    private var profileAvatar: some View {
         HStack {
-            Text("Liked")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-                .foregroundStyle(.primary)
-
-            Spacer()
-
             if let avatarUrl = profileManager.avatarUrl,
                let url = URL(string: avatarUrl) {
                 AsyncImage(url: url) { image in
@@ -142,7 +141,7 @@ struct LikedView: View {
                     Circle()
                         .fill(.gray.opacity(0.3))
                 }
-                .frame(width: 32, height: 32)
+                .frame(width: 35, height: 35)
                 .clipShape(Circle())
                 .onTapGesture {
                     showingAccount.toggle()
@@ -150,27 +149,17 @@ struct LikedView: View {
             } else {
                 ProfileCircleView(
                     profileImage: nil,
-                    userName: profileManager.displayName,
-                    size: 32
+                    userName: profileManager.displayName, 
                 )
                 .onTapGesture {
                     showingAccount.toggle()
                 }
             }
         }
-        .padding(.horizontal)
     }
 
     private var likedList: some View {
         List {
-            // Header section so it scrolls with content, like Home/Library-style header
-            Section {
-                header
-                    .padding(.top, 8)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 8, trailing: 0))
-                    .listRowSeparator(.hidden)
-            }
-
             Section {
                 ForEach(Array(likedTracks.enumerated()), id: \.element.id) { index, track in
                     TrackRow(track, number: index + 1, showCover: true)

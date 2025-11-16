@@ -18,44 +18,6 @@ struct LibraryView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    // Header with title and profile icon
-                    HStack {
-                        Text("Library")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-
-                        Spacer()
-
-                        // Profile icon
-                        if let avatarUrl = profileManager.avatarUrl,
-                           let url = URL(string: avatarUrl) {
-                            AsyncImage(url: url) { image in
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                            } placeholder: {
-                                Circle()
-                                    .fill(.gray.opacity(0.3))
-                            }
-                            .frame(width: 32, height: 32)
-                            .clipShape(Circle())
-                            .onTapGesture {
-                                showingAccount.toggle()
-                            }
-                        } else {
-                            ProfileCircleView(
-                                profileImage: nil,
-                                userName: profileManager.displayName,
-                                size: 32
-                            )
-                            .onTapGesture {
-                                showingAccount.toggle()
-                            }
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
-
                     if isLoading {
                         VStack {
                             Spacer()
@@ -70,7 +32,13 @@ struct LibraryView: View {
                     }
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Library")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    profileAvatar
+                }
+            }
             .task {
                 await loadPlaylists()
             }
@@ -81,6 +49,35 @@ struct LibraryView: View {
                     userEmail: nil,
                     profileImage: nil
                 )
+            }
+        }
+    }
+
+    private var profileAvatar: some View {
+        HStack {
+            if let avatarUrl = profileManager.avatarUrl,
+               let url = URL(string: avatarUrl) {
+                AsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    Circle()
+                        .fill(.gray.opacity(0.3))
+                }
+                .frame(width: 35, height: 35)
+                .clipShape(Circle())
+                .onTapGesture {
+                    showingAccount.toggle()
+                }
+            } else {
+                ProfileCircleView(
+                    profileImage: nil,
+                    userName: profileManager.displayName,
+                )
+                .onTapGesture {
+                    showingAccount.toggle()
+                }
             }
         }
     }

@@ -21,7 +21,13 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             content
-                .navigationBarTitleDisplayMode(.inline)
+                .navigationTitle("Home")
+                .navigationBarTitleDisplayMode(.large)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        profileAvatar
+                    }
+                }
             .sheet(isPresented: $showingAccount) {
                 AccountBottomSheet(
                     isPresented: $showingAccount,
@@ -59,15 +65,8 @@ struct HomeView: View {
         }
     }
 
-    private var header: some View {
+    private var profileAvatar: some View {
         HStack {
-            Text("Home")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-                .foregroundStyle(.primary)
-
-            Spacer()
-
             if let avatarUrl = profileManager.avatarUrl,
                let url = URL(string: avatarUrl) {
                 AsyncImage(url: url) { image in
@@ -78,7 +77,7 @@ struct HomeView: View {
                     Circle()
                         .fill(.gray.opacity(0.3))
                 }
-                .frame(width: 32, height: 32)
+                .frame(width: 35, height: 35)
                 .clipShape(Circle())
                 .onTapGesture {
                     showingAccount.toggle()
@@ -87,14 +86,12 @@ struct HomeView: View {
                 ProfileCircleView(
                     profileImage: nil,
                     userName: profileManager.displayName,
-                    size: 32
                 )
                 .onTapGesture {
                     showingAccount.toggle()
                 }
             }
         }
-        .padding(.horizontal)
     }
 
     private var emptyState: some View {
@@ -107,14 +104,6 @@ struct HomeView: View {
 
     private var homeList: some View {
         List {
-            // Header section so it scrolls with content, like Library-style header
-            Section {
-                header
-                    .padding(.top, 8)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 8, trailing: 0))
-                    .listRowSeparator(.hidden)
-            }
-
             // Queue Section
             if !queueTracks.isEmpty {
                 Section {
