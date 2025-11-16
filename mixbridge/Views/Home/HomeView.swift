@@ -16,11 +16,17 @@ struct HomeView: View {
     // MARK: - Body
     var body: some View {
         NavigationStack {
-            content
-                .navigationTitle("Home")
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        // Use real avatar from Convex
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Header with title and profile icon
+                    HStack {
+                        Text("Home")
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+
+                        Spacer()
+
+                        // Profile icon
                         if let avatarUrl = profileManager.avatarUrl,
                            let url = URL(string: avatarUrl) {
                             AsyncImage(url: url) { image in
@@ -47,21 +53,28 @@ struct HomeView: View {
                             }
                         }
                     }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+
+                    // Content
+                    content
                 }
-                .sheet(isPresented: $showingAccount) {
-                    AccountBottomSheet(
-                        isPresented: $showingAccount,
-                        userName: profileManager.displayName,
-                        userEmail: nil,
-                        profileImage: nil
-                    )
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showingAccount) {
+                AccountBottomSheet(
+                    isPresented: $showingAccount,
+                    userName: profileManager.displayName,
+                    userEmail: nil,
+                    profileImage: nil
+                )
+            }
+            .task {
+                // Load profile when view appears
+                if let userId = authManager.currentUserId {
+                    await profileManager.loadProfile(userId: userId)
                 }
-                .task {
-                    // Load profile when view appears
-                    if let userId = authManager.currentUserId {
-                        await profileManager.loadProfile(userId: userId)
-                    }
-                }
+            }
         }
     }
 

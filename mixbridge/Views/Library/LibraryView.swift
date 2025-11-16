@@ -17,54 +17,62 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                if isLoading {
-                    VStack {
+                VStack(alignment: .leading, spacing: 24) {
+                    // Header with title and profile icon
+                    HStack {
+                        Text("Library")
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+
                         Spacer()
-                        ProgressView()
-                        Spacer()
+
+                        // Profile icon
+                        if let avatarUrl = profileManager.avatarUrl,
+                           let url = URL(string: avatarUrl) {
+                            AsyncImage(url: url) { image in
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            } placeholder: {
+                                Circle()
+                                    .fill(.gray.opacity(0.3))
+                            }
+                            .frame(width: 32, height: 32)
+                            .clipShape(Circle())
+                            .onTapGesture {
+                                showingAccount.toggle()
+                            }
+                        } else {
+                            ProfileCircleView(
+                                profileImage: nil,
+                                userName: profileManager.displayName,
+                                size: 32
+                            )
+                            .onTapGesture {
+                                showingAccount.toggle()
+                            }
+                        }
                     }
-                    .frame(maxHeight: .infinity)
-                } else {
-                    VStack(spacing: 24) {
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+
+                    if isLoading {
+                        VStack {
+                            Spacer()
+                            ProgressView()
+                            Spacer()
+                        }
+                        .frame(maxHeight: .infinity)
+                    } else {
                         playlistGridSection
                         navigationSection
                         recentlyAddedGridSection
                     }
-                    .padding(.top)
                 }
             }
-            .navigationTitle("Library")
+            .navigationBarTitleDisplayMode(.inline)
             .task {
                 await loadPlaylists()
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    if let avatarUrl = profileManager.avatarUrl,
-                       let url = URL(string: avatarUrl) {
-                        AsyncImage(url: url) { image in
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        } placeholder: {
-                            Circle()
-                                .fill(.gray.opacity(0.3))
-                        }
-                        .frame(width: 32, height: 32)
-                        .clipShape(Circle())
-                        .onTapGesture {
-                            showingAccount.toggle()
-                        }
-                    } else {
-                        ProfileCircleView(
-                            profileImage: nil,
-                            userName: profileManager.displayName,
-                            size: 32
-                        )
-                        .onTapGesture {
-                            showingAccount.toggle()
-                        }
-                    }
-                }
             }
             .sheet(isPresented: $showingAccount) {
                 AccountBottomSheet(
