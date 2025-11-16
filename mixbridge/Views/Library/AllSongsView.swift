@@ -100,5 +100,6 @@ struct AllSongsView: View {
     NavigationStack {
         AllSongsView()
             .environment(AuthManager.shared)
+            .environment(QueueManager.shared)
     }
 }

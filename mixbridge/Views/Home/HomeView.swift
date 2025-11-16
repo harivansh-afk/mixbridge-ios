@@ -132,6 +132,7 @@ struct HomeView: View {
                 .frame(width: 35, height: 35)
                 .clipShape(Circle())
                 .onTapGesture {
+                    HapticManager.light()
                     showingAccount.toggle()
                 }
             } else {
@@ -140,6 +141,7 @@ struct HomeView: View {
                     userName: profileManager.displayName,
                 )
                 .onTapGesture {
+                    HapticManager.light()
                     showingAccount.toggle()
                 }
             }
@@ -290,10 +292,16 @@ struct HomeView: View {
 
 #Preview("Light Mode") {
     HomeView()
+        .environment(AuthManager.shared)
+        .environment(UserProfileManager.shared)
+        .environment(QueueManager.shared)
         .preferredColorScheme(.light)
 }
 
 #Preview("Dark Mode") {
     HomeView()
+        .environment(AuthManager.shared)
+        .environment(UserProfileManager.shared)
+        .environment(QueueManager.shared)
         .preferredColorScheme(.dark)
 }

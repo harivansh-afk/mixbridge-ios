@@ -51,6 +51,9 @@ class QueueManager {
             queueTracks.append(track)
             queueTrackIds[track.id] = queueTrackId
 
+            // Haptic feedback for success
+            HapticManager.success()
+
             print("✅ [QueueManager] Track added successfully")
             print("✅ [QueueManager] Queue now has \(queueTracks.count) tracks")
             print("✅ [QueueManager] Stored mapping: \(track.id) -> \(queueTrackId)")
@@ -80,6 +83,9 @@ class QueueManager {
         queueTracks.removeAll { $0.id == track.id }
         queueTrackIds.removeValue(forKey: track.id)
         print("⚡ [QueueManager] Optimistically removed - queue now has \(queueTracks.count) tracks")
+
+        // Haptic feedback for delete
+        HapticManager.warning()
 
         // 2. Call API in background
         do {

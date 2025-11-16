@@ -27,6 +27,7 @@ struct PlaylistCarousel: View {
                             PlaylistCard(playlist: playlist)
                         }
                         .buttonStyle(.plain)
+                        .haptic(.selection)
                     }
                 }
                 .padding(.horizontal)

@@ -68,6 +68,7 @@ struct LibraryView: View {
                 .frame(width: 35, height: 35)
                 .clipShape(Circle())
                 .onTapGesture {
+                    HapticManager.light()
                     showingAccount.toggle()
                 }
             } else {
@@ -76,6 +77,7 @@ struct LibraryView: View {
                     userName: profileManager.displayName,
                 )
                 .onTapGesture {
+                    HapticManager.light()
                     showingAccount.toggle()
                 }
             }
@@ -186,6 +188,7 @@ struct LibraryView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .haptic(.selection)
                 }
             }
             .padding(.horizontal)
@@ -215,6 +218,7 @@ struct LibraryView: View {
                 )
             }
             .buttonStyle(.plain)
+            .haptic(.selection)
 
             Divider()
                 .padding(.leading, 60)
@@ -229,6 +233,7 @@ struct LibraryView: View {
                 )
             }
             .buttonStyle(.plain)
+            .haptic(.selection)
 
             Divider()
                 .padding(.leading, 60)
@@ -243,6 +248,7 @@ struct LibraryView: View {
                 )
             }
             .buttonStyle(.plain)
+            .haptic(.selection)
 
             Divider()
                 .padding(.leading, 60)
@@ -312,6 +318,7 @@ struct LibraryView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .haptic(.selection)
                 }
             }
             .padding(.horizontal)

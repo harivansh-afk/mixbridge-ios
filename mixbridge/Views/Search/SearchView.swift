@@ -149,6 +149,7 @@ struct SearchView: View {
                                 Spacer()
                             }
                         }
+                        .haptic(.selection)
                     }
                 }
             }
@@ -189,10 +190,14 @@ struct SearchView: View {
 
 #Preview("Light Mode") {
     SearchView()
+        .environment(AuthManager.shared)
+        .environment(QueueManager.shared)
         .preferredColorScheme(.light)
 }
 
 #Preview("Dark Mode") {
     SearchView()
+        .environment(AuthManager.shared)
+        .environment(QueueManager.shared)
         .preferredColorScheme(.dark)
 }

@@ -61,6 +61,7 @@ struct AllPlaylistsView: View {
                                 Spacer()
                             }
                         }
+                        .haptic(.selection)
                     }
                 }
                 .listStyle(.plain)
@@ -115,5 +116,6 @@ struct AllPlaylistsView: View {
     NavigationStack {
         AllPlaylistsView()
             .environment(AuthManager.shared)
+            .environment(QueueManager.shared)
     }
 }

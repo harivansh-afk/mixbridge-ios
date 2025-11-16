@@ -232,6 +232,7 @@ struct TrackRow: View {
 
         if let onLike = onLike {
             print("❤️ [TrackRow] Using custom callback")
+            HapticManager.medium()
             onLike()
         } else {
             // Default behavior: call API directly
@@ -240,8 +241,10 @@ struct TrackRow: View {
                 isLoading = true
                 do {
                     try await ConvexService.shared.likeTrack(trackId: track.id)
+                    HapticManager.success()
                     print("✅ [TrackRow] Track liked successfully")
                 } catch {
+                    HapticManager.error()
                     print("❌ [TrackRow] Failed to like track: \(error)")
                     errorMessage = "Failed to like track: \(error.localizedDescription)"
                     showError = true
@@ -257,9 +260,11 @@ struct TrackRow: View {
 
         if let onDelete = onDelete {
             print("🗑️ [TrackRow] Using custom callback")
+            HapticManager.warning()
             onDelete()
         } else {
             print("❌ [TrackRow] Delete action not configured")
+            HapticManager.error()
             errorMessage = "Delete action not configured"
             showError = true
         }

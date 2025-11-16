@@ -167,14 +167,16 @@ struct LikedView: View {
                 .frame(width: 35, height: 35)
                 .clipShape(Circle())
                 .onTapGesture {
+                    HapticManager.light()
                     showingAccount.toggle()
                 }
             } else {
                 ProfileCircleView(
                     profileImage: nil,
-                    userName: profileManager.displayName, 
+                    userName: profileManager.displayName,
                 )
                 .onTapGesture {
+                    HapticManager.light()
                     showingAccount.toggle()
                 }
             }
@@ -202,10 +204,16 @@ struct LikedView: View {
 
 #Preview("Light Mode") {
     LikedView()
+        .environment(AuthManager.shared)
+        .environment(UserProfileManager.shared)
+        .environment(QueueManager.shared)
         .preferredColorScheme(.light)
 }
 
 #Preview("Dark Mode") {
     LikedView()
+        .environment(AuthManager.shared)
+        .environment(UserProfileManager.shared)
+        .environment(QueueManager.shared)
         .preferredColorScheme(.dark)
 }

@@ -13,7 +13,10 @@ struct PlaylistActionButtons: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            Button(action: onPlay) {
+            Button(action: {
+                HapticManager.medium()
+                onPlay()
+            }) {
                 HStack(spacing: 6) {
                     Image(systemName: "play.fill")
                         .imageScale(.small)
@@ -32,7 +35,10 @@ struct PlaylistActionButtons: View {
             }
             .buttonStyle(.plain)
 
-            Button(action: onShuffle) {
+            Button(action: {
+                HapticManager.medium()
+                onShuffle()
+            }) {
                 HStack(spacing: 6) {
                     Image(systemName: "shuffle")
                         .imageScale(.small)
