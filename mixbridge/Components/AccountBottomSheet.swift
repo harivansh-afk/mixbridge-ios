@@ -149,17 +149,12 @@ struct AccountBottomSheet: View {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.caption)
-                        .foregroundColor(.green)
+                        .foregroundColor(.blue)
                     Text("Connected to SoundCloud")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
-                if let followers = profile.followers_count {
-                    Text("\(followers) followers • \(profile.playlist_count ?? 0) playlists")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
             }
 
             Spacer()
