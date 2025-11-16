@@ -17,7 +17,7 @@ struct ConnectSoundCloudScreen: View {
                     .clipped()
                     .ignoresSafeArea()
 
-                VStack(spacing: 0) {
+                VStack(spacing: -11) {
                     Spacer()
 
                     // Title
@@ -46,6 +46,7 @@ struct ConnectSoundCloudScreen: View {
 
                         // Connect Button
                         Button {
+                            HapticManager.heavy()
                             startAuthentication()
                         } label: {
                             HStack(spacing: 12) {

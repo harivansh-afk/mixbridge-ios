@@ -21,6 +21,7 @@ struct ContentView: View {
                 MiniPlayerView()
                     .matchedTransitionSource(id: "MINIPLAYER", in: animation)
                     .onTapGesture {
+                        HapticManager.medium()
                         expandMiniPlayer.toggle()
                     }
                     .ignoresSafeArea(.keyboard, edges: .all)
@@ -35,7 +36,7 @@ struct ContentView: View {
 
     @ViewBuilder
     func PlayerInfo(_ track: Track, size: CGSize) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 7) {
             Group {
                 if track.artwork.starts(with: "http"), let url = URL(string: track.artwork) {
                     AsyncImage(url: url) { phase in
@@ -48,7 +49,7 @@ struct ContentView: View {
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: size.width, height: size.height)
                                 .clipped()
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
                         case .failure:
                             miniArtworkPlaceholder(size: size)
                         @unknown default:
@@ -60,14 +61,14 @@ struct ContentView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 4){
+            VStack(alignment: .leading, spacing: 3){
                 Text(track.title)
-                    .font(.callout)
+                    .font(.footnote.bold())
                     .foregroundStyle(colorScheme == .dark ? .white : .black)
                     .lineLimit(1)
                 Text(track.artist)
-                    .font(.caption2)
-                    .foregroundStyle(colorScheme == .dark ? .white.opacity(0.7) : .black.opacity(0.6))
+                    .font(.caption)
+                    .foregroundStyle(colorScheme == .dark ? .white : .black)
                     .lineLimit(1)
             }
         }
@@ -75,7 +76,7 @@ struct ContentView: View {
 
     @ViewBuilder
     func miniArtworkPlaceholder(size: CGSize) -> some View {
-        RoundedRectangle(cornerRadius: 8)
+        RoundedRectangle(cornerRadius: 6)
             .fill(
                 LinearGradient(
                     colors: [.blue, .blue.opacity(0.7)],
@@ -93,6 +94,7 @@ struct ContentView: View {
             Spacer(minLength: 0)
 
             Button{
+                HapticManager.medium()
                 playerState.isPlaying.toggle()
             }   label: {
                 Image(systemName: playerState.isPlaying ? "pause.fill" : "play.fill")
@@ -104,7 +106,7 @@ struct ContentView: View {
 
 
             Button{
-
+                HapticManager.light()
             }   label: {
                 Image(systemName: "forward.fill")
                     .foregroundStyle(colorScheme == .dark ? .white : .black)
@@ -117,34 +119,54 @@ struct ContentView: View {
 }
 
 struct NativeTabView: View {
+    @State private var selectedTab = 0
+
     var body: some View {
-        TabView {
-            Tab("", image: "house") {
-                HomeView()
-            }
+        TabView(selection: $selectedTab) {
+            HomeView()
+                .tag(0)
+                .tabItem {
+                    Image("house")
+                }
 
-            Tab("", image: "list") {
-                LibraryView()
-            }
+            LibraryView()
+                .tag(1)
+                .tabItem {
+                    Image("list")
+                }
 
-            Tab("", image: "heart") {
-                LikedView()
-            }
+            LikedView()
+                .tag(2)
+                .tabItem {
+                    Image("heart")
+                }
 
-            Tab("", image: "magnifying-glass", role: .search) {
-                SearchView()
-            }
+            SearchView()
+                .tag(3)
+                .tabItem {
+                    Image(systemName: "magnifyingglass")
+                }
         }
         .tint(.primary)
+        .onChange(of: selectedTab) { oldValue, newValue in
+            // Haptic feedback on tab change
+            HapticManager.selection()
+        }
     }
 }
 
 #Preview("Light Mode") {
     ContentView()
+        .environment(AuthManager.shared)
+        .environment(UserProfileManager.shared)
+        .environment(QueueManager.shared)
         .preferredColorScheme(.light)
 }
 
 #Preview("Dark Mode") {
     ContentView()
+        .environment(AuthManager.shared)
+        .environment(UserProfileManager.shared)
+        .environment(QueueManager.shared)
         .preferredColorScheme(.dark)
 }
