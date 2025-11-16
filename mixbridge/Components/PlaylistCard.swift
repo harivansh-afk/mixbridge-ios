@@ -20,12 +20,14 @@ struct PlaylistCard: View {
                     .font(.callout)
                     .fontWeight(.semibold)
                     .foregroundStyle(.primary)
-                    .lineLimit(2)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
 
                 Text(playlist.creator)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .truncationMode(.tail)
             }
         }
         .frame(width: artworkSize)

@@ -12,14 +12,37 @@ struct TrackRow: View {
     let track: Track
     let number: Int
     let showCover: Bool
+    var onAddToQueue: (() -> Void)?
+    var onLike: (() -> Void)?
+    var onDelete: (() -> Void)?
+    var onTrackAddedToQueue: ((Track, String) -> Void)? // Callback with track + queue track ID
+    var trackData: [String: Any]?
 
     private let coverSize: CGFloat = 44
 
-    init(_ track: Track, number: Int, showCover: Bool = false) {
+    init(
+        _ track: Track,
+        number: Int,
+        showCover: Bool = false,
+        onAddToQueue: (() -> Void)? = nil,
+        onLike: (() -> Void)? = nil,
+        onDelete: (() -> Void)? = nil,
+        onTrackAddedToQueue: ((Track, String) -> Void)? = nil,
+        trackData: [String: Any]? = nil
+    ) {
         self.track = track
         self.number = number
         self.showCover = showCover
+        self.onAddToQueue = onAddToQueue
+        self.onLike = onLike
+        self.onDelete = onDelete
+        self.onTrackAddedToQueue = onTrackAddedToQueue
+        self.trackData = trackData
     }
+
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    @State private var showError = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -37,7 +60,7 @@ struct TrackRow: View {
         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
-                // Delete action
+                handleDelete()
             } label: {
                 Label("", systemImage: "trash")
             }
@@ -45,17 +68,25 @@ struct TrackRow: View {
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
+                handleLike()
             } label: {
                 Label("", systemImage: "heart.fill")
             }
             .tint(.pink)
 
             Button {
-                // Add to playlist
+                handleAddToQueue()
             } label: {
                 Label("", systemImage: "text.line.first.and.arrowtriangle.forward")
             }
             .tint(.blue)
+        }
+        .alert("Error", isPresented: $showError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let errorMessage = errorMessage {
+                Text(errorMessage)
+            }
         }
     }
 
@@ -148,6 +179,93 @@ struct TrackRow: View {
                     .font(.title3)
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - Action Handlers
+
+    private func handleAddToQueue() {
+        print("🎵 [TrackRow] handleAddToQueue called for track: \(track.title)")
+        print("🎵 [TrackRow] Track ID: \(track.id)")
+        print("🎵 [TrackRow] Has custom callback: \(onAddToQueue != nil)")
+        print("🎵 [TrackRow] Has trackData: \(trackData != nil)")
+
+        if let onAddToQueue = onAddToQueue {
+            print("🎵 [TrackRow] Using custom callback")
+            onAddToQueue()
+        } else {
+            // Default behavior: call API directly
+            Task {
+                guard let trackData = trackData else {
+                    print("❌ [TrackRow] Track data is nil - cannot add to queue")
+                    print("❌ [TrackRow] This means the TrackRow was created without trackData parameter")
+                    errorMessage = "Track data not available. Please report this issue."
+                    showError = true
+                    return
+                }
+
+                print("📤 [TrackRow] Calling ConvexService.addTrackToQueue")
+                isLoading = true
+
+                do {
+                    let queueTrackId = try await ConvexService.shared.addTrackToQueue(
+                        trackId: track.id,
+                        trackData: trackData
+                    )
+                    print("✅ [TrackRow] Track added! Queue track ID: \(queueTrackId)")
+
+                    // Notify parent with track AND queue track ID for mapping
+                    if let onTrackAddedToQueue = onTrackAddedToQueue {
+                        print("⚡ [TrackRow] Notifying parent with queue track ID")
+                        onTrackAddedToQueue(track, queueTrackId)
+                    }
+                } catch {
+                    print("❌ [TrackRow] Failed to add track: \(error)")
+                    errorMessage = "Failed to add track to queue: \(error.localizedDescription)"
+                    showError = true
+                }
+                isLoading = false
+            }
+        }
+    }
+
+    private func handleLike() {
+        print("❤️ [TrackRow] handleLike called for track: \(track.title)")
+        print("❤️ [TrackRow] Track ID: \(track.id)")
+        print("❤️ [TrackRow] Has custom callback: \(onLike != nil)")
+
+        if let onLike = onLike {
+            print("❤️ [TrackRow] Using custom callback")
+            onLike()
+        } else {
+            // Default behavior: call API directly
+            Task {
+                print("📤 [TrackRow] Calling ConvexService.likeTrack")
+                isLoading = true
+                do {
+                    try await ConvexService.shared.likeTrack(trackId: track.id)
+                    print("✅ [TrackRow] Track liked successfully")
+                } catch {
+                    print("❌ [TrackRow] Failed to like track: \(error)")
+                    errorMessage = "Failed to like track: \(error.localizedDescription)"
+                    showError = true
+                }
+                isLoading = false
+            }
+        }
+    }
+
+    private func handleDelete() {
+        print("🗑️ [TrackRow] handleDelete called for track: \(track.title)")
+        print("🗑️ [TrackRow] Has custom callback: \(onDelete != nil)")
+
+        if let onDelete = onDelete {
+            print("🗑️ [TrackRow] Using custom callback")
+            onDelete()
+        } else {
+            print("❌ [TrackRow] Delete action not configured")
+            errorMessage = "Delete action not configured"
+            showError = true
         }
     }
 }

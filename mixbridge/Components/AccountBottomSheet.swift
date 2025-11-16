@@ -56,18 +56,34 @@ struct AccountBottomSheet: View {
                 }
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
 
                 // Settings
                 Section {
                     Toggle(isOn: $Personalization) {
-                        Text("Personalization")
+                        HStack(spacing: 8) {
+                            Image("brain")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20)
+                            Text("Personalization")
+                        }
                     }
                     .tint(.blue)
                     Toggle(isOn: $Notifications) {
-                        Text("Notifications")
+                        HStack(spacing: 8) {
+                            Image("bell")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20)
+                            Text("Notifications")
+                        }
                     }
                     .tint(.blue)
-                    
+                }
+                .listRowSeparator(.hidden)
+
+                Section {
                     VStack(alignment: .leading, spacing: 6) {
                         Picker("Appearance", selection: $themeMode) {
                             ForEach(AppearanceMode.allCases) { mode in
@@ -79,6 +95,7 @@ struct AccountBottomSheet: View {
                     }
 
                 }
+                .listRowSeparator(.hidden)
                 
                 Section {
                     Button(action: {
@@ -93,6 +110,7 @@ struct AccountBottomSheet: View {
                         }
                     }
                 }
+                .listRowSeparator(.hidden)
 
             }
             .listStyle(InsetGroupedListStyle())
