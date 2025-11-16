@@ -55,7 +55,7 @@ struct HomeView: View {
         } else if queueTracks.isEmpty && recentlyPlayed.isEmpty {
             emptyState
         } else {
-            homeList
+            homeScrollView
         }
     }
 
@@ -95,7 +95,6 @@ struct HomeView: View {
             }
         }
         .padding(.horizontal)
-        .padding(.top, 8)
     }
 
     private var emptyState: some View {
@@ -106,50 +105,56 @@ struct HomeView: View {
         )
     }
 
-    private var homeList: some View {
-        List {
-            // Header section to match Library-style header and allow scrolling away
-            Section {
+    private var homeScrollView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                // Header to match Library-style header
                 header
-                    .listRowInsets(EdgeInsets(top: 16, leading: 0, bottom: 8, trailing: 0))
-                    .listRowSeparator(.hidden)
-            }
+                    .padding(.top, 8)
 
-            // Queue Section
-            if !queueTracks.isEmpty {
-                Section {
-                    // Subheading row
-                    Text("Queue")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.primary)
-                        .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 4, trailing: 16))
-
-                    // Track rows
-                    ForEach(Array(queueTracks.prefix(5).enumerated()), id: \.element.id) { index, track in
-                        TrackRow(track, number: index + 1, showCover: true)
-                    }
+                if !queueTracks.isEmpty {
+                    queueSection
                 }
-            }
 
-            // Recently Played Section
-            if !recentlyPlayed.isEmpty {
-                Section {
-                    // Subheading row
-                    Text("Recently Played")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.primary)
-                        .listRowInsets(EdgeInsets(top: 24, leading: 16, bottom: 4, trailing: 16))
-
-                    // Track rows
-                    ForEach(Array(recentlyPlayed.prefix(10).enumerated()), id: \.element.id) { index, track in
-                        TrackRow(track, number: index + 1, showCover: true)
-                    }
+                if !recentlyPlayed.isEmpty {
+                    recentlyPlayedSection
                 }
             }
         }
-        .listStyle(.plain)
+    }
+
+    private var queueSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Queue")
+                .font(.title2)
+                .fontWeight(.bold)
+                .foregroundStyle(.primary)
+                .padding(.horizontal)
+
+            VStack(spacing: 8) {
+                ForEach(Array(queueTracks.prefix(5).enumerated()), id: \.element.id) { index, track in
+                    TrackRow(track, number: index + 1, showCover: true)
+                        .padding(.horizontal)
+                }
+            }
+        }
+    }
+
+    private var recentlyPlayedSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Recently Played")
+                .font(.title2)
+                .fontWeight(.bold)
+                .foregroundStyle(.primary)
+                .padding(.horizontal)
+
+            VStack(spacing: 8) {
+                ForEach(Array(recentlyPlayed.prefix(10).enumerated()), id: \.element.id) { index, track in
+                    TrackRow(track, number: index + 1, showCover: true)
+                        .padding(.horizontal)
+                }
+            }
+        }
     }
 
     // MARK: - Data Loading
