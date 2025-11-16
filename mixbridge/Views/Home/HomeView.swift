@@ -124,6 +124,7 @@ struct HomeView: View {
                         .fontWeight(.bold)
                         .foregroundStyle(.primary)
                         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 4, trailing: 16))
+                        .listRowSeparator(.hidden)
 
                     // Track rows
                     ForEach(Array(queueTracks.prefix(5).enumerated()), id: \.element.id) { index, track in
@@ -141,6 +142,7 @@ struct HomeView: View {
                         .fontWeight(.bold)
                         .foregroundStyle(.primary)
                         .listRowInsets(EdgeInsets(top: 24, leading: 16, bottom: 4, trailing: 16))
+                        .listRowSeparator(.hidden)
 
                     // Track rows
                     ForEach(Array(recentlyPlayed.prefix(10).enumerated()), id: \.element.id) { index, track in
