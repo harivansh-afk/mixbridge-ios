@@ -108,6 +108,37 @@ class ConvexService {
             ]
         )
     }
+
+    // MARK: - Queue
+
+    func getQueue(userId: String) async throws -> ConvexQueue? {
+        return try await query(
+            "queues:getByUserId",
+            args: [
+                "userId": userId,
+                "paginationOpts": [
+                    "numItems": 1000,
+                    "cursor": NSNull()
+                ] as [String: Any]
+            ]
+        )
+    }
+
+    func getQueueTracks(userId: String) async throws -> [ConvexQueueTrack] {
+        // Note: The query returns full queue with tracks embedded
+        let queueData: QueueWithTracksResponse? = try await query(
+            "queues:getByUserId",
+            args: [
+                "userId": userId,
+                "paginationOpts": [
+                    "numItems": 1000,
+                    "cursor": NSNull()
+                ] as [String: Any]
+            ]
+        )
+
+        return queueData?.tracks ?? []
+    }
 }
 
 // MARK: - Response Models

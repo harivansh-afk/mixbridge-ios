@@ -112,3 +112,17 @@ struct ConvexTrackAnalysis: Codable {
     let timeSignature: Double?
     let error: String?
 }
+
+// MARK: - Queue Response
+
+struct QueueWithTracksResponse: Codable {
+    let _id: ConvexId?
+    let _creationTime: Double?
+    let userId: String?
+    let currentPosition: Double?
+    let currentTime: Double?
+    let playbackState: String?
+    let tracks: [ConvexQueueTrack]
+    let continueCursor: String?
+    let isDone: Bool?
+}
