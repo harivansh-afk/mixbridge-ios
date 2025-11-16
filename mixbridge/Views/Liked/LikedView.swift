@@ -8,7 +8,9 @@
 import SwiftUI
 
 struct LikedView: View {
+    @State private var showingAccount = false
     @Environment(AuthManager.self) private var authManager
+    @Environment(UserProfileManager.self) private var profileManager
     @State private var likedTracks: [Track] = []
     @State private var isLoading = false
     @State private var hasLoaded = false
@@ -16,7 +18,20 @@ struct LikedView: View {
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("Liked")
+                .navigationBarTitleDisplayMode(.inline)
+                .sheet(isPresented: $showingAccount) {
+                    AccountBottomSheet(
+                        isPresented: $showingAccount,
+                        userName: profileManager.displayName,
+                        userEmail: nil,
+                        profileImage: nil
+                    )
+                }
+                .task {
+                    if let userId = authManager.currentUserId {
+                        await profileManager.loadProfile(userId: userId)
+                    }
+                }
                 .onAppear {
                     if !hasLoaded {
                         Task {
@@ -96,7 +111,7 @@ struct LikedView: View {
         } else if likedTracks.isEmpty {
             emptyState
         } else {
-            tracksList
+            likedList
         }
     }
 
@@ -108,8 +123,54 @@ struct LikedView: View {
         )
     }
 
-    private var tracksList: some View {
+    private var header: some View {
+        HStack {
+            Text("Liked")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            if let avatarUrl = profileManager.avatarUrl,
+               let url = URL(string: avatarUrl) {
+                AsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    Circle()
+                        .fill(.gray.opacity(0.3))
+                }
+                .frame(width: 32, height: 32)
+                .clipShape(Circle())
+                .onTapGesture {
+                    showingAccount.toggle()
+                }
+            } else {
+                ProfileCircleView(
+                    profileImage: nil,
+                    userName: profileManager.displayName,
+                    size: 32
+                )
+                .onTapGesture {
+                    showingAccount.toggle()
+                }
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    private var likedList: some View {
         List {
+            // Header section so it scrolls with content, like Home/Library-style header
+            Section {
+                header
+                    .padding(.top, 8)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 8, trailing: 0))
+                    .listRowSeparator(.hidden)
+            }
+
             Section {
                 ForEach(Array(likedTracks.enumerated()), id: \.element.id) { index, track in
                     TrackRow(track, number: index + 1, showCover: true)
@@ -118,6 +179,7 @@ struct LikedView: View {
             }
         }
         .listStyle(.plain)
+        .listSectionSpacing(0)
     }
 }
 
