@@ -33,9 +33,22 @@ class AuthManager {
            expiry > Date() {
             isAuthenticated = true
             currentUserId = keychain.getUserId()
+
+            // If userId is nil, try to extract it from token again
+            if currentUserId == nil {
+                print("⚠️ [AuthManager] userId is nil, attempting to extract from token")
+                if let extractedUserId = SessionTokenDecoder.getUserId(from: token) {
+                    try? keychain.saveUserId(extractedUserId)
+                    currentUserId = extractedUserId
+                    print("✅ [AuthManager] Re-extracted userId: \(extractedUserId)")
+                }
+            }
+
+            print("🔐 [AuthManager] Restored session - authenticated: \(isAuthenticated), userId: \(currentUserId ?? "nil")")
         } else {
             isAuthenticated = false
             currentUserId = nil
+            print("🔐 [AuthManager] No valid session found")
         }
     }
 
@@ -80,6 +93,15 @@ class AuthManager {
         // Save session token
         do {
             try keychain.saveAccessToken(token)
+
+            // Extract and save userId from JWT
+            if let userId = SessionTokenDecoder.getUserId(from: token) {
+                try keychain.saveUserId(userId)
+                currentUserId = userId
+                print("✅ Extracted and saved userId: \(userId)")
+            } else {
+                print("⚠️ Failed to extract userId from token")
+            }
 
             // Set long expiry for session token (30 days)
             let expiry = Date().addingTimeInterval(30 * 24 * 60 * 60)

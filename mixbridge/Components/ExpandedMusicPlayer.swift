@@ -22,7 +22,6 @@ struct ExpandedMusicPlayer: View {
 
     var body: some View {
         ZStack {
-            backgroundLayer
 
             GeometryReader { proxy in
                 VStack(spacing: 28) {
@@ -43,18 +42,6 @@ struct ExpandedMusicPlayer: View {
         .navigationTransition(.zoom(sourceID: "MINIPLAYER", in: namespace))
     }
 
-    private var backgroundLayer: some View {
-        LinearGradient(
-            colors: [
-                Color.blue.opacity(0.4),
-                Color.purple.opacity(0.5),
-                Color.black.opacity(0.3)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .ignoresSafeArea()
-    }
 
     private var dragHandle: some View {
         Capsule()

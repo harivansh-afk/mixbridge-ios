@@ -1,9 +1,9 @@
 import Foundation
 
-/// API client for Mixbridge backend
+/// Backend API client for SoundCloud operations
 @MainActor
-class MixbridgeAPI {
-    static let shared = MixbridgeAPI()
+class BackendAPI {
+    static let shared = BackendAPI()
 
     private let baseURL = "https://mixbridge.vercel.app"
     private let keychain = KeychainManager.shared
@@ -50,66 +50,15 @@ class MixbridgeAPI {
         return try JSONDecoder().decode(T.self, from: data)
     }
 
-    // MARK: - API Methods
+    // MARK: - SoundCloud Operations
 
-    /// Get current user profile
-    func getProfile() async throws -> UserProfile {
-        return try await makeRequest(path: "/api/mobile/me")
-    }
-
-    /// Get user's liked tracks
-    func getLikedTracks(limit: Int = 50, offset: Int = 0) async throws -> TracksResponse {
-        return try await makeRequest(path: "/api/mobile/tracks/liked?limit=\(limit)&offset=\(offset)")
-    }
-
-    /// Get stream URL for a track
+    /// Get stream URL for a track (requires SoundCloud auth)
     func getStreamURL(trackId: String) async throws -> StreamResponse {
         return try await makeRequest(path: "/api/mobile/stream/\(trackId)")
     }
 }
 
-// MARK: - Models
-
-struct UserProfile: Codable {
-    let user: User
-    let soundcloud: SoundCloudProfile
-
-    struct User: Codable {
-        let id: String
-        let username: String
-        let avatar_url: String?
-    }
-
-    struct SoundCloudProfile: Codable {
-        let id: Int
-        let username: String
-        let avatar_url: String?
-        let permalink_url: String?
-        let followers_count: Int?
-        let followings_count: Int?
-    }
-}
-
-struct TracksResponse: Codable {
-    let tracks: [SoundCloudTrack]
-    let next_href: String?
-}
-
-struct SoundCloudTrack: Codable {
-    let id: Int
-    let title: String
-    let user: TrackUser
-    let duration: Int
-    let artwork_url: String?
-    let permalink_url: String?
-    let playback_count: Int?
-
-    struct TrackUser: Codable {
-        let id: Int
-        let username: String
-        let avatar_url: String?
-    }
-}
+// MARK: - Response Models
 
 struct StreamResponse: Codable {
     let stream_url: String
