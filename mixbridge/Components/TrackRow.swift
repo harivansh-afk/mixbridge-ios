@@ -263,7 +263,9 @@ struct TrackRow: View {
                 print("📤 [TrackRow] Calling ConvexService.likeTrack")
                 isLoading = true
                 do {
-                    try await ConvexService.shared.likeTrack(trackId: track.id)
+                    try await BackgroundExecutor.run {
+                        try await ConvexService.shared.likeTrack(trackId: track.id)
+                    }
                     HapticManager.success()
                     print("✅ [TrackRow] Track liked successfully")
                 } catch {

@@ -2,8 +2,7 @@ import Foundation
 import Security
 
 /// Manages secure storage of OAuth tokens in iOS Keychain
-@MainActor
-class KeychainManager {
+final class KeychainManager {
     static let shared = KeychainManager()
 
     private init() {}

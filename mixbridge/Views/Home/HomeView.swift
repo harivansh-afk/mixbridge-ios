@@ -201,7 +201,9 @@ struct HomeView: View {
         // Load recently played
         do {
             print("📡 [HomeView] Fetching play history for userId: \(userId)")
-            let history = try await ConvexService.shared.getPlayHistory(userId: userId, limit: 20)
+            let history = try await BackgroundExecutor.run {
+                try await ConvexService.shared.getPlayHistory(userId: userId, limit: 20)
+            }
 
             // Store both Track objects and raw data
             var allTracks: [Track] = []

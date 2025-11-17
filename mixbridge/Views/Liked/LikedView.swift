@@ -67,7 +67,9 @@ struct LikedView: View {
         // Try Convex cache first
         print("📡 [LikedView] Fetching liked tracks from Convex for userId: \(userId)")
         do {
-            let cached = try await ConvexService.shared.getLikedTracks(userId: userId)
+            let cached = try await BackgroundExecutor.run {
+                try await ConvexService.shared.getLikedTracks(userId: userId)
+            }
 
             if let cached = cached {
                 let (tracks, tracksData) = convertToTracksWithData(cached.tracks)
@@ -87,7 +89,9 @@ struct LikedView: View {
         // Fallback: Fetch from backend (fresh from SoundCloud)
         print("📡 [LikedView] Fetching from backend API...")
         do {
-            let response = try await BackendAPI.shared.getLikedTracks(limit: 50)
+            let response = try await BackgroundExecutor.run {
+                try await BackendAPI.shared.getLikedTracks(limit: 50)
+            }
             let (tracks, tracksData) = convertToTracksWithData(response.tracks)
             self.likedTracks = tracks
             self.likedTracksData = tracksData

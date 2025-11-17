@@ -43,10 +43,12 @@ class QueueManager {
 
         // Call API (not optimistic - wait for server response to get queue track ID)
         do {
-            let queueTrackId = try await ConvexService.shared.addTrackToQueue(
-                trackId: track.id,
-                trackData: rawData
-            )
+            let queueTrackId = try await BackgroundExecutor.run {
+                try await ConvexService.shared.addTrackToQueue(
+                    trackId: track.id,
+                    trackData: rawData
+                )
+            }
 
             // Update state after successful API call
             queueTracks.append(track)
@@ -92,7 +94,9 @@ class QueueManager {
 
         // 2. Call API in background
         do {
-            try await ConvexService.shared.removeTrackFromQueue(queueTrackId: convexQueueTrackId)
+            try await BackgroundExecutor.run {
+                try await ConvexService.shared.removeTrackFromQueue(queueTrackId: convexQueueTrackId)
+            }
             print("✅ [QueueManager] Track deleted from server successfully")
         } catch {
             print("❌ [QueueManager] Failed to delete from server: \(error)")
@@ -113,7 +117,9 @@ class QueueManager {
         isLoading = true
 
         do {
-            let queueData = try await ConvexService.shared.getQueueTracks(userId: userId)
+            let queueData = try await BackgroundExecutor.run {
+                try await ConvexService.shared.getQueueTracks(userId: userId)
+            }
 
             var tracks: [Track] = []
             var trackIdMap: [String: String] = [:]

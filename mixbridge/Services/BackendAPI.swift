@@ -1,8 +1,7 @@
 import Foundation
 
 /// Backend API client for SoundCloud operations
-@MainActor
-class BackendAPI {
+actor BackendAPI {
     static let shared = BackendAPI()
 
     private let baseURL = "https://mixbridge.vercel.app"

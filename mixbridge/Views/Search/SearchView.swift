@@ -170,7 +170,9 @@ struct SearchView: View {
         print("🔍 [Search] Searching for: '\(query)'")
 
         do {
-            let results = try await BackendAPI.shared.search(query: query, limit: 20)
+            let results = try await BackgroundExecutor.run {
+                try await BackendAPI.shared.search(query: query, limit: 20)
+            }
 
             // Only update if this is still the current search query
             if query == searchText {

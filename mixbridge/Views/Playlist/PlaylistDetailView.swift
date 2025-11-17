@@ -200,10 +200,12 @@ struct PlaylistDetailView: View {
         // Try Convex cache first
         print("📡 [PlaylistDetail] Fetching tracks for playlist \(playlist.id) from Convex")
         do {
-            let cached = try await ConvexService.shared.getPlaylistTracks(
-                userId: userId,
-                playlistId: playlist.id
-            )
+            let cached = try await BackgroundExecutor.run {
+                try await ConvexService.shared.getPlaylistTracks(
+                    userId: userId,
+                    playlistId: playlist.id
+                )
+            }
 
             if let cached = cached {
                 var tracksList: [Track] = []
@@ -250,7 +252,9 @@ struct PlaylistDetailView: View {
         // Fallback: Fetch from backend API
         print("📡 [PlaylistDetail] Fetching from backend API...")
         do {
-            let response = try await BackendAPI.shared.getPlaylist(playlistId: playlist.id)
+            let response = try await BackgroundExecutor.run {
+                try await BackendAPI.shared.getPlaylist(playlistId: playlist.id)
+            }
             print("📥 [PlaylistDetail] Backend response received")
 
             if let soundcloudTracks = response.playlist.tracks {

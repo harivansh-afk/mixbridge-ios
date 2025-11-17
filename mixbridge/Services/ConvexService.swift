@@ -1,8 +1,7 @@
 import Foundation
 
 /// Convex HTTP API client - no SDK needed, works immediately
-@MainActor
-class ConvexService {
+actor ConvexService {
     static let shared = ConvexService()
 
     private let deploymentUrl = "https://avid-falcon-471.convex.cloud"

@@ -78,7 +78,9 @@ struct AllArtistsView: View {
 
         do {
             print("📡 [AllArtists] Fetching liked tracks to extract artists for userId: \(userId)")
-            let cached = try await ConvexService.shared.getLikedTracks(userId: userId)
+            let cached = try await BackgroundExecutor.run {
+                try await ConvexService.shared.getLikedTracks(userId: userId)
+            }
 
             if let cached = cached {
                 // Group tracks by artist

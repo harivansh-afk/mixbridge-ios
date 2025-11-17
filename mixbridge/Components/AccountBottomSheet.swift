@@ -212,7 +212,9 @@ struct AccountBottomSheet: View {
 
         do {
             print("📡 [AccountBottomSheet] Fetching profile from Convex for userId: \(userId)")
-            let profile = try await ConvexService.shared.getUserProfile(userId: userId)
+            let profile = try await BackgroundExecutor.run {
+                try await ConvexService.shared.getUserProfile(userId: userId)
+            }
 
             if let profile = profile {
                 self.convexProfile = profile

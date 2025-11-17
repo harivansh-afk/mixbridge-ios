@@ -53,7 +53,9 @@ struct AllSongsView: View {
 
         do {
             print("📡 [AllSongs] Fetching liked tracks for userId: \(userId)")
-            let cached = try await ConvexService.shared.getLikedTracks(userId: userId)
+            let cached = try await BackgroundExecutor.run {
+                try await ConvexService.shared.getLikedTracks(userId: userId)
+            }
 
             if let cached = cached {
                 var tracksList: [Track] = []

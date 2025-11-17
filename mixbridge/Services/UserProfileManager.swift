@@ -25,7 +25,9 @@ class UserProfileManager {
 
         do {
             print("📡 [ProfileManager] Fetching profile from Convex for userId: \(userId)")
-            let fetchedProfile = try await ConvexService.shared.getUserProfile(userId: userId)
+            let fetchedProfile = try await BackgroundExecutor.run {
+                try await ConvexService.shared.getUserProfile(userId: userId)
+            }
 
             if let fetchedProfile = fetchedProfile {
                 self.profile = fetchedProfile

@@ -86,7 +86,9 @@ struct AllPlaylistsView: View {
 
         do {
             print("📡 [AllPlaylists] Fetching playlists for userId: \(userId)")
-            let cached = try await ConvexService.shared.getPlaylists(userId: userId)
+            let cached = try await BackgroundExecutor.run {
+                try await ConvexService.shared.getPlaylists(userId: userId)
+            }
 
             if let cached = cached {
                 self.playlists = cached.playlists.map { soundcloudPlaylist in
