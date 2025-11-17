@@ -124,7 +124,7 @@ struct SearchView: View {
                             HStack(spacing: 12) {
                                 if playlist.artwork.starts(with: "http"),
                                    let url = URL(string: playlist.artwork) {
-                                    AsyncImage(url: url) { image in
+                                    CachedAsyncImage(url: url) { image in
                                         image
                                             .resizable()
                                             .scaledToFill()

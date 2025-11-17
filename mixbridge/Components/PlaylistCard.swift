@@ -37,7 +37,7 @@ struct PlaylistCard: View {
     private var artwork: some View {
         Group {
             if playlist.artwork.starts(with: "http") {
-                AsyncImage(url: URL(string: playlist.artwork)) { phase in
+                CachedAsyncImagePhase(url: URL(string: playlist.artwork)) { phase in
                     switch phase {
                     case .empty:
                         artworkPlaceholder

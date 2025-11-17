@@ -153,7 +153,7 @@ struct AccountBottomSheet: View {
             // Avatar from Convex/SoundCloud
             if let avatarUrl = profile.avatar_url,
                let url = URL(string: avatarUrl) {
-                AsyncImage(url: url) { image in
+                CachedAsyncImage(url: url) { image in
                     image
                         .resizable()
                         .scaledToFill()

@@ -37,7 +37,7 @@ struct ContentView: View {
     @ViewBuilder
     func PlayerInfo(_ track: Track, size: CGSize) -> some View {
         HStack(spacing: 7) {
-            Group {
+            Group { 
                 if track.artwork.starts(with: "http"), let url = URL(string: track.artwork) {
                     AsyncImage(url: url) { phase in
                         switch phase {
@@ -46,7 +46,7 @@ struct ContentView: View {
                         case .success(let image):
                             image
                                 .resizable()
-                                .aspectRatio(contentMode: .fill)
+                                    .aspectRatio(contentMode: .fill)
                                 .frame(width: size.width, height: size.height)
                                 .clipped()
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -61,7 +61,7 @@ struct ContentView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 3){
+            VStack(alignment: .leading, spacing: 0){
                 Text(track.title)
                     .font(.footnote.bold())
                     .foregroundStyle(colorScheme == .dark ? .white : .black)

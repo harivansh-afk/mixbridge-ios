@@ -26,7 +26,7 @@ struct AllArtistsView: View {
                                 // Artist avatar
                                 if let avatarUrl = artist.avatarUrl,
                                    let url = URL(string: avatarUrl) {
-                                    AsyncImage(url: url) { image in
+                                    CachedAsyncImage(url: url) { image in
                                         image
                                             .resizable()
                                             .scaledToFill()
@@ -59,6 +59,7 @@ struct AllArtistsView: View {
                 .listStyle(.plain)
             }
         }
+        .swipeBackGesture()
         .navigationTitle("Artists")
         .onAppear {
             if !hasLoaded {

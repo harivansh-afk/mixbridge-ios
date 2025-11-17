@@ -109,8 +109,8 @@ struct TrackRow: View {
     private var albumArtwork: some View {
         Group {
             if track.artwork.starts(with: "http") {
-                // Real URL - use AsyncImage
-                AsyncImage(url: URL(string: track.artwork)) { phase in
+                // Real URL - use CachedAsyncImage
+                CachedAsyncImagePhase(url: URL(string: track.artwork)) { phase in
                     switch phase {
                     case .empty:
                         artworkPlaceholder

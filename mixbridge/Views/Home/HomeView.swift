@@ -70,58 +70,20 @@ struct HomeView: View {
     }
 
     private var skeletonLoadingView: some View {
-        List {
-            Section {
-                Text("Queue")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 4, trailing: 16))
-                    .listRowSeparator(.hidden)
-
-                ForEach(0..<3) { _ in
-                    skeletonTrackRow
-                }
-            }
-
-            Section {
-                Text("Recently Played")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .listRowInsets(EdgeInsets(top: 24, leading: 16, bottom: 4, trailing: 16))
-                    .listRowSeparator(.hidden)
-
-                ForEach(0..<5) { _ in
-                    skeletonTrackRow
-                }
-            }
-        }
-        .listStyle(.plain)
-        .redacted(reason: .placeholder)
-    }
-
-    private var skeletonTrackRow: some View {
-        HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.gray.opacity(0.3))
-                .frame(width: 44, height: 44)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Loading Track Title")
-                    .font(.body)
-                Text("Loading Artist")
-                    .font(.caption)
-            }
-
+        VStack {
+            Spacer()
+            ProgressView()
+                .scaleEffect(1.5)
             Spacer()
         }
-        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var profileAvatar: some View {
         HStack {
             if let avatarUrl = profileManager.avatarUrl,
                let url = URL(string: avatarUrl) {
-                AsyncImage(url: url) { image in
+                CachedAsyncImage(url: url) { image in
                     image
                         .resizable()
                         .scaledToFill()

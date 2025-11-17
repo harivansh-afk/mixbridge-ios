@@ -147,7 +147,7 @@ struct LibraryView: View {
                             // Artwork
                             Group {
                                 if playlist.artwork.starts(with: "http") {
-                                    AsyncImage(url: URL(string: playlist.artwork)) { phase in
+                                    CachedAsyncImagePhase(url: URL(string: playlist.artwork)) { phase in
                                         switch phase {
                                         case .empty:
                                             artworkPlaceholder
@@ -182,8 +182,8 @@ struct LibraryView: View {
                                 .font(.caption)
                                 .fontWeight(.semibold)
                                 .foregroundStyle(.primary)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.center)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
                                 .frame(maxWidth: .infinity)
                         }
                     }
@@ -277,7 +277,7 @@ struct LibraryView: View {
                             // Artwork
                             Group {
                                 if playlist.artwork.starts(with: "http") {
-                                    AsyncImage(url: URL(string: playlist.artwork)) { phase in
+                                    CachedAsyncImagePhase(url: URL(string: playlist.artwork)) { phase in
                                         switch phase {
                                         case .empty:
                                             artworkPlaceholder
@@ -312,8 +312,8 @@ struct LibraryView: View {
                                 .font(.caption)
                                 .fontWeight(.semibold)
                                 .foregroundStyle(.primary)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.center)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
                                 .frame(maxWidth: .infinity)
                         }
                     }

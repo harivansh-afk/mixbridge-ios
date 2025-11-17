@@ -29,7 +29,7 @@ struct ProfileStatsView: View {
                 if let profile = profile,
                    let avatarUrl = profile.avatar_url,
                    let url = URL(string: avatarUrl) {
-                    AsyncImage(url: url) { image in
+                    CachedAsyncImage(url: url) { image in
                         image
                             .resizable()
                             .scaledToFill()
@@ -103,6 +103,7 @@ struct ProfileStatsView: View {
                 .padding(.horizontal, 40)
             }
         }
+        .swipeBackGesture()
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {

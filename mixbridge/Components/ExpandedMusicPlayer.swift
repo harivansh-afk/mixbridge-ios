@@ -66,7 +66,7 @@ struct ExpandedMusicPlayer: View {
     @ViewBuilder
     private var artworkContent: some View {
         if track.artwork.starts(with: "http"), let url = URL(string: track.artwork) {
-            AsyncImage(url: url) { phase in
+            CachedAsyncImagePhase(url: url) { phase in
                 switch phase {
                 case .empty:
                     ProgressView()
