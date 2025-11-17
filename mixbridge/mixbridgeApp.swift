@@ -23,11 +23,8 @@ struct mixbridgeApp: App {
                 } else if !showSplash{
                     OnboardingView()
                 }
-                if showSplash{
-                    ZStack{
-                        Color.black.ignoresSafeArea()
-                        Text("Welcome")
-                    }
+                if showSplash {
+                    SplashView()
                 }
                 
             }
@@ -45,5 +42,20 @@ struct mixbridgeApp: App {
                 }
             }
         }
+    }
+}
+
+private struct SplashView: View {
+    var body: some View {
+        ZStack {
+            Color.black
+                .ignoresSafeArea()
+
+            Text("mixbridge")
+                .font(.custom("InstrumentSerif-Italic", size: 46))
+                .kerning(1)
+                .foregroundStyle(.white)
+        }
+        .transition(.opacity)
     }
 }
