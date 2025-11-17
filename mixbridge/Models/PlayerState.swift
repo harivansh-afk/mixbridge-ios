@@ -8,6 +8,7 @@
 import SwiftUI
 import AVFoundation
 import MediaPlayer
+import UIKit
 
 @Observable
 @MainActor
@@ -39,24 +40,27 @@ final class PlayerState: NSObject {
     var playbackPosition: Double = 0
     var duration: Double = 0
     var playbackStatus: PlaybackStatus = .idle
-    var autoplayEnabled = true
+    var autoplayEnabled: Bool = true {
+        didSet {
+            playbackCoordinator.autoplayEnabled = autoplayEnabled
+        }
+    }
     var volume: Double = 0.7 {
         didSet {
-            player?.volume = Float(volume)
+            playbackCoordinator.setVolume(volume)
         }
     }
     var errorMessage: String?
 
-    private var player: AVPlayer?
-    private var timeObserverToken: Any?
-    private var currentQueueIndex: Int = -1
-    private var currentTrackData: [String: Any]?
-
-    private let backendAPI = BackendAPI.shared
+    private let playbackCoordinator = PlaybackCoordinator.shared
     private let queueManager = QueueManager.shared
-    private let keychain = KeychainManager.shared
     private let audioSession = AVAudioSession.sharedInstance()
     private let commandCenter = MPRemoteCommandCenter.shared()
+
+    private var currentQueueIndex: Int = -1
+    private var nowPlayingArtwork: MPMediaItemArtwork?
+    private var artworkTask: Task<Void, Never>?
+    private var lastPublishedStatus: PlaybackStatus = .idle
 
     private override init() {
         currentTrack = Track.sampleTracks.first ?? Track(
@@ -68,100 +72,67 @@ final class PlayerState: NSObject {
         configureAudioSession()
         setupNotifications()
         setupRemoteCommands()
+        playbackCoordinator.delegate = self
+        playbackCoordinator.setVolume(volume)
+        playbackCoordinator.autoplayEnabled = autoplayEnabled
+        UIApplication.shared.beginReceivingRemoteControlEvents()
     }
 
     // MARK: - Public API
 
-    func play(track: Track, trackData: [String: Any]? = nil, queueIndex: Int? = nil, startTime: Double = 0) async {
+    func play(track: Track, trackData: [String: Any]? = nil, queueIndex: Int? = nil) {
         playbackStatus = .loading
-        let metadata = trackData ?? queueManager.trackData(for: track.id)
-        currentTrackData = metadata
-
-        do {
-            let stream = try await backendAPI.getStreamURL(trackId: track.id)
-            guard let streamURL = URL(string: stream.stream_url) else {
-                throw PlaybackError.invalidStreamURL
-            }
-
-            try activateAudioSession()
-            preparePlayer(with: streamURL, startTime: startTime)
-
-            currentTrack = track
-            currentQueueIndex = queueIndex ?? queueManager.indexOfTrack(withId: track.id) ?? -1
-
-            player?.play()
-            player?.volume = Float(volume)
-
-            isPlaying = true
-            playbackStatus = .playing
-            errorMessage = nil
-            updateNowPlayingInfo()
-        } catch {
-            handlePlaybackFailure(error)
+        currentTrack = track
+        refreshArtwork(for: track)
+        playbackPosition = 0
+        duration = track.duration
+        if let explicitIndex = queueIndex {
+            currentQueueIndex = explicitIndex
+        } else if let inferredIndex = queueManager.indexOfTrack(withId: track.id) {
+            currentQueueIndex = inferredIndex
+        } else {
+            currentQueueIndex = -1
         }
+        try? activateAudioSession()
+        playbackCoordinator.play(
+            track: track,
+            trackData: trackData ?? queueManager.trackData(for: track.id),
+            queueIndex: queueIndex
+        )
+        updateNowPlayingInfo(playbackRate: 0)
     }
 
     func playFromQueue(index: Int) {
         guard queueManager.queueTracks.indices.contains(index) else { return }
         let track = queueManager.queueTracks[index]
-        Task {
-            await play(track: track, trackData: queueManager.trackData(for: track.id), queueIndex: index)
-        }
+        play(track: track, trackData: queueManager.trackData(for: track.id), queueIndex: index)
     }
 
     func togglePlayback() {
-        isPlaying ? pause() : resume()
+        playbackCoordinator.togglePlayback()
     }
 
     func pause() {
-        player?.pause()
-        isPlaying = false
-        playbackStatus = .paused
+        playbackCoordinator.pause()
         updateNowPlayingInfo(playbackRate: 0)
     }
 
     func resume() {
-        guard player != nil else { return }
         try? activateAudioSession()
-        player?.play()
-        isPlaying = true
-        playbackStatus = .playing
+        playbackCoordinator.resume()
         updateNowPlayingInfo(playbackRate: 1)
     }
 
     func seek(to time: Double) {
-        guard let player else { return }
-        let target = CMTime(seconds: time, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
-        player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-            guard let self else { return }
-            Task { @MainActor in
-                self.playbackPosition = time
-                self.updateNowPlayingInfo()
-            }
-        }
+        playbackCoordinator.seek(to: time)
     }
 
     func playNextFromQueue() {
-        guard currentQueueIndex >= 0,
-              let next = queueManager.nextTrack(after: currentQueueIndex) else {
-            return
-        }
-
-        Task {
-            await play(track: next.track, trackData: queueManager.trackData(for: next.track.id), queueIndex: next.index)
-        }
+        playbackCoordinator.playNext(manual: true)
     }
 
     func playPreviousFromQueue() {
-        guard currentQueueIndex > 0,
-              let previous = queueManager.previousTrack(before: currentQueueIndex) else {
-            seek(to: 0)
-            return
-        }
-
-        Task {
-            await play(track: previous.track, trackData: queueManager.trackData(for: previous.track.id), queueIndex: previous.index)
-        }
+        playbackCoordinator.playPrevious()
     }
 
     // MARK: - Setup
@@ -231,95 +202,6 @@ final class PlayerState: NSObject {
         }
     }
 
-    // MARK: - Player Wiring
-
-    private func preparePlayer(with url: URL, startTime: Double) {
-        cleanupPlayer()
-
-        let item = makePlayerItem(url: url)
-        player = AVPlayer(playerItem: item)
-        player?.automaticallyWaitsToMinimizeStalling = true
-        player?.volume = Float(volume)
-
-        addTimeObserver()
-
-        if startTime > 0 {
-            let cmTime = CMTime(seconds: startTime, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
-            player?.seek(to: cmTime)
-        } else {
-            playbackPosition = 0
-        }
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleItemDidFinish(_:)),
-            name: .AVPlayerItemDidPlayToEndTime,
-            object: item
-        )
-
-        playbackStatus = .ready
-    }
-
-    private func makePlayerItem(url: URL) -> AVPlayerItem {
-        guard let token = keychain.getAccessToken() else {
-            return AVPlayerItem(url: url)
-        }
-
-        let headers = [
-            "Authorization": "Bearer \(token)"
-        ]
-
-        let asset = AVURLAsset(
-            url: url,
-            options: ["AVURLAssetHTTPHeaderFieldsKey": headers]
-        )
-
-        return AVPlayerItem(asset: asset)
-    }
-
-    private func addTimeObserver() {
-        guard let player else { return }
-
-        timeObserverToken = player.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC)),
-            queue: .main
-        ) { [weak self] time in
-            guard let self else { return }
-
-            let elapsed = CMTimeGetSeconds(time)
-
-            Task { @MainActor in
-                if elapsed.isFinite {
-                    self.playbackPosition = elapsed
-                }
-
-                let durationTime = self.player?.currentItem?.duration ?? .invalid
-                let durationSeconds = CMTimeGetSeconds(durationTime)
-                if durationSeconds.isFinite, durationSeconds > 0 {
-                    self.duration = durationSeconds
-                } else if self.currentTrack.duration > 0 {
-                    self.duration = self.currentTrack.duration
-                }
-
-                self.updateNowPlayingInfo()
-            }
-        }
-    }
-
-    private func cleanupPlayer() {
-        if let token = timeObserverToken {
-            player?.removeTimeObserver(token)
-            timeObserverToken = nil
-        }
-
-        if let currentItem = player?.currentItem {
-            NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: currentItem)
-        }
-
-        player?.pause()
-        player = nil
-    }
-
     // MARK: - Notifications
 
     @MainActor
@@ -357,17 +239,6 @@ final class PlayerState: NSObject {
         }
     }
 
-    @MainActor
-    @objc private func handleItemDidFinish(_ notification: Notification) {
-        playbackPosition = 0
-        isPlaying = false
-        playbackStatus = .ready
-        updateNowPlayingInfo(playbackRate: 0)
-
-        guard autoplayEnabled else { return }
-        playNextFromQueue()
-    }
-
     // MARK: - Helpers
 
     private func updateNowPlayingInfo(playbackRate: Float? = nil) {
@@ -380,7 +251,32 @@ final class PlayerState: NSObject {
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = playbackPosition
         info[MPNowPlayingInfoPropertyPlaybackRate] = playbackRate ?? (isPlaying ? 1 : 0)
 
+        if let artwork = nowPlayingArtwork {
+            info[MPMediaItemPropertyArtwork] = artwork
+        }
+
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    private func refreshArtwork(for track: Track) {
+        artworkTask?.cancel()
+
+        if track.artwork.starts(with: "http"), let url = URL(string: track.artwork) {
+            artworkTask = Task { [weak self] in
+                guard let self else { return }
+                if let image = await ImageCacheManager.shared.getImage(for: url) {
+                    let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                    await MainActor.run {
+                        self.nowPlayingArtwork = artwork
+                        self.updateNowPlayingInfo()
+                    }
+                }
+            }
+        } else if let image = UIImage(named: track.artwork) {
+            nowPlayingArtwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        } else {
+            nowPlayingArtwork = nil
+        }
     }
 
     private func handlePlaybackFailure(_ error: Error) {
@@ -393,5 +289,43 @@ final class PlayerState: NSObject {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+    }
+}
+
+// MARK: - PlaybackCoordinatorDelegate
+
+extension PlayerState: PlaybackCoordinatorDelegate {
+    func playbackCoordinator(_ coordinator: PlaybackCoordinator, didUpdate snapshot: PlaybackSnapshot) {
+        if let track = snapshot.track {
+            let trackChanged = track.id != currentTrack.id
+            currentTrack = track
+            if trackChanged {
+                refreshArtwork(for: track)
+            }
+            if let index = snapshot.queueIndex {
+                currentQueueIndex = index
+            } else if trackChanged {
+                currentQueueIndex = -1
+            }
+        } else if snapshot.queueIndex == nil {
+            currentQueueIndex = -1
+        }
+
+        isPlaying = snapshot.isPlaying
+        playbackStatus = snapshot.status
+        playbackPosition = snapshot.currentTime
+        duration = snapshot.duration
+        updateNowPlayingInfo()
+
+        if playbackStatus == .playing && lastPublishedStatus == .loading {
+            HapticManager.success()
+        }
+
+        lastPublishedStatus = playbackStatus
+    }
+
+    func playbackCoordinator(_ coordinator: PlaybackCoordinator, didEncounter error: Error) {
+        handlePlaybackFailure(error)
+        lastPublishedStatus = .failed(error.localizedDescription)
     }
 }

@@ -18,6 +18,7 @@ struct TrackRow: View {
     var onTrackAddedToQueue: ((Track, String) -> Void)? // Callback with track + queue track ID
     var trackData: [String: Any]?
     var onPlay: (() -> Void)?
+    @State private var playerState = PlayerState.shared
 
     private let coverSize: CGFloat = 44
 
@@ -48,6 +49,8 @@ struct TrackRow: View {
     @State private var showError = false
 
     var body: some View {
+        let isCurrentTrack = playerState.currentTrack.id == track.id
+
         HStack(spacing: 12) {
             // Left side: Track number or album artwork
             leadingContent
@@ -61,6 +64,8 @@ struct TrackRow: View {
             trailingActions
         }
         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .listRowBackground(Color.clear)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isCurrentTrack)
         .contentShape(Rectangle())
         .onTapGesture {
             handlePlayTapped()
@@ -199,9 +204,7 @@ struct TrackRow: View {
             return
         }
 
-        Task {
-            await PlayerState.shared.play(track: track, trackData: trackData)
-        }
+        PlayerState.shared.play(track: track, trackData: trackData)
     }
 
     private func handleAddToQueue() {

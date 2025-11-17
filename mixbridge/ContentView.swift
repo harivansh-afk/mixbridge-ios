@@ -91,6 +91,8 @@ struct ContentView: View {
     func MiniPlayerView() -> some View{
         HStack(spacing: 15){
             PlayerInfo(playerState.currentTrack, size: .init(width: 30, height: 30))
+                .id(playerState.currentTrack.id)
+                .contentTransition(.interpolate)
             Spacer(minLength: 0)
 
             Button{
@@ -116,6 +118,7 @@ struct ContentView: View {
         }
         .padding(.horizontal, 15)
         .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.2), value: playerState.isPlaying)
     }
 }
 
@@ -124,29 +127,26 @@ struct NativeTabView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            HomeView()
-                .tag(0)
-                .tabItem {
-                    Image("house")
-                }
-
-            LibraryView()
-                .tag(1)
-                .tabItem {
-                    Image("list")
-                }
-
-            LikedView()
-                .tag(2)
-                .tabItem {
-                    Image("heart")
-                }
-
-            SearchView()
-                .tag(3)
-                .tabItem {
-                    Image(systemName: "magnifyingglass")
-                }
+            Tab(value: 0) {
+                HomeView()
+            } label: {
+                Image("house")
+            }
+            Tab(value: 1) {
+                LibraryView()
+            } label: {
+                Image("list")
+            }
+            Tab(value: 2) {
+                LikedView()
+            } label: {
+                Image("heart")
+            }
+            Tab(value: 3, role:.search) {
+                SearchView()
+            } label: {
+                Image("magnifying-glass")
+            }
         }
         .tint(.primary)
         .onChange(of: selectedTab) { oldValue, newValue in

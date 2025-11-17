@@ -53,6 +53,7 @@ struct ExpandedMusicPlayer: View {
 
     private var albumArtwork: some View {
         artworkContent
+            .id(track.id)
             .aspectRatio(1, contentMode: .fit)
             .frame(maxWidth: 320)
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -63,6 +64,8 @@ struct ExpandedMusicPlayer: View {
                 radius: 8, x: 0, y: -4
             )
             .shadow(color: .black.opacity(colorScheme == .dark ? 0.6 : 0.2), radius: 8, x: 0, y: 4)
+            .transition(.move(edge: .trailing).combined(with: .opacity))
+            .animation(.spring(response: 0.5, dampingFraction: 0.85), value: track.id)
     }
 
     @ViewBuilder
@@ -114,6 +117,9 @@ struct ExpandedMusicPlayer: View {
 
         }
         .frame(maxWidth: .infinity)
+        .id(track.id)
+        .contentTransition(.interpolate)
+        .animation(.easeInOut(duration: 0.25), value: track.id)
     }
 
     private var progressSection: some View {

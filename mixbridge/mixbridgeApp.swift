@@ -13,20 +13,37 @@ struct mixbridgeApp: App {
     @State private var authManager = AuthManager.shared
     @State private var profileManager = UserProfileManager.shared
     @State private var queueManager = QueueManager.shared
+    @State private var showSplash = true
 
     var body: some Scene {
         WindowGroup {
-            Group {
+            ZStack {
                 if authManager.isAuthenticated {
                     ContentView()
-                } else {
+                } else if !showSplash{
                     OnboardingView()
                 }
+                if showSplash{
+                    ZStack{
+                        Color.black.ignoresSafeArea()
+                        Text("Welcome")
+                    }
+                }
+                
             }
+            .animation(.easeOut, value: showSplash)
             .preferredColorScheme(themeMode.colorScheme)
             .environment(authManager)
             .environment(profileManager)
             .environment(queueManager)
+            .onChange(of: authManager.isAuthenticated){
+                showSplash = true
+            }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(2)) {
+                    self.showSplash = false
+                }
+            }
         }
     }
 }
