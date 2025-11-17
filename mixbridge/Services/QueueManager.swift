@@ -20,6 +20,7 @@ class QueueManager {
     var queueTracks: [Track] = []
     private(set) var isLoading = false
     private var queueTrackIds: [String: String] = [:] // Track.id -> Convex queue track ID
+    private var queueTrackData: [String: [String: Any]] = [:] // Track.id -> raw SoundCloud data
 
     private init() {}
 
@@ -50,6 +51,7 @@ class QueueManager {
             // Update state after successful API call
             queueTracks.append(track)
             queueTrackIds[track.id] = queueTrackId
+            queueTrackData[track.id] = rawData
 
             // Haptic feedback for success
             HapticManager.success()
@@ -82,6 +84,7 @@ class QueueManager {
         // 1. Optimistically remove from UI - INSTANT
         queueTracks.removeAll { $0.id == track.id }
         queueTrackIds.removeValue(forKey: track.id)
+        queueTrackData.removeValue(forKey: track.id)
         print("⚡ [QueueManager] Optimistically removed - queue now has \(queueTracks.count) tracks")
 
         // Haptic feedback for delete
@@ -114,8 +117,11 @@ class QueueManager {
 
             var tracks: [Track] = []
             var trackIdMap: [String: String] = [:]
+            var rawDataMap: [String: [String: Any]] = [:]
 
-            for queueTrack in queueData {
+            let orderedTracks = queueData.sorted { $0.position < $1.position }
+
+            for queueTrack in orderedTracks {
                 let artworkUrl = queueTrack.artworkUrl ?? ""
                 let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
 
@@ -130,10 +136,16 @@ class QueueManager {
 
                 tracks.append(track)
                 trackIdMap[queueTrack.trackId] = queueTrack._id
+
+                if let encodedData = try? JSONEncoder().encode(queueTrack.trackData),
+                   let jsonObject = try? JSONSerialization.jsonObject(with: encodedData) as? [String: Any] {
+                    rawDataMap[queueTrack.trackId] = jsonObject
+                }
             }
 
             self.queueTracks = tracks
             self.queueTrackIds = trackIdMap
+            self.queueTrackData = rawDataMap
 
             print("✅ [QueueManager] Loaded \(queueTracks.count) queue tracks")
         } catch {
@@ -148,6 +160,29 @@ class QueueManager {
     func clearQueue() {
         queueTracks.removeAll()
         queueTrackIds.removeAll()
+        queueTrackData.removeAll()
         print("🗑️ [QueueManager] Queue cleared")
+    }
+
+    // MARK: - Helpers
+
+    func trackData(for trackId: String) -> [String: Any]? {
+        queueTrackData[trackId]
+    }
+
+    func indexOfTrack(withId trackId: String) -> Int? {
+        queueTracks.firstIndex(where: { $0.id == trackId })
+    }
+
+    func nextTrack(after index: Int) -> (track: Track, index: Int)? {
+        let nextIndex = index + 1
+        guard queueTracks.indices.contains(nextIndex) else { return nil }
+        return (queueTracks[nextIndex], nextIndex)
+    }
+
+    func previousTrack(before index: Int) -> (track: Track, index: Int)? {
+        let previousIndex = index - 1
+        guard queueTracks.indices.contains(previousIndex) else { return nil }
+        return (queueTracks[previousIndex], previousIndex)
     }
 }

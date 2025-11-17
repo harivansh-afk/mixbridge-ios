@@ -14,11 +14,13 @@ struct ExpandedMusicPlayer: View {
     @Environment(\.colorScheme) var colorScheme
     @State private var playerState = PlayerState.shared
 
-    @State private var playbackPosition: Double = 42
-    @State private var volume: Double = 0.6
-
     private var track: Track { playerState.currentTrack }
-    private var duration: Double { track.duration == 0 ? 210 : track.duration }
+    private var duration: Double {
+        if playerState.duration > 0 {
+            return playerState.duration
+        }
+        return track.duration == 0 ? 210 : track.duration
+    }
 
     var body: some View {
         ZStack {
@@ -116,17 +118,23 @@ struct ExpandedMusicPlayer: View {
 
     private var progressSection: some View {
         VStack(spacing: 10) {
-            Slider(value: $playbackPosition, in: 0...duration)
-                .tint(.primary)
+            Slider(
+                value: Binding(
+                    get: { playerState.playbackPosition },
+                    set: { newValue in playerState.seek(to: newValue) }
+                ),
+                in: 0...max(duration, 1)
+            )
+            .tint(.primary)
 
             HStack {
-                Text(formatTime(playbackPosition))
+                Text(formatTime(playerState.playbackPosition))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
 
                 Spacer()
 
-                Text("-\(formatTime(duration - playbackPosition))")
+                Text("-\(formatTime(max(duration - playerState.playbackPosition, 0)))")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -141,7 +149,7 @@ struct ExpandedMusicPlayer: View {
 
             Button {
                 withAnimation(.spring) {
-                    playerState.isPlaying.toggle()
+                    playerState.togglePlayback()
                 }
             } label: {
                 Image(systemName: playerState.isPlaying ? "pause.fill" : "play.fill")
@@ -156,7 +164,13 @@ struct ExpandedMusicPlayer: View {
     }
 
     private func controlButton(_ systemImage: String) -> some View {
-        Button {} label: {
+        Button {
+            if systemImage == "backward.fill" {
+                playerState.playPreviousFromQueue()
+            } else {
+                playerState.playNextFromQueue()
+            }
+        } label: {
             Image(systemName: systemImage)
                 .font(.title2)
                 .foregroundStyle(.primary)
@@ -168,8 +182,14 @@ struct ExpandedMusicPlayer: View {
         VStack(spacing: 6) {
             HStack {
                 Image(systemName: "speaker.fill")
-                Slider(value: $volume, in: 0...1)
-                    .tint(.primary)
+                Slider(
+                    value: Binding(
+                        get: { playerState.volume },
+                        set: { newValue in playerState.volume = newValue }
+                    ),
+                    in: 0...1
+                )
+                .tint(.primary)
                 Image(systemName: "speaker.wave.3.fill")
             }
             .foregroundStyle(.primary)

@@ -95,7 +95,7 @@ struct ContentView: View {
 
             Button{
                 HapticManager.medium()
-                playerState.isPlaying.toggle()
+                playerState.togglePlayback()
             }   label: {
                 Image(systemName: playerState.isPlaying ? "pause.fill" : "play.fill")
                     .foregroundStyle(colorScheme == .dark ? .white : .black)
@@ -107,6 +107,7 @@ struct ContentView: View {
 
             Button{
                 HapticManager.light()
+                playerState.playNextFromQueue()
             }   label: {
                 Image(systemName: "forward.fill")
                     .foregroundStyle(colorScheme == .dark ? .white : .black)

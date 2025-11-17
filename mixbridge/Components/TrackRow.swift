@@ -17,6 +17,7 @@ struct TrackRow: View {
     var onDelete: (() -> Void)?
     var onTrackAddedToQueue: ((Track, String) -> Void)? // Callback with track + queue track ID
     var trackData: [String: Any]?
+    var onPlay: (() -> Void)?
 
     private let coverSize: CGFloat = 44
 
@@ -28,7 +29,8 @@ struct TrackRow: View {
         onLike: (() -> Void)? = nil,
         onDelete: (() -> Void)? = nil,
         onTrackAddedToQueue: ((Track, String) -> Void)? = nil,
-        trackData: [String: Any]? = nil
+        trackData: [String: Any]? = nil,
+        onPlay: (() -> Void)? = nil
     ) {
         self.track = track
         self.number = number
@@ -38,6 +40,7 @@ struct TrackRow: View {
         self.onDelete = onDelete
         self.onTrackAddedToQueue = onTrackAddedToQueue
         self.trackData = trackData
+        self.onPlay = onPlay
     }
 
     @State private var isLoading = false
@@ -58,6 +61,10 @@ struct TrackRow: View {
             trailingActions
         }
         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            handlePlayTapped()
+        }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 handleDelete()
@@ -183,6 +190,19 @@ struct TrackRow: View {
     }
 
     // MARK: - Action Handlers
+
+    private func handlePlayTapped() {
+        HapticManager.selection()
+
+        if let onPlay {
+            onPlay()
+            return
+        }
+
+        Task {
+            await PlayerState.shared.play(track: track, trackData: trackData)
+        }
+    }
 
     private func handleAddToQueue() {
         print("🎵 [TrackRow] handleAddToQueue called for track: \(track.title)")
