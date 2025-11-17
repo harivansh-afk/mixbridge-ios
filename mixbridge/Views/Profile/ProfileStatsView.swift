@@ -18,55 +18,27 @@ struct ProfileStatsView: View {
                 .resizable()
                 .scaledToFill()
                 .ignoresSafeArea()
+                .grayscale(0.7)
+                .blur(radius: 5, opaque: true)
              
 
             // Dark overlay
             
 
             // Content centered
-            VStack(spacing: 32) {
-                // Avatar
-                if let profile = profile,
-                   let avatarUrl = profile.avatar_url,
-                   let url = URL(string: avatarUrl) {
-                    CachedAsyncImage(url: url) { image in
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } placeholder: {
-                        Circle()
-                            .fill(.gray.opacity(0.3))
-                            .overlay {
-                                ProgressView()
-                                    .tint(.white)
-                            }
-                    }
-                    .frame(width: 120, height: 120)
-                    .clipShape(Circle())
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white.opacity(0.3), lineWidth: 4)
-                    )
-                } else {
-                    Circle()
-                        .fill(.gray.opacity(0.3))
-                        .frame(width: 120, height: 120)
-                        .overlay(
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 50))
-                                .foregroundColor(.white.opacity(0.5))
-                        )
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.3), lineWidth: 4)
-                        )
-                }
+            VStack(spacing: 16) {
+                // Logo
+                Image("logo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 150, height: 150)
+                    .cornerRadius(20)
 
                 // Name
                 if let profile = profile {
                     VStack(spacing: 8) {
                         Text("@\(profile.username)")
-                            .font(.custom("InstrumentSerif-Italic", size: 30))
+                            .font(.custom("InstrumentSerif-Italic", size: 20))
                             .foregroundColor(.white)
                     }
                 }
@@ -76,31 +48,31 @@ struct ProfileStatsView: View {
                     // Followers
                     VStack(spacing: 5) {
                         Text("\(profile?.followers_count ?? 0)")
-                            .font(.custom("InstrumentSerif-Italic", size: 25))
+                            .font(.custom("InstrumentSerif-Italic", size: 15))
                             .foregroundColor(.white)
 
                         Text("Followers")
-                            .font(.body)
+                            .font(.caption)
                             .foregroundColor(.white.opacity(0.7))
                     }
 
                     // Divider
                     Rectangle()
                         .fill(Color.white.opacity(0.3))
-                        .frame(width: 1, height: 55)
+                        .frame(width: 1, height: 30)
 
                     // Playlists
                     VStack(spacing: 5) {
                         Text("\(profile?.playlist_count ?? 0)")
-                            .font(.custom("InstrumentSerif-Italic", size: 25))
+                            .font(.custom("InstrumentSerif-Italic", size: 15))
                             .foregroundColor(.white)
 
                         Text("Playlists")
-                            .font(.body)
+                            .font(.caption)
                             .foregroundColor(.white.opacity(0.7))
                     }
                 }
-                .padding(.horizontal, 40)
+                .padding(.horizontal, 30)
             }
         }
         .swipeBackGesture()

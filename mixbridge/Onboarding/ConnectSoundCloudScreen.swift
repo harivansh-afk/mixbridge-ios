@@ -16,6 +16,8 @@ struct ConnectSoundCloudScreen: View {
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .clipped()
                     .ignoresSafeArea()
+                    .grayscale(0.7)
+                    .blur(radius: 5, opaque: true)
 
                 VStack(spacing: -11) {
                     Spacer()
@@ -55,21 +57,21 @@ struct ConnectSoundCloudScreen: View {
                                         .tint(.black)
                                 } else {
                                     Image(systemName: "cloud.fill")
-                                        .foregroundColor(.black)
+                                        .foregroundColor(.white)
                                     Text("Login with SoundCloud")
-                                        .foregroundColor(.black)
-                                        .font(.callout.bold())
+                                        .foregroundColor(.white)
+                                        .font(.callout)
                                 }
                             }
                             .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.white)
+                        .buttonStyle(.glass)
+                        
                         .controlSize(.large)
                         .disabled(authManager.isLoading)
                     }
                     .padding(.horizontal, 24)
-                    .padding(.bottom, max(geometry.safeAreaInsets.bottom, 20) + 5)
+                    .padding(.bottom, max(geometry.safeAreaInsets.bottom, 20) + 20)
                 }
             }
         }

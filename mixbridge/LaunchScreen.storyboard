@@ -21,9 +21,18 @@
                                 <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
                             </imageView>
 
+                            <!-- Logo Image -->
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="logo" translatesAutoresizingMaskIntoConstraints="NO" id="logoImage">
+                                <rect key="frame" x="146.5" y="326" width="100" height="100"/>
+                                <constraints>
+                                    <constraint firstAttribute="width" constant="100" id="logo-width"/>
+                                    <constraint firstAttribute="height" constant="100" id="logo-height"/>
+                                </constraints>
+                            </imageView>
+
                             <!-- Mixbridge Label -->
                             <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Mixbridge" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="titleLabel">
-                                <rect key="frame" x="20" y="370" width="353" height="112"/>
+                                <rect key="frame" x="20" y="446" width="353" height="56"/>
                                 <fontDescription key="fontDescription" name="Georgia-Italic" family="Georgia" pointSize="46"/>
                                 <color key="textColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
                                 <nil key="highlightedColor"/>
@@ -38,9 +47,13 @@
                             <constraint firstItem="bgImage" firstAttribute="trailing" secondItem="Ze5-6b-2t3" secondAttribute="trailing" id="bg-trailing"/>
                             <constraint firstItem="bgImage" firstAttribute="bottom" secondItem="Ze5-6b-2t3" secondAttribute="bottom" id="bg-bottom"/>
 
-                            <!-- Title Label Constraints (Centered) -->
+                            <!-- Logo Image Constraints -->
+                            <constraint firstItem="logoImage" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="logo-centerX"/>
+                            <constraint firstItem="logoImage" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" constant="-50" id="logo-centerY"/>
+
+                            <!-- Title Label Constraints -->
                             <constraint firstItem="titleLabel" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="title-centerX"/>
-                            <constraint firstItem="titleLabel" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="title-centerY"/>
+                            <constraint firstItem="titleLabel" firstAttribute="top" secondItem="logoImage" secondAttribute="bottom" constant="20" id="title-top"/>
                             <constraint firstItem="titleLabel" firstAttribute="leading" secondItem="6Tk-OE-BBY" secondAttribute="leading" constant="20" id="title-leading"/>
                             <constraint firstItem="6Tk-OE-BBY" firstAttribute="trailing" secondItem="titleLabel" secondAttribute="trailing" constant="20" id="title-trailing"/>
                         </constraints>
@@ -53,5 +66,6 @@
     </scenes>
     <resources>
         <image name="background" width="1170" height="2532"/>
+        <image name="logo" width="500" height="500"/>
     </resources>
 </document>
