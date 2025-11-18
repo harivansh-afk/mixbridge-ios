@@ -26,14 +26,7 @@ struct ProfileStatsView: View {
             
 
             // Content centered
-            VStack(spacing: 16) {
-                // Logo
-                Image("logo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 150, height: 150)
-                    .cornerRadius(20)
-
+            VStack(spacing: -16) {
                 // Name
                 if let profile = profile {
                     VStack(spacing: 8) {
@@ -72,7 +65,6 @@ struct ProfileStatsView: View {
                             .foregroundColor(.white.opacity(0.7))
                     }
                 }
-                .padding(.horizontal, 30)
             }
         }
         .swipeBackGesture()

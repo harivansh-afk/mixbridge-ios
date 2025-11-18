@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+import Foundation
+import Lottie
 
 @main
 struct mixbridgeApp: App {
@@ -20,15 +22,16 @@ struct mixbridgeApp: App {
             ZStack {
                 if authManager.isAuthenticated {
                     ContentView()
-                } else if !showSplash{
+                } else if !showSplash {
                     OnboardingView()
                 }
                 if showSplash {
-                    SplashView()
+                    SplashView {
+                        showSplash = false
+                    }
                 }
                 
             }
-            .animation(.easeOut, value: showSplash)
             .preferredColorScheme(themeMode.colorScheme)
             .environment(authManager)
             .environment(profileManager)
@@ -36,26 +39,59 @@ struct mixbridgeApp: App {
             .onChange(of: authManager.isAuthenticated){
                 showSplash = true
             }
-            .onAppear {
-                DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(2)) {
-                    self.showSplash = false
-                }
-            }
         }
     }
 }
 
 private struct SplashView: View {
-    var body: some View {
-        ZStack {
-            Color.black
-                .ignoresSafeArea()
+    var onFinished: () -> Void
+    @State private var didFinish = false
+    private let splashAspectRatio: CGFloat = 900.0 / 1200.0
 
-            Text("mixbridge")
-                .font(.custom("InstrumentSerif-Italic", size: 46))
-                .kerning(1)
-                .foregroundStyle(.white)
+    var body: some View {
+        GeometryReader { proxy in
+            content(for: proxy.size)
         }
         .transition(.opacity)
+    }
+
+    @ViewBuilder
+    private func content(for size: CGSize) -> some View {
+        let availableWidth = max(size.width - 48, 120)
+        let width = min(availableWidth, 420)
+        let height = width * splashAspectRatio
+
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            LottieView(
+                animationName: "splash",
+                loopMode: .playOnce,
+                contentMode: .scaleAspectFit,
+                onCompletion: finishIfNeeded
+            )
+            .frame(width: width, height: height)
+            .compositingGroup()
+            .colorInvert()
+            .offset(x: 54)
+            .offset(y: 30)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func finishIfNeeded() {
+        if Thread.isMainThread {
+            completeIfNeeded()
+        } else {
+            DispatchQueue.main.async {
+                completeIfNeeded()
+            }
+        }
+    }
+
+    private func completeIfNeeded() {
+        guard !didFinish else { return }
+        didFinish = true
+        onFinished()
     }
 }

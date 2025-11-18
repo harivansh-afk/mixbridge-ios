@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5EF67A772ECA7D4C00D6673D /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 5EF67A782ECA7D4C00D6673D /* Lottie */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXCopyFilesBuildPhase section */
 		5EF67A762ECA7D4C00D6673D /* Copy Files */ = {
 			isa = PBXCopyFilesBuildPhase;
@@ -49,6 +53,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5EF67A772ECA7D4C00D6673D /* Lottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -92,6 +97,7 @@
 			);
 			name = mixbridge;
 			packageProductDependencies = (
+				5EF67A782ECA7D4C00D6673D /* Lottie */,
 			);
 			productName = mixbridge;
 			productReference = 5E55D33D2EC1567E005A5D2C /* mixbridge.app */;
@@ -122,6 +128,7 @@
 			mainGroup = 5E55D3342EC1567E005A5D2C;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				5EF67A792ECA7D4C00D6673D /* XCRemoteSwiftPackageReference "lottie-spm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5E55D33E2EC1567E005A5D2C /* Products */;
@@ -369,6 +376,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		5EF67A792ECA7D4C00D6673D /* XCRemoteSwiftPackageReference "lottie-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/airbnb/lottie-spm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.4.3;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5EF67A782ECA7D4C00D6673D /* Lottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5EF67A792ECA7D4C00D6673D /* XCRemoteSwiftPackageReference "lottie-spm" */;
+			productName = Lottie;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 5E55D3352EC1567E005A5D2C /* Project object */;
 }
