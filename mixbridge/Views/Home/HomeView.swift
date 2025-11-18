@@ -88,8 +88,7 @@ struct HomeView: View {
                         .resizable()
                         .scaledToFill()
                 } placeholder: {
-                    Circle()
-                        .fill(.gray.opacity(0.3))
+                    Color.clear
                 }
                 .frame(width: 35, height: 35)
                 .clipShape(Circle())

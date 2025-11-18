@@ -158,11 +158,7 @@ struct AccountBottomSheet: View {
                         .resizable()
                         .scaledToFill()
                 } placeholder: {
-                    Circle()
-                        .fill(.gray.opacity(0.3))
-                        .overlay {
-                            ProgressView()
-                        }
+                    Color.clear
                 }
                 .frame(width: 50, height: 50)
                 .clipShape(Circle())
@@ -239,7 +235,7 @@ struct AccountBottomSheet: View {
     private var profileHeader: some View {
         HStack(spacing: 16) {
             ProfileCircleView(
-                profileImage: "pfp",
+                profileImage: nil,
                 userName: userName,
                 size: 50
             )

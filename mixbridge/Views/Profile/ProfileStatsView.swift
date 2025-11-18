@@ -26,7 +26,7 @@ struct ProfileStatsView: View {
             
 
             // Content centered
-            VStack(spacing: -16) {
+            VStack(spacing: 7) {
                 // Name
                 if let profile = profile {
                     VStack(spacing: 8) {
