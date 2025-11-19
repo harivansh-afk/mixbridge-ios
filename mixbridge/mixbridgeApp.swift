@@ -113,7 +113,6 @@ private struct SplashView: View {
                 }
             )
             .frame(width: width, height: height)
-            .offset(y: -40)
             .compositingGroup()
             .colorInvert()
         }

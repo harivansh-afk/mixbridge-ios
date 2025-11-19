@@ -14,6 +14,12 @@ struct ExpandedMusicPlayer: View {
     @Environment(\.colorScheme) var colorScheme
     @State private var playerState = PlayerState.shared
 
+    /// Tracks whether the user is currently dragging the progress slider
+    @State private var isDraggingProgress = false
+
+    /// Tracks whether the user is currently dragging the volume slider
+    @State private var isDraggingVolume = false
+
     private var track: Track { playerState.currentTrack }
     private var duration: Double {
         if playerState.duration > 0 {
@@ -124,14 +130,22 @@ struct ExpandedMusicPlayer: View {
 
     private var progressSection: some View {
         VStack(spacing: 10) {
-            Slider(
+            CustomSlider(
                 value: Binding(
                     get: { playerState.playbackPosition },
-                    set: { newValue in playerState.seek(to: newValue) }
+                    set: { newValue in playerState.playbackPosition = newValue }
                 ),
-                in: 0...max(duration, 1)
+                bounds: 0...max(duration, 1),
+                isDragging: $isDraggingProgress,
+                onEditingChanged: { editing in
+                    if !editing {
+                        // Seek only when drag ends (debounced automatically in PlayerState)
+                        playerState.seek(to: playerState.playbackPosition)
+                    }
+                },
+                progressColor: colorScheme == .dark ? .white.opacity(0.85) : .primary,
+                trackColor: colorScheme == .dark ? .white.opacity(0.2) : .gray.opacity(0.3)
             )
-            .tint(.primary)
 
             HStack {
                 Text(formatTime(playerState.playbackPosition))
@@ -146,7 +160,6 @@ struct ExpandedMusicPlayer: View {
             }
         }
         .padding(.top, 22)
-
     }
 
     private var transportControls: some View {
@@ -186,19 +199,26 @@ struct ExpandedMusicPlayer: View {
 
     private var volumeSection: some View {
         VStack(spacing: 6) {
-            HStack {
+            HStack(spacing: 12) {
                 Image(systemName: "speaker.fill")
-                Slider(
-                    value: Binding(
-                        get: { playerState.volume },
-                        set: { newValue in playerState.volume = newValue }
-                    ),
-                    in: 0...1
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                CustomSlider(
+                    value: $playerState.volume,
+                    bounds: 0...1,
+                    isDragging: $isDraggingVolume,
+                    onEditingChanged: { _ in
+                        // Volume changes are instant (no debouncing needed for volume)
+                    },
+                    progressColor: colorScheme == .dark ? .white.opacity(0.85) : .primary,
+                    trackColor: colorScheme == .dark ? .white.opacity(0.2) : .gray.opacity(0.3)
                 )
-                .tint(.primary)
+
                 Image(systemName: "speaker.wave.3.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .foregroundStyle(.primary)
         }
         .padding(.top, 14)
     }

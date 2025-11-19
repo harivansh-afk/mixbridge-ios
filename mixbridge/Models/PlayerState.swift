@@ -62,6 +62,12 @@ final class PlayerState: NSObject {
     private var artworkTask: Task<Void, Never>?
     private var lastPublishedStatus: PlaybackStatus = .idle
 
+    // Debouncer for seek operations to prevent excessive calls during scrubbing
+    private var seekDebouncer: Debouncer?
+
+    // Timestamp of the target seek position (updated immediately for UI responsiveness)
+    private var pendingSeekTime: Double?
+
     private override init() {
         currentTrack = Track.sampleTracks.first ?? Track(
             title: "Some Music Title",
@@ -69,6 +75,14 @@ final class PlayerState: NSObject {
             album: "Unknown Album"
         )
         super.init()
+
+        // Initialize seek debouncer with 300ms delay (optimal for UI responsiveness)
+        seekDebouncer = Debouncer(delay: 0.3) { [weak self] in
+            guard let self, let targetTime = self.pendingSeekTime else { return }
+            self.playbackCoordinator.seek(to: targetTime)
+            self.pendingSeekTime = nil
+        }
+
         configureAudioSession()
         setupNotifications()
         setupRemoteCommands()
@@ -123,8 +137,28 @@ final class PlayerState: NSObject {
         updateNowPlayingInfo(playbackRate: 1)
     }
 
-    func seek(to time: Double) {
-        playbackCoordinator.seek(to: time)
+    /// Seeks to a specific time position with debouncing to prevent excessive operations.
+    /// UI updates happen immediately while the actual AVPlayer seek is debounced by 300ms.
+    ///
+    /// - Parameter time: The target playback position in seconds
+    /// - Parameter immediate: If true, bypasses debouncing and seeks immediately (default: false)
+    func seek(to time: Double, immediate: Bool = false) {
+        // Update UI immediately for smooth visual feedback
+        playbackPosition = time
+        pendingSeekTime = time
+
+        if immediate {
+            // Immediate seek (used for programmatic seeks, not user scrubbing)
+            seekDebouncer?.cancel()
+            playbackCoordinator.seek(to: time)
+            pendingSeekTime = nil
+        } else {
+            // Debounced seek (used for user scrubbing)
+            seekDebouncer?.call()
+        }
+
+        // Update Now Playing info with new position
+        updateNowPlayingInfo()
     }
 
     func playNextFromQueue() {
@@ -139,17 +173,54 @@ final class PlayerState: NSObject {
 
     private func configureAudioSession() {
         do {
-            try audioSession.setCategory(.playback, mode: .moviePlayback, options: [.allowBluetoothA2DP, .allowAirPlay])
-            try audioSession.setActive(true)
-        } catch {
+            // Configure audio session for Now Playing integration
+            // Note: Cannot use .mixWithOthers or it won't appear in Control Center/Lock Screen
+            // Using .playback category makes us the primary audio app
+
+            // Only configure if not already set to avoid OSStatus -50
+            if audioSession.category != .playback || audioSession.mode != .default {
+                try audioSession.setCategory(
+                    .playback,
+                    mode: .default,
+                    options: [.allowBluetoothA2DP, .allowAirPlay]
+                )
+            }
+
+            // Activate session
+            if !audioSession.isOtherAudioPlaying {
+                try audioSession.setActive(true)
+            }
+
+            print("✅ Audio session configured successfully")
+        } catch let error as NSError {
+            // OSStatus -50 means invalid parameter, but often non-fatal
+            if error.code == -50 {
+                print("⚠️ Audio session configuration warning (non-fatal): \(error.localizedDescription)")
+            } else {
+                print("❌ Failed to configure audio session: \(error.localizedDescription)")
+            }
         }
     }
 
     private func activateAudioSession() throws {
-        if audioSession.category != .playback {
-            try audioSession.setCategory(.playback, mode: .moviePlayback, options: [.allowBluetoothA2DP, .allowAirPlay])
+        // Only reconfigure if category is wrong
+        if audioSession.category != .playback || audioSession.mode != .default {
+            try audioSession.setCategory(
+                .playback,
+                mode: .default,
+                options: [.allowBluetoothA2DP, .allowAirPlay]
+            )
         }
-        try audioSession.setActive(true)
+
+        // Try to activate, but don't throw if already active
+        do {
+            try audioSession.setActive(true)
+        } catch let error as NSError {
+            // Ignore if already active or if OSStatus -50
+            if error.code != -50 {
+                throw error
+            }
+        }
     }
 
     private func setupNotifications() {
@@ -169,36 +240,99 @@ final class PlayerState: NSObject {
     }
 
     private func setupRemoteCommands() {
+        // Remove all existing targets to prevent duplicates
         commandCenter.playCommand.removeTarget(nil)
         commandCenter.pauseCommand.removeTarget(nil)
         commandCenter.nextTrackCommand.removeTarget(nil)
         commandCenter.previousTrackCommand.removeTarget(nil)
         commandCenter.togglePlayPauseCommand.removeTarget(nil)
+        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
+        commandCenter.skipForwardCommand.removeTarget(nil)
+        commandCenter.skipBackwardCommand.removeTarget(nil)
 
+        // Basic playback controls
+        commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { [weak self] _ in
             self?.resume()
             return .success
         }
 
+        commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { [weak self] _ in
             self?.pause()
             return .success
         }
 
+        commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
             self?.togglePlayback()
             return .success
         }
 
+        // Track navigation
+        commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
             self?.playNextFromQueue()
             return .success
         }
 
+        commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
             self?.playPreviousFromQueue()
             return .success
         }
+
+        // Playback position (lock screen scrubbing)
+        commandCenter.changePlaybackPositionCommand.isEnabled = true
+        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let self else { return .commandFailed }
+            guard let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
+                return .commandFailed
+            }
+
+            // Use immediate seek for lock screen scrubbing (no debounce needed)
+            self.seek(to: positionEvent.positionTime, immediate: true)
+            return .success
+        }
+
+        // Skip forward (15 seconds)
+        commandCenter.skipForwardCommand.isEnabled = true
+        commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: 15)]
+        commandCenter.skipForwardCommand.addTarget { [weak self] event in
+            guard let self else { return .commandFailed }
+            let skipInterval: Double
+            if let skipEvent = event as? MPSkipIntervalCommandEvent {
+                skipInterval = skipEvent.interval
+            } else {
+                skipInterval = 15.0
+            }
+
+            let newPosition = min(self.playbackPosition + skipInterval, self.duration)
+            self.seek(to: newPosition, immediate: true)
+            return .success
+        }
+
+        // Skip backward (15 seconds)
+        commandCenter.skipBackwardCommand.isEnabled = true
+        commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: 15)]
+        commandCenter.skipBackwardCommand.addTarget { [weak self] event in
+            guard let self else { return .commandFailed }
+            let skipInterval: Double
+            if let skipEvent = event as? MPSkipIntervalCommandEvent {
+                skipInterval = skipEvent.interval
+            } else {
+                skipInterval = 15.0
+            }
+
+            let newPosition = max(self.playbackPosition - skipInterval, 0)
+            self.seek(to: newPosition, immediate: true)
+            return .success
+        }
+
+        // Disable commands we don't support
+        commandCenter.seekForwardCommand.isEnabled = false
+        commandCenter.seekBackwardCommand.isEnabled = false
+        commandCenter.changePlaybackRateCommand.isEnabled = false
     }
 
     // MARK: - Notifications
@@ -244,6 +378,7 @@ final class PlayerState: NSObject {
         var info: [String: Any] = [:]
         info[MPMediaItemPropertyTitle] = currentTrack.title
         info[MPMediaItemPropertyArtist] = currentTrack.artist
+        info[MPMediaItemPropertyAlbumTitle] = currentTrack.album
 
         let trackDuration = duration > 0 ? duration : max(currentTrack.duration, 0)
         info[MPMediaItemPropertyPlaybackDuration] = trackDuration
@@ -255,26 +390,58 @@ final class PlayerState: NSObject {
         }
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        #if DEBUG
+        print("🎨 Now Playing updated: \(currentTrack.title)")
+        #endif
     }
 
     private func refreshArtwork(for track: Track) {
         artworkTask?.cancel()
 
+        // Set placeholder artwork immediately
+        nowPlayingArtwork = nil
+        updateNowPlayingInfo()
+
         if track.artwork.starts(with: "http"), let url = URL(string: track.artwork) {
             artworkTask = Task { [weak self] in
                 guard let self else { return }
+
                 if let image = await ImageCacheManager.shared.getImage(for: url) {
-                    let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                    // Create artwork with proper handler that returns resized images
+                    let artwork = MPMediaItemArtwork(boundsSize: image.size) { requestedSize in
+                        // Resize image to requested size for optimal display
+                        let renderer = UIGraphicsImageRenderer(size: requestedSize)
+                        return renderer.image { context in
+                            image.draw(in: CGRect(origin: .zero, size: requestedSize))
+                        }
+                    }
+
                     await MainActor.run {
                         self.nowPlayingArtwork = artwork
                         self.updateNowPlayingInfo()
+                        #if DEBUG
+                        print("✅ Artwork loaded: \(track.title)")
+                        #endif
                     }
+                } else {
+                    #if DEBUG
+                    print("⚠️ Artwork load failed: \(track.title)")
+                    #endif
                 }
             }
         } else if let image = UIImage(named: track.artwork) {
-            nowPlayingArtwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            // Local asset
+            let artwork = MPMediaItemArtwork(boundsSize: image.size) { requestedSize in
+                let renderer = UIGraphicsImageRenderer(size: requestedSize)
+                return renderer.image { context in
+                    image.draw(in: CGRect(origin: .zero, size: requestedSize))
+                }
+            }
+            nowPlayingArtwork = artwork
+            updateNowPlayingInfo()
         } else {
             nowPlayingArtwork = nil
+            updateNowPlayingInfo()
         }
     }
 
@@ -295,11 +462,15 @@ final class PlayerState: NSObject {
 
 extension PlayerState: PlaybackCoordinatorDelegate {
     func playbackCoordinator(_ coordinator: PlaybackCoordinator, didUpdate snapshot: PlaybackSnapshot) {
+        var needsNowPlayingUpdate = false
+
+        // Track changes
         if let track = snapshot.track {
             let trackChanged = track.id != currentTrack.id
             currentTrack = track
             if trackChanged {
                 refreshArtwork(for: track)
+                needsNowPlayingUpdate = true
             }
             if let index = snapshot.queueIndex {
                 currentQueueIndex = index
@@ -310,11 +481,34 @@ extension PlayerState: PlaybackCoordinatorDelegate {
             currentQueueIndex = -1
         }
 
+        // Playing state changes
+        let wasPlaying = isPlaying
         isPlaying = snapshot.isPlaying
+        if wasPlaying != isPlaying {
+            needsNowPlayingUpdate = true
+        }
+
+        // Status changes
+        let statusChanged = playbackStatus != snapshot.status
         playbackStatus = snapshot.status
+        if statusChanged {
+            needsNowPlayingUpdate = true
+        }
+
+        // Position and duration (update locally, but don't spam Now Playing)
         playbackPosition = snapshot.currentTime
         duration = snapshot.duration
-        updateNowPlayingInfo()
+
+        // Only update Now Playing when something meaningful changed
+        if needsNowPlayingUpdate {
+            updateNowPlayingInfo()
+        } else {
+            // Just update the elapsed time (lightweight operation)
+            var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+            info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = playbackPosition
+            info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1 : 0
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        }
 
         if playbackStatus == .playing && lastPublishedStatus == .loading {
             HapticManager.success()

@@ -53,6 +53,12 @@ final class PlaybackCoordinator: NSObject {
     private var nextPreloadedItem: AVPlayerItem?
     private var itemContextMap: [AVPlayerItem: PlaybackContext] = [:]
 
+    /// Tracks whether the next track has been preloaded for the current track
+    private var hasPreloadedForCurrentTrack = false
+
+    /// Progress threshold (0.0 - 1.0) at which to trigger preloading of the next track
+    private let preloadTriggerProgress: Double = 0.75
+
     private var status: PlayerState.PlaybackStatus = .idle {
         didSet { publishSnapshot() }
     }
@@ -156,6 +162,7 @@ final class PlaybackCoordinator: NSObject {
             itemContextMap.removeAll()
             nextPreloadedContext = nil
             nextPreloadedItem = nil
+            hasPreloadedForCurrentTrack = false // Reset preload flag for new track
 
             player.insert(playerItem, after: nil)
             itemContextMap[playerItem] = context
@@ -164,7 +171,8 @@ final class PlaybackCoordinator: NSObject {
             status = .playing
             publishSnapshot()
 
-            await preloadNextItem(from: context)
+            // Preloading now happens at 75% progress (see addTimeObserver)
+            // This optimizes bandwidth usage and reduces unnecessary preloads for skipped tracks
         } catch {
             delegate?.playbackCoordinator(self, didEncounter: error)
             status = .failed(error.localizedDescription)
@@ -237,7 +245,29 @@ final class PlaybackCoordinator: NSObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.publishSnapshot()
+                guard let self else { return }
+
+                // Calculate playback progress
+                let currentTime = CMTimeGetSeconds(self.player.currentTime())
+                let duration = CMTimeGetSeconds(self.player.currentItem?.duration ?? .invalid)
+
+                // Trigger progress-based preloading
+                if !self.hasPreloadedForCurrentTrack,
+                   currentTime.isFinite,
+                   duration.isFinite,
+                   duration > 0 {
+                    let progress = currentTime / duration
+
+                    // Preload next track when reaching 75% progress
+                    if progress >= self.preloadTriggerProgress,
+                       let current = self.currentContext {
+                        self.hasPreloadedForCurrentTrack = true
+                        await self.preloadNextItem(from: current)
+                    }
+                }
+
+                // Publish snapshot for UI updates
+                self.publishSnapshot()
             }
         }
     }
@@ -271,13 +301,11 @@ final class PlaybackCoordinator: NSObject {
         if let currentItem = player.currentItem,
            let context = itemContextMap[currentItem] {
             currentContext = context
+            hasPreloadedForCurrentTrack = false // Reset flag for new track
+            nextPreloadedContext = nil
+            nextPreloadedItem = nil
             publishSnapshot()
-            Task { [weak self] in
-                guard let self, let current = self.currentContext else { return }
-                self.nextPreloadedContext = nil
-                self.nextPreloadedItem = nil
-                await self.preloadNextItem(from: current)
-            }
+            // Preloading will happen at 75% progress (see addTimeObserver)
         } else {
             currentContext = nil
             status = .ready
