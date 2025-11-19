@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-
+    
 extension Color {
     // MARK: - Background Colors
     static let adaptiveBackground = Color(uiColor: .systemBackground)

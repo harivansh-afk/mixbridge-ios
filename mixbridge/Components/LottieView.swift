@@ -1,70 +1,92 @@
-import SwiftUI
-import UIKit
 import Lottie
+import SwiftUI
 
-struct LottieView: UIViewRepresentable {
-    let animationName: String
-    var loopMode: LottieLoopMode = .playOnce
-    var contentMode: UIView.ContentMode = .scaleAspectFit
-    var animationSpeed: CGFloat = 1.0
-    var onCompletion: (() -> Void)?
+public struct LottieView: UIViewRepresentable {
+    let file: File
+    var loopMode: LottieLoopMode
+    var speed: CGFloat
+    let preserveLastFrame: Bool
+    var onComplete: (() -> Void)?
 
-    func makeUIView(context: Context) -> LottieAnimationView {
+    public init(file: File, loopMode: LottieLoopMode = .playOnce, speed: CGFloat = 1.0, preserveLastFrame: Bool = true, onComplete: (() -> Void)? = nil) {
+        self.file = file
+        self.loopMode = loopMode
+        self.speed = speed
+        self.preserveLastFrame = preserveLastFrame
+        self.onComplete = onComplete
+    }
+
+    public func makeCoordinator() -> Coordinator {
+        Coordinator(onComplete: onComplete)
+    }
+
+    public func makeUIView(context: Context) -> UIView {
+        let containerView = UIView(frame: .zero)
         let animationView = LottieAnimationView()
-        animationView.translatesAutoresizingMaskIntoConstraints = false
-        configure(animationView, coordinator: context.coordinator)
-        return animationView
-    }
 
-    func updateUIView(_ uiView: LottieAnimationView, context: Context) {
-        configure(uiView, coordinator: context.coordinator)
-    }
+        context.coordinator.containerView = containerView
+        context.coordinator.animationView = animationView
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(animationName: animationName, onCompletion: onCompletion)
-    }
-
-    private func configure(_ animationView: LottieAnimationView, coordinator: Coordinator) {
-        animationView.contentMode = contentMode
+        // Try to load from module bundle first, then main bundle as fallback
+        if let animation = LottieAnimation.named(file.rawValue, bundle: .main) {
+            animationView.animation = animation
+        } else {
+            print("type shi")
+        }
+        animationView.contentMode = .scaleAspectFit
         animationView.loopMode = loopMode
-        animationView.animationSpeed = animationSpeed
-        animationView.backgroundBehavior = .pauseAndRestore
-
-        if animationView.animation == nil || coordinator.animationName != animationName {
-            coordinator.animationName = animationName
-            animationView.animation = LottieAnimation.named(animationName)
-            animationView.currentProgress = 0
-
-            print("🎬 Loading animation: \(animationName)")
-            if animationView.animation == nil {
-                print("❌ Failed to load animation: \(animationName)")
-            } else {
-                print("✅ Animation loaded successfully")
+        animationView.animationSpeed = speed
+        animationView.play { [weak coordinator = context.coordinator] _ in
+            coordinator?.onComplete?()
+            if !preserveLastFrame {
+                coordinator?.cleanupAnimation()
             }
         }
 
-        guard animationView.animation != nil else {
-            print("⚠️ Animation is nil, cannot play")
-            return
-        }
+        containerView.addSubview(animationView)
 
-        if !animationView.isAnimationPlaying {
-            print("▶️ Starting animation playback")
-            animationView.play { finished in
-                print("🏁 Animation finished: \(finished)")
-                guard finished else { return }
-                coordinator.onCompletion?()
-            }
-        }
+        animationView.translatesAutoresizingMaskIntoConstraints = false
+        animationView.heightAnchor.constraint(equalTo: containerView.heightAnchor).isActive = true
+        animationView.widthAnchor.constraint(equalTo: containerView.widthAnchor).isActive = true
+
+        return containerView
     }
 
-    final class Coordinator {
-        var animationName: String
-        var onCompletion: (() -> Void)?
+    public func updateUIView(_: UIViewType, context _: Context) { /* --- */ }
 
-        init(animationName: String, onCompletion: (() -> Void)?) {
-            self.animationName = animationName
-            self.onCompletion = onCompletion
+    public static func dismantleUIView(_: UIView, coordinator: Coordinator) {
+        coordinator.animationView?.stop()
+        coordinator.animationView?.removeFromSuperview()
+
+        coordinator.animationView = nil
+        coordinator.containerView = nil
+    }
+
+    public class Coordinator {
+        var containerView: UIView?
+        var animationView: LottieAnimationView?
+        var onComplete: (() -> Void)?
+
+        init(onComplete: (() -> Void)?) {
+            self.onComplete = onComplete
         }
+
+        func cleanupAnimation() {
+            animationView?.removeFromSuperview()
+            animationView = nil
+        }
+    }
+}
+
+public extension LottieView {
+    enum File: String {
+        case logo
+        case loadingSearchProducts = "loading-products-circle"
+        case loadingSearchLogos = "logos-loop"
+
+        case onboardingTutorialBookmarks
+        case onboardingTutorialCompare
+        case onboardingTutorialComplete
+        case onboardingTutorialExtension
     }
 }
