@@ -76,7 +76,7 @@ struct AccountBottomSheet: View {
                 Section {
                     VStack(alignment: .leading, spacing: 6) {
                         Picker("Appearance", selection: $themeMode) {
-                            ForEach(AppearanceMode.allCases) { mode in
+                            ForEach(AppearanceMode.allCases.filter { $0 != .system }) { mode in
                                 Text(mode.rawValue)
                                     .font(.system(size: 16))
                                     .tag(mode)
