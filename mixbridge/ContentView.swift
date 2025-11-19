@@ -33,9 +33,9 @@ struct ContentView: View {
     @ViewBuilder
     func PlayerInfo(_ track: Track, size: CGSize) -> some View {
         HStack(spacing: 7) {
-            Group { 
+            Group {
                 if track.artwork.starts(with: "http"), let url = URL(string: track.artwork) {
-                    AsyncImage(url: url) { phase in
+                    CachedAsyncImagePhase(url: url) { phase in
                         switch phase {
                         case .empty:
                             miniArtworkPlaceholder(size: size)
