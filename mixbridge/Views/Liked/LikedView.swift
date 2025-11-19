@@ -52,20 +52,16 @@ struct LikedView: View {
 
     private func loadLikedTracks() async {
         guard let userId = authManager.currentUserId else {
-            print("❌ [LikedView] No userId")
             return
         }
 
         guard !isLoading else {
-            print("⏭️ [LikedView] Already loading, skipping")
             return
         }
 
         isLoading = true
-        print("🔄 [LikedView] Starting load...")
 
         // Try Convex cache first
-        print("📡 [LikedView] Fetching liked tracks from Convex for userId: \(userId)")
         do {
             let cached = try await BackgroundExecutor.run {
                 try await ConvexService.shared.getLikedTracks(userId: userId)
@@ -75,19 +71,15 @@ struct LikedView: View {
                 let (tracks, tracksData) = convertToTracksWithData(cached.tracks)
                 self.likedTracks = tracks
                 self.likedTracksData = tracksData
-                print("✅ [LikedView] Loaded \(likedTracks.count) liked tracks from Convex cache!")
                 hasLoaded = true
                 isLoading = false
                 return
             }
         } catch ConvexError.noData {
-            print("⚠️ [LikedView] No cache, will try backend")
         } catch {
-            print("❌ [LikedView] Convex error: \(error)")
         }
 
         // Fallback: Fetch from backend (fresh from SoundCloud)
-        print("📡 [LikedView] Fetching from backend API...")
         do {
             let response = try await BackgroundExecutor.run {
                 try await BackendAPI.shared.getLikedTracks(limit: 50)
@@ -95,9 +87,7 @@ struct LikedView: View {
             let (tracks, tracksData) = convertToTracksWithData(response.tracks)
             self.likedTracks = tracks
             self.likedTracksData = tracksData
-            print("✅ [LikedView] Loaded \(likedTracks.count) liked tracks from backend!")
         } catch {
-            print("❌ [LikedView] Backend error: \(error)")
         }
 
         hasLoaded = true
@@ -139,7 +129,7 @@ struct LikedView: View {
     @ViewBuilder
     private var content: some View {
         if isLoading {
-            ProgressView("Loading...")
+            ProgressView("")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if likedTracks.isEmpty {
             emptyState

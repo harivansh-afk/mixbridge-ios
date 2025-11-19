@@ -11,7 +11,7 @@ struct AllSongsView: View {
     var body: some View {
         Group {
             if isLoading {
-                ProgressView("Loading...")
+                ProgressView("")
             } else if tracks.isEmpty {
                 ContentUnavailableView(
                     "No Songs",
@@ -52,7 +52,6 @@ struct AllSongsView: View {
         isLoading = true
 
         do {
-            print("📡 [AllSongs] Fetching liked tracks for userId: \(userId)")
             let cached = try await BackgroundExecutor.run {
                 try await ConvexService.shared.getLikedTracks(userId: userId)
             }
@@ -88,10 +87,8 @@ struct AllSongsView: View {
 
                 self.tracks = tracksList
                 self.tracksData = rawData
-                print("✅ [AllSongs] Loaded \(tracks.count) songs!")
             }
         } catch {
-            print("❌ [AllSongs] Error: \(error)")
         }
 
         hasLoaded = true

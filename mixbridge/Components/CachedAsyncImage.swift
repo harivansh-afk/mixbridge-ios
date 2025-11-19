@@ -91,15 +91,11 @@ struct CachedAsyncImagePhase<Content: View>: View {
             return
         }
 
-        do {
-            if let cachedImage = await ImageCacheManager.shared.getImage(for: url) {
-                self.image = cachedImage
-                self.error = nil
-            } else {
-                self.error = NSError(domain: "ImageCache", code: -1)
-            }
-        } catch let loadError {
-            self.error = loadError
+        if let cachedImage = await ImageCacheManager.shared.getImage(for: url) {
+            self.image = cachedImage
+            self.error = nil
+        } else {
+            self.error = NSError(domain: "ImageCache", code: -1)
         }
 
         isLoading = false

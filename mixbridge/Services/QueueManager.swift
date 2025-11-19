@@ -33,11 +33,8 @@ class QueueManager {
 
     /// Add track to queue with optimistic update
     func addTrack(_ track: Track, rawData: [String: Any]) async throws {
-        print("🎵 [QueueManager] Adding track: \(track.title)")
-
         // Check for duplicates
         if isInQueue(track.id) {
-            print("⚠️ [QueueManager] Track already in queue")
             throw ConvexError.alreadyInQueue
         }
 
@@ -58,14 +55,9 @@ class QueueManager {
             // Haptic feedback for success
             HapticManager.success()
 
-            print("✅ [QueueManager] Track added successfully")
-            print("✅ [QueueManager] Queue now has \(queueTracks.count) tracks")
-            print("✅ [QueueManager] Stored mapping: \(track.id) -> \(queueTrackId)")
         } catch ConvexError.alreadyInQueue {
-            print("ℹ️ [QueueManager] Track already in queue (409)")
             throw ConvexError.alreadyInQueue
         } catch {
-            print("❌ [QueueManager] Failed to add track: \(error)")
             throw error
         }
     }
@@ -73,11 +65,8 @@ class QueueManager {
     /// Remove track from queue with optimistic update
     func removeTrack(_ track: Track) async throws {
         guard let convexQueueTrackId = queueTrackIds[track.id] else {
-            print("❌ [QueueManager] No queue track ID found for: \(track.id)")
             throw ConvexError.notFound
         }
-
-        print("🗑️ [QueueManager] Removing track: \(track.title)")
 
         // Store original state for rollback
         let removedTrack = track
@@ -87,7 +76,6 @@ class QueueManager {
         queueTracks.removeAll { $0.id == track.id }
         queueTrackIds.removeValue(forKey: track.id)
         queueTrackData.removeValue(forKey: track.id)
-        print("⚡ [QueueManager] Optimistically removed - queue now has \(queueTracks.count) tracks")
 
         // Haptic feedback for delete
         HapticManager.warning()
@@ -97,15 +85,11 @@ class QueueManager {
             try await BackgroundExecutor.run {
                 try await ConvexService.shared.removeTrackFromQueue(queueTrackId: convexQueueTrackId)
             }
-            print("✅ [QueueManager] Track deleted from server successfully")
         } catch {
-            print("❌ [QueueManager] Failed to delete from server: \(error)")
-
             // Rollback: re-insert track at original position
             if let index = originalIndex {
                 queueTracks.insert(removedTrack, at: min(index, queueTracks.count))
                 queueTrackIds[track.id] = convexQueueTrackId
-                print("↩️ [QueueManager] Rolled back delete")
             }
             throw error
         }
@@ -113,7 +97,6 @@ class QueueManager {
 
     /// Load queue from server
     func loadQueue(userId: String) async throws {
-        print("🔄 [QueueManager] Loading queue for userId: \(userId)")
         isLoading = true
 
         do {
@@ -153,9 +136,7 @@ class QueueManager {
             self.queueTrackIds = trackIdMap
             self.queueTrackData = rawDataMap
 
-            print("✅ [QueueManager] Loaded \(queueTracks.count) queue tracks")
         } catch {
-            print("❌ [QueueManager] Failed to load queue: \(error)")
             throw error
         }
 
@@ -167,7 +148,6 @@ class QueueManager {
         queueTracks.removeAll()
         queueTrackIds.removeAll()
         queueTrackData.removeAll()
-        print("🗑️ [QueueManager] Queue cleared")
     }
 
     // MARK: - Helpers

@@ -24,22 +24,16 @@ class UserProfileManager {
         errorMessage = nil
 
         do {
-            print("📡 [ProfileManager] Fetching profile from Convex for userId: \(userId)")
             let fetchedProfile = try await BackgroundExecutor.run {
                 try await ConvexService.shared.getUserProfile(userId: userId)
             }
 
             if let fetchedProfile = fetchedProfile {
                 self.profile = fetchedProfile
-                print("✅ [ProfileManager] Profile loaded!")
-                print("   Username: \(fetchedProfile.profile.username)")
-                print("   Avatar: \(fetchedProfile.profile.avatar_url ?? "N/A")")
             } else {
-                print("⚠️ [ProfileManager] No profile found in cache")
                 errorMessage = "Profile not cached"
             }
         } catch {
-            print("❌ [ProfileManager] Failed to load profile: \(error)")
             errorMessage = error.localizedDescription
         }
 

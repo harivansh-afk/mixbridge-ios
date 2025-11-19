@@ -21,7 +21,7 @@ struct SearchView: View {
         NavigationStack {
             content
                 .navigationTitle("Search")
-                .searchable(text: $searchText, prompt: "Search SoundCloud...")
+                .searchable(text: $searchText, prompt: "Search")
                 .onChange(of: searchText) { oldValue, newValue in
                     // Cancel previous search
                     searchTask?.cancel()
@@ -50,7 +50,7 @@ struct SearchView: View {
         if searchText.isEmpty {
             emptyState
         } else if isSearching {
-            ProgressView("Searching...")
+            ProgressView("")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let results = searchResults {
             resultsView(results: results)
@@ -162,12 +162,10 @@ struct SearchView: View {
 
         // Skip if we already searched for this exact query
         guard query != lastSearchedQuery else {
-            print("⏭️ [Search] Already searched for '\(query)', skipping")
             return
         }
 
         isSearching = true
-        print("🔍 [Search] Searching for: '\(query)'")
 
         do {
             let results = try await BackgroundExecutor.run {
@@ -178,12 +176,9 @@ struct SearchView: View {
             if query == searchText {
                 self.searchResults = results
                 self.lastSearchedQuery = query
-                print("✅ [Search] Results for '\(query)': \(results.tracks.count) tracks, \(results.playlists.count) playlists")
-            } else {
-                print("⏭️ [Search] Discarding stale results for '\(query)' (current: '\(searchText)')")
             }
         } catch {
-            print("❌ [Search] Error searching for '\(query)': \(error)")
+            // Silently handle errors
         }
 
         isSearching = false

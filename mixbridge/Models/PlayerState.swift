@@ -142,7 +142,6 @@ final class PlayerState: NSObject {
             try audioSession.setCategory(.playback, mode: .moviePlayback, options: [.allowBluetoothA2DP, .allowAirPlay])
             try audioSession.setActive(true)
         } catch {
-            print("❌ [PlayerState] Failed to configure audio session: \(error)")
         }
     }
 

@@ -62,8 +62,8 @@ struct PlaylistActionButtons: View {
 
 #Preview("Light Mode") {
     PlaylistActionButtons(
-        onPlay: { print("Play tapped") },
-        onShuffle: { print("Shuffle tapped") }
+        onPlay: {},
+        onShuffle: {}
     )
     .padding()
     .preferredColorScheme(.light)
@@ -71,8 +71,8 @@ struct PlaylistActionButtons: View {
 
 #Preview("Dark Mode") {
     PlaylistActionButtons(
-        onPlay: { print("Play tapped") },
-        onShuffle: { print("Shuffle tapped") }
+        onPlay: {},
+        onShuffle: {}
     )
     .padding()
     .preferredColorScheme(.dark)

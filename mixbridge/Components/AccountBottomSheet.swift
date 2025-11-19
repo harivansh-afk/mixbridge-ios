@@ -72,45 +72,40 @@ struct AccountBottomSheet: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
 
-                // Settings
-                Section {
-                    Toggle(isOn: $Personalization) {
-                        HStack(spacing: 8) {
-                            Image("brain")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 20, height: 20)
-                            Text("Personalization")
-                        }
-                    }
-                    .tint(.blue)
-                    Toggle(isOn: $Notifications) {
-                        HStack(spacing: 8) {
-                            Image("bell")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 20, height: 20)
-                            Text("Notifications")
-                        }
-                    }
-                    .tint(.blue)
-                }
-                .listRowSeparator(.hidden)
-
+                // Theme Picker Section
                 Section {
                     VStack(alignment: .leading, spacing: 6) {
                         Picker("Appearance", selection: $themeMode) {
                             ForEach(AppearanceMode.allCases) { mode in
-                                Label(mode.rawValue, systemImage: mode.icon)
+                                Text(mode.rawValue)
+                                    .font(.system(size: 16))
                                     .tag(mode)
                             }
                         }
                         .pickerStyle(.segmented)
                     }
-
                 }
-                .listRowSeparator(.hidden)
-                
+
+                // Settings Section
+                Section {
+                    Toggle(isOn: $Personalization) {
+                        HStack(spacing: 8) {
+                            Text("Personalization")
+                                .font(.system(size: 18))
+                        }
+                    }
+                    .tint(.blue)
+
+                    Toggle(isOn: $Notifications) {
+                        HStack(spacing: 8) {
+                            Text("Notifications")
+                                .font(.system(size: 18))
+                        }
+                    }
+                    .tint(.blue)
+                }
+
+                // Logout Section
                 Section {
                     Button(action: {
                         authManager.logout()
@@ -118,16 +113,19 @@ struct AccountBottomSheet: View {
                     }) {
                         HStack {
                             Image(systemName: "rectangle.portrait.and.arrow.right")
+                                .font(.system(size: 18))
                                 .foregroundStyle(.red)
                             Text("Logout")
+                                .font(.system(size: 18))
                                 .foregroundStyle(.red)
+                            Spacer()
                         }
                     }
                 }
-                .listRowSeparator(.hidden)
 
             }
             .listStyle(InsetGroupedListStyle())
+            .listSectionSpacing(20)
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -176,12 +174,12 @@ struct AccountBottomSheet: View {
                     .foregroundColor(.primary)
 
                 HStack(spacing: 4) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundColor(.blue)
                     Text("Connected to SoundCloud")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundColor(.orange)
                 }
 
             }
@@ -200,32 +198,21 @@ struct AccountBottomSheet: View {
 
     private func loadProfile() async {
         guard let userId = authManager.currentUserId else {
-            print("❌ [AccountBottomSheet] No userId available")
             return
         }
 
         isLoadingProfile = true
 
         do {
-            print("📡 [AccountBottomSheet] Fetching profile from Convex for userId: \(userId)")
             let profile = try await BackgroundExecutor.run {
                 try await ConvexService.shared.getUserProfile(userId: userId)
             }
 
             if let profile = profile {
                 self.convexProfile = profile
-                print("✅ [AccountBottomSheet] Profile loaded from Convex!")
-                print("   Username: \(profile.profile.username)")
-                print("   Full name: \(profile.profile.full_name ?? "N/A")")
-                print("   Followers: \(profile.profile.followers_count ?? 0)")
-                print("   Playlists: \(profile.profile.playlist_count ?? 0)")
-                print("   Avatar: \(profile.profile.avatar_url ?? "N/A")")
-            } else {
-                print("⚠️ [AccountBottomSheet] No profile found in Convex cache")
             }
         } catch {
-            print("❌ [AccountBottomSheet] Failed to fetch profile: \(error)")
-            print("   Error details: \(error.localizedDescription)")
+            // Silently handle errors
         }
 
         isLoadingProfile = false

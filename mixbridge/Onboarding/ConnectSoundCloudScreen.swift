@@ -79,33 +79,17 @@ struct ConnectSoundCloudScreen: View {
     }
 
     private func startAuthentication() {
-        print("🎯 startAuthentication called")
-
         guard let authURL = authManager.getAuthorizationURL() else {
-            print("❌ Failed to generate auth URL")
             authManager.errorMessage = "Failed to generate auth URL"
             return
         }
-
-        print("🌐 Creating ASWebAuthenticationSession with URL: \(authURL.absoluteString)")
-        print("🔗 Callback scheme: mixbridge")
 
         let session = ASWebAuthenticationSession(
             url: authURL,
             callbackURLScheme: "mixbridge"
         ) { callbackURL, error in
-            print("📞 Session completion handler called")
-
             if let error = error {
-                let nsError = error as NSError
-                print("❌ Error occurred:")
-                print("   Domain: \(nsError.domain)")
-                print("   Code: \(nsError.code)")
-                print("   Description: \(error.localizedDescription)")
-                print("   User Info: \(nsError.userInfo)")
-
                 if case ASWebAuthenticationSessionError.canceledLogin = error {
-                    print("ℹ️ User cancelled login")
                     authManager.isLoading = false
                     return
                 }
@@ -116,37 +100,22 @@ struct ConnectSoundCloudScreen: View {
             }
 
             guard let callbackURL = callbackURL else {
-                print("❌ No callback URL received")
                 authManager.errorMessage = "No callback URL received"
                 authManager.isLoading = false
                 return
             }
 
-            print("✅ Received callback URL: \(callbackURL.absoluteString)")
-
-            // Handle the callback
             Task {
                 await authManager.handleCallback(url: callbackURL)
             }
         }
 
-        // Set presentation context provider BEFORE storing session
         session.presentationContextProvider = contextProvider
-        print("🎭 Presentation context provider set")
-
-        // Store session to prevent deallocation
         self.authSession = session
-        print("💾 Session stored in @State variable")
-
         session.prefersEphemeralWebBrowserSession = false
-        print("🔧 prefersEphemeralWebBrowserSession set to false")
 
-        print("🚀 Starting session...")
         let started = session.start()
-        print("📊 Session start result: \(started)")
-
         if !started {
-            print("⚠️ Session failed to start!")
             authManager.errorMessage = "Authentication session failed to start"
         }
     }
@@ -168,14 +137,25 @@ class PresentationContextProvider: NSObject, ASWebAuthenticationPresentationCont
         if let windowScene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
             .first {
+            // Try to return existing window first
+            if let existingWindow = windowScene.windows.first {
+                return existingWindow
+            }
+            // Create new window with scene if no existing window
             return UIWindow(windowScene: windowScene)
         }
 
-        // Last resort fallback
+        // Last resort fallback - return any existing window
         return UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .flatMap { $0.windows }
-            .first ?? UIWindow(frame: .zero)
+            .first ?? {
+                // If no window exists, create one with first available scene
+                if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                    return UIWindow(windowScene: scene)
+                }
+                fatalError("No window scene available")
+            }()
     }
 }
 

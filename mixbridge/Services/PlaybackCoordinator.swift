@@ -210,8 +210,7 @@ final class PlaybackCoordinator: NSObject {
             player.insert(item, after: player.items().last)
             itemContextMap[item] = next
         } catch {
-            // Preload failures shouldn't break current playback but should be logged
-            print("❌ [PlaybackCoordinator] Failed to preload next item: \(error)")
+            // Preload failures shouldn't break current playback
         }
     }
 
@@ -237,7 +236,9 @@ final class PlaybackCoordinator: NSObject {
             forInterval: CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC)),
             queue: .main
         ) { [weak self] _ in
-            self?.publishSnapshot()
+            Task { @MainActor in
+                self?.publishSnapshot()
+            }
         }
     }
 

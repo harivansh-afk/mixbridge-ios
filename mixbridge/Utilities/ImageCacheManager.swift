@@ -79,7 +79,6 @@ actor ImageCacheManager {
 
             return image
         } catch {
-            print("❌ [ImageCache] Failed to download image: \(error)")
             return nil
         }
     }

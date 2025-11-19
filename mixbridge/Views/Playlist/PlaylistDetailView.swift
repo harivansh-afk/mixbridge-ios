@@ -158,7 +158,7 @@ struct PlaylistDetailView: View {
             if isLoadingTracks {
                 HStack {
                     Spacer()
-                    ProgressView("Loading tracks...")
+                    ProgressView("")
                     Spacer()
                 }
                 .padding()
@@ -187,18 +187,15 @@ struct PlaylistDetailView: View {
 
     private func loadPlaylistTracks() async {
         guard let userId = authManager.currentUserId else {
-            print("❌ [PlaylistDetail] No userId available")
             return
         }
         guard !isLoadingTracks else {
-            print("⏭️ [PlaylistDetail] Already loading, skipping")
             return
         }
 
         isLoadingTracks = true
 
         // Try Convex cache first
-        print("📡 [PlaylistDetail] Fetching tracks for playlist \(playlist.id) from Convex")
         do {
             let cached = try await BackgroundExecutor.run {
                 try await ConvexService.shared.getPlaylistTracks(
@@ -238,24 +235,19 @@ struct PlaylistDetailView: View {
 
                 self.tracks = tracksList
                 self.tracksData = rawData
-                print("✅ [PlaylistDetail] Loaded \(tracks.count) tracks from Convex cache!")
                 hasLoaded = true
                 isLoadingTracks = false
                 return
             }
         } catch ConvexError.noData {
-            print("⚠️ [PlaylistDetail] No cache found, will try backend API")
         } catch {
-            print("❌ [PlaylistDetail] Convex error: \(error)")
         }
 
         // Fallback: Fetch from backend API
-        print("📡 [PlaylistDetail] Fetching from backend API...")
         do {
             let response = try await BackgroundExecutor.run {
                 try await BackendAPI.shared.getPlaylist(playlistId: playlist.id)
             }
-            print("📥 [PlaylistDetail] Backend response received")
 
             if let soundcloudTracks = response.playlist.tracks {
                 var tracksList: [Track] = []
@@ -288,14 +280,8 @@ struct PlaylistDetailView: View {
 
                 self.tracks = tracksList
                 self.tracksData = rawData
-                print("✅ [PlaylistDetail] Loaded \(tracks.count) tracks from backend API!")
-            } else {
-                print("⚠️ [PlaylistDetail] No tracks in backend response")
             }
         } catch {
-            print("❌ [PlaylistDetail] Backend API error: \(error)")
-            print("   Error type: \(type(of: error))")
-            print("   Description: \(error.localizedDescription)")
         }
 
         hasLoaded = true

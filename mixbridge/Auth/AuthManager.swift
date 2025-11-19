@@ -36,19 +36,14 @@ class AuthManager {
 
             // If userId is nil, try to extract it from token again
             if currentUserId == nil {
-                print("⚠️ [AuthManager] userId is nil, attempting to extract from token")
                 if let extractedUserId = SessionTokenDecoder.getUserId(from: token) {
                     try? keychain.saveUserId(extractedUserId)
                     currentUserId = extractedUserId
-                    print("✅ [AuthManager] Re-extracted userId: \(extractedUserId)")
                 }
             }
-
-            print("🔐 [AuthManager] Restored session - authenticated: \(isAuthenticated), userId: \(currentUserId ?? "nil")")
         } else {
             isAuthenticated = false
             currentUserId = nil
-            print("🔐 [AuthManager] No valid session found")
         }
     }
 
@@ -56,17 +51,13 @@ class AuthManager {
 
     /// Get backend OAuth URL for mobile
     func getAuthorizationURL() -> URL? {
-        let url = URL(string: "\(backendUrl)/api/auth/mobile")
-        print("🔐 Backend OAuth URL: \(url?.absoluteString ?? "nil")")
-        return url
+        return URL(string: "\(backendUrl)/api/auth/mobile")
     }
 
     /// Handle OAuth callback with session token
     func handleCallback(url: URL) async {
         isLoading = true
         errorMessage = nil
-
-        print("🔙 Callback URL: \(url.absoluteString)")
 
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             errorMessage = "Invalid callback URL"
@@ -98,9 +89,6 @@ class AuthManager {
             if let userId = SessionTokenDecoder.getUserId(from: token) {
                 try keychain.saveUserId(userId)
                 currentUserId = userId
-                print("✅ Extracted and saved userId: \(userId)")
-            } else {
-                print("⚠️ Failed to extract userId from token")
             }
 
             // Set long expiry for session token (30 days)
@@ -109,8 +97,6 @@ class AuthManager {
 
             isAuthenticated = true
             isLoading = false
-
-            print("✅ Session token saved successfully")
         } catch {
             errorMessage = "Failed to save session token: \(error.localizedDescription)"
             isLoading = false

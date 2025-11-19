@@ -177,29 +177,25 @@ struct HomeView: View {
 
     private func loadHomeData() async {
         guard let userId = authManager.currentUserId else {
-            print("❌ [HomeView] No userId")
             return
         }
 
         // Prevent concurrent loads (fixes -999 cancelled error)
         if isLoading {
-            print("⏭️ [HomeView] Already loading, skipping")
             return
         }
 
         isLoading = true
-        print("🔄 [HomeView] Starting load...")
 
         // Load queue via QueueManager
         do {
             try await queueManager.loadQueue(userId: userId)
         } catch {
-            print("❌ [HomeView] Queue error: \(error)")
+            // Silently handle queue errors
         }
 
         // Load recently played
         do {
-            print("📡 [HomeView] Fetching play history for userId: \(userId)")
             let history = try await BackgroundExecutor.run {
                 try await ConvexService.shared.getPlayHistory(userId: userId, limit: 20)
             }
@@ -242,10 +238,8 @@ struct HomeView: View {
             }
 
             self.recentlyPlayedData = rawDataMap
-
-            print("✅ [HomeView] Loaded \(recentlyPlayed.count) recently played tracks (deduplicated from \(allTracks.count))!")
         } catch {
-            print("❌ [HomeView] Play history error: \(error)")
+            // Silently handle errors
         }
 
         hasLoaded = true

@@ -20,10 +20,6 @@ struct ContentView: View {
             .tabViewBottomAccessory {
                 MiniPlayerView()
                     .matchedTransitionSource(id: "MINIPLAYER", in: animation)
-                    .onTapGesture {
-                        HapticManager.medium()
-                        expandMiniPlayer.toggle()
-                    }
                     .ignoresSafeArea(.keyboard, edges: .all)
             }
             .fullScreenCover(isPresented: $expandMiniPlayer) {
@@ -90,10 +86,18 @@ struct ContentView: View {
     @ViewBuilder
     func MiniPlayerView() -> some View{
         HStack(spacing: 15){
-            PlayerInfo(playerState.currentTrack, size: .init(width: 30, height: 30))
-                .id(playerState.currentTrack.id)
-                .contentTransition(.interpolate)
-            Spacer(minLength: 0)
+            // Make track info clickable to expand player
+            HStack(spacing: 7) {
+                PlayerInfo(playerState.currentTrack, size: .init(width: 30, height: 30))
+                    .id(playerState.currentTrack.id)
+                    .contentTransition(.interpolate)
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                HapticManager.medium()
+                expandMiniPlayer.toggle()
+            }
 
             Button{
                 HapticManager.medium()

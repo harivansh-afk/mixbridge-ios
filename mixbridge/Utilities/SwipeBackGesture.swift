@@ -6,13 +6,22 @@ struct SwipeBackGesture: ViewModifier {
     @State private var backgroundOpacity: Double = 1.0
 
     private let threshold: CGFloat = 100
-    private let maxDrag: CGFloat = UIScreen.main.bounds.width
 
     func body(content: Content) -> some View {
-        content
-            .offset(x: dragOffset)
-            .opacity(backgroundOpacity)
-            .gesture(
+        GeometryReader { geometry in
+            content
+                .offset(x: dragOffset)
+                .opacity(backgroundOpacity)
+                .gesture(
+                    createDragGesture(maxDrag: geometry.size.width)
+                )
+                .animation(.interpolatingSpring(stiffness: 300, damping: 30), value: dragOffset)
+                .animation(.easeOut(duration: 0.2), value: backgroundOpacity)
+        }
+    }
+
+    private func createDragGesture(maxDrag: CGFloat) -> some Gesture {
+        return
                 DragGesture(minimumDistance: 10)
                     .updating($dragOffset) { value, state, _ in
                         // Only allow dragging from left edge (first 50 points)
@@ -50,9 +59,6 @@ struct SwipeBackGesture: ViewModifier {
                             resetView()
                         }
                     }
-            )
-            .animation(.interpolatingSpring(stiffness: 300, damping: 30), value: dragOffset)
-            .animation(.easeOut(duration: 0.2), value: backgroundOpacity)
     }
 
     private func resetView() {

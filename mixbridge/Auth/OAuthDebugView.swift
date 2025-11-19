@@ -23,7 +23,6 @@ struct OAuthDebugView: View {
                     Button("Generate URL") {
                         if let url = authManager.getAuthorizationURL() {
                             generatedURL = url.absoluteString
-                            print("🔐 Full URL:\n\(url.absoluteString)")
                         } else {
                             generatedURL = "Failed to generate URL"
                         }

@@ -9,7 +9,7 @@ struct AllArtistsView: View {
     var body: some View {
         Group {
             if isLoading {
-                ProgressView("Loading...")
+                ProgressView("")
             } else if artists.isEmpty {
                 ContentUnavailableView(
                     "No Artists",
@@ -77,7 +77,6 @@ struct AllArtistsView: View {
         isLoading = true
 
         do {
-            print("📡 [AllArtists] Fetching liked tracks to extract artists for userId: \(userId)")
             let cached = try await BackgroundExecutor.run {
                 try await ConvexService.shared.getLikedTracks(userId: userId)
             }
@@ -103,10 +102,8 @@ struct AllArtistsView: View {
                 }
 
                 self.artists = artistsDict.values.sorted { $0.trackCount > $1.trackCount }
-                print("✅ [AllArtists] Found \(artists.count) unique artists!")
             }
         } catch {
-            print("❌ [AllArtists] Error: \(error)")
         }
 
         hasLoaded = true

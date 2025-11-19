@@ -78,14 +78,7 @@ struct TrackRow: View {
             }
             .tint(.red)
         }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            Button {
-                handleLike()
-            } label: {
-                Label("", systemImage: "heart.fill")
-            }
-            .tint(.pink)
-
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button {
                 handleAddToQueue()
             } label: {
@@ -208,18 +201,14 @@ struct TrackRow: View {
     }
 
     private func handleAddToQueue() {
-        print("🎵 [TrackRow] handleAddToQueue called for track: \(track.title)")
-
         // Use custom callback if provided (for backward compatibility)
         if let onAddToQueue = onAddToQueue {
-            print("🎵 [TrackRow] Using custom callback")
             onAddToQueue()
             return
         }
 
         // Standard behavior: use QueueManager
         guard let trackData = trackData else {
-            print("❌ [TrackRow] No trackData provided - cannot add to queue")
             errorMessage = "Unable to add track to queue"
             showError = true
             return
@@ -229,7 +218,6 @@ struct TrackRow: View {
             isLoading = true
             do {
                 try await QueueManager.shared.addTrack(track, rawData: trackData)
-                print("✅ [TrackRow] Track added to queue via QueueManager")
 
                 // Notify parent if callback provided
                 if let onTrackAddedToQueue = onTrackAddedToQueue,
@@ -237,10 +225,8 @@ struct TrackRow: View {
                     onTrackAddedToQueue(track, queueTrackId)
                 }
             } catch ConvexError.alreadyInQueue {
-                print("ℹ️ [TrackRow] Track already in queue - silently ignoring")
                 // Don't show error for duplicates - this is expected
             } catch {
-                print("❌ [TrackRow] Failed to add track: \(error)")
                 errorMessage = error.localizedDescription
                 showError = true
             }
@@ -249,28 +235,20 @@ struct TrackRow: View {
     }
 
     private func handleLike() {
-        print("❤️ [TrackRow] handleLike called for track: \(track.title)")
-        print("❤️ [TrackRow] Track ID: \(track.id)")
-        print("❤️ [TrackRow] Has custom callback: \(onLike != nil)")
-
         if let onLike = onLike {
-            print("❤️ [TrackRow] Using custom callback")
             HapticManager.medium()
             onLike()
         } else {
             // Default behavior: call API directly
             Task {
-                print("📤 [TrackRow] Calling ConvexService.likeTrack")
                 isLoading = true
                 do {
                     try await BackgroundExecutor.run {
                         try await ConvexService.shared.likeTrack(trackId: track.id)
                     }
                     HapticManager.success()
-                    print("✅ [TrackRow] Track liked successfully")
                 } catch {
                     HapticManager.error()
-                    print("❌ [TrackRow] Failed to like track: \(error)")
                     errorMessage = "Failed to like track: \(error.localizedDescription)"
                     showError = true
                 }
@@ -280,15 +258,10 @@ struct TrackRow: View {
     }
 
     private func handleDelete() {
-        print("🗑️ [TrackRow] handleDelete called for track: \(track.title)")
-        print("🗑️ [TrackRow] Has custom callback: \(onDelete != nil)")
-
         if let onDelete = onDelete {
-            print("🗑️ [TrackRow] Using custom callback")
             HapticManager.warning()
             onDelete()
         } else {
-            print("❌ [TrackRow] Delete action not configured")
             HapticManager.error()
             errorMessage = "Delete action not configured"
             showError = true

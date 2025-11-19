@@ -85,7 +85,6 @@ struct LibraryView: View {
 
     private func loadPlaylists() async {
         guard let userId = authManager.currentUserId else {
-            print("❌ [LibraryView] No userId")
             isLoading = false
             return
         }
@@ -93,20 +92,16 @@ struct LibraryView: View {
         isLoading = true
 
         // Try Convex cache first (instant)
-        print("📡 [LibraryView] Fetching playlists from Convex for userId: \(userId)")
         do {
             let cached = try await ConvexService.shared.getPlaylists(userId: userId)
 
             if let cached = cached {
                 self.playlists = convertToPlaylists(cached.playlists)
-                print("✅ [LibraryView] Loaded \(playlists.count) playlists from Convex cache!")
                 isLoading = false
                 return
             }
         } catch ConvexError.noData {
-            print("⚠️ [LibraryView] No cache, showing empty for now")
         } catch {
-            print("❌ [LibraryView] Convex error: \(error)")
         }
 
         isLoading = false
@@ -213,7 +208,7 @@ struct LibraryView: View {
                 LibraryNavigationRow(
                     icon: "music.note.list",
                     title: "Playlists",
-                    iconColor: .secondary
+                    iconColor: .primary
                 )
             }
             .buttonStyle(.plain)
@@ -228,7 +223,7 @@ struct LibraryView: View {
                 LibraryNavigationRow(
                     icon: "music.mic",
                     title: "Artists",
-                    iconColor: .secondary
+                    iconColor: .primary
                 )
             }
             .buttonStyle(.plain)
@@ -243,7 +238,7 @@ struct LibraryView: View {
                 LibraryNavigationRow(
                     icon: "music.note",
                     title: "Songs",
-                    iconColor: .secondary
+                    iconColor: .primary
                 )
             }
             .buttonStyle(.plain)

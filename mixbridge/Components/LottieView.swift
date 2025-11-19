@@ -30,8 +30,6 @@ public struct LottieView: UIViewRepresentable {
         // Try to load from module bundle first, then main bundle as fallback
         if let animation = LottieAnimation.named(file.rawValue, bundle: .main) {
             animationView.animation = animation
-        } else {
-            print("type shi")
         }
         animationView.contentMode = .scaleAspectFit
         animationView.loopMode = loopMode

@@ -9,7 +9,7 @@ struct AllPlaylistsView: View {
     var body: some View {
         Group {
             if isLoading {
-                ProgressView("Loading...")
+                ProgressView("")
             } else if playlists.isEmpty {
                 ContentUnavailableView(
                     "No Playlists",
@@ -85,7 +85,6 @@ struct AllPlaylistsView: View {
         isLoading = true
 
         do {
-            print("📡 [AllPlaylists] Fetching playlists for userId: \(userId)")
             let cached = try await BackgroundExecutor.run {
                 try await ConvexService.shared.getPlaylists(userId: userId)
             }
@@ -104,10 +103,8 @@ struct AllPlaylistsView: View {
                         lastUpdated: Date()
                     )
                 }
-                print("✅ [AllPlaylists] Loaded \(playlists.count) playlists!")
             }
         } catch {
-            print("❌ [AllPlaylists] Error: \(error)")
         }
 
         hasLoaded = true
