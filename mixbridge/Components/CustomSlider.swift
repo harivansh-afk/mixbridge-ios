@@ -46,6 +46,9 @@ struct CustomSlider: View {
 
     /// Whether to provide haptic feedback during dragging
     var enableHaptics: Bool = true
+    
+    /// Vertical alignment of the slider track within the touch target
+    var verticalAlignment: VerticalAlignment = .center
 
     // MARK: - Private State
 
@@ -56,36 +59,29 @@ struct CustomSlider: View {
     private let hapticGenerator = UIImpactFeedbackGenerator(style: .light)
 
     // MARK: - Body
-
+    
     var body: some View {
         GeometryReader { geometry in
-            let sliderHeight: CGFloat = isDragging ? 6 : 4
-            let thumbSize: CGFloat = isDragging ? 12 : 0
-
-            ZStack(alignment: .leading) {
+            let sliderHeight: CGFloat = 2 // Fixed thicker height for "solid" vibe
+            
+            ZStack(alignment: Alignment(horizontal: .leading, vertical: verticalAlignment)) {
                 // Background track
-                Capsule()
+                Capsule() // Changed from Capsule to Rectangle
                     .fill(trackColor)
                     .frame(height: sliderHeight)
-
+                
                 // Progress indicator
-                HStack(spacing: 0) {
-                    Capsule()
-                        .fill(progressColor)
-                        .frame(
-                            width: progressWidth(for: geometry),
-                            height: sliderHeight
-                        )
-
-                    // Thumb indicator (only visible when dragging)
-                    if isDragging {
-                        Circle()
+                Group {
+                    HStack(spacing: 0) {
+                        Capsule() // Changed from Capsule to Rectangle
                             .fill(progressColor)
-                            .frame(width: thumbSize, height: thumbSize)
-                            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                            .frame(
+                                width: progressWidth(for: geometry),
+                                height: isDragging ? 10 : 2
+                            )
+                        Spacer(minLength: 0)
                     }
-
-                    Spacer(minLength: 0)
+                    .modifier(ConditionalGlassEffect(isDragging: isDragging))
                 }
             }
             .frame(height: 44) // Touch target size
@@ -229,4 +225,18 @@ struct CustomSlider: View {
     }
 
     return PreviewContainer()
+}
+
+// MARK: - Conditional Glass Effect Modifier
+
+struct ConditionalGlassEffect: ViewModifier {
+    let isDragging: Bool
+
+    func body(content: Content) -> some View {
+        if isDragging {
+            content.glassEffect(.clear)
+        } else {
+            content
+        }
+    }
 }

@@ -17,7 +17,7 @@ struct ProfileCircleView: View {
     init(
         profileImage: String? = nil,
         userName: String = "User",
-        size: CGFloat = 44
+        size: CGFloat = 36
     ) {
         self.profileImage = profileImage
         self.userName = userName
@@ -43,17 +43,6 @@ struct ProfileCircleView: View {
             // User initials
             ZStack {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.blue, .indigo],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-
-                Text(userInitials)
-                    .font(.system(size: size * 0.4, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
             }
         }
     }
@@ -91,20 +80,6 @@ struct LiquidGlassProfileButton: View {
         .clipShape(Circle())
         .overlay(
             Circle()
-                .strokeBorder(
-                    LinearGradient(
-                        colors: colorScheme == .dark ? [
-                            .white.opacity(0.2),
-                            .white.opacity(0.05)
-                        ] : [
-                            .white.opacity(0.4),
-                            .white.opacity(0.1)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.5
-                )
         )
         .shadow(
             color: colorScheme == .dark
@@ -137,7 +112,7 @@ struct LiquidGlassProfileButton: View {
             LiquidGlassProfileButton(
                 profileImage: nil,
                 userName: "Harivansh Rathi",
-                size: 44,
+                size: 35,
                 action: {}
             )
         }

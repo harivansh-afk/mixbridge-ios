@@ -84,6 +84,7 @@ struct AccountBottomSheet: View {
                         }
                         .pickerStyle(.segmented)
                     }
+                    .glassEffect(.regular)
                 }
 
                 // Settings Section

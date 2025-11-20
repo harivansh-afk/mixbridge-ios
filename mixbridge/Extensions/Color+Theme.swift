@@ -54,6 +54,14 @@ extension Color {
     }
 }
 
+// MARK: - Glass Effect Modifier
+extension View {
+    func glassEffect() -> some View {
+        self
+            .background(.thinMaterial)
+    }
+}
+
 // MARK: - UI Color Extensions
 extension UIColor {
     // Custom brand colors that adapt to dark mode

@@ -31,66 +31,29 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    func PlayerInfo(_ track: Track, size: CGSize) -> some View {
-        HStack(spacing: 7) {
-            Group {
-                if track.artwork.starts(with: "http"), let url = URL(string: track.artwork) {
-                    CachedAsyncImagePhase(url: url) { phase in
-                        switch phase {
-                        case .empty:
-                            miniArtworkPlaceholder(size: size)
-                        case .success(let image):
-                            image
-                                .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                .frame(width: size.width, height: size.height)
-                                .clipped()
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                        case .failure:
-                            miniArtworkPlaceholder(size: size)
-                        @unknown default:
-                            miniArtworkPlaceholder(size: size)
-                        }
-                    }
-                } else {
-                    miniArtworkPlaceholder(size: size)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 0){
-                Text(track.title)
-                    .font(.footnote.bold())
-                    .foregroundStyle(colorScheme == .dark ? .white : .black)
-                    .lineLimit(1)
-                Text(track.artist)
-                    .font(.caption)
-                    .foregroundStyle(colorScheme == .dark ? .white : .black)
-                    .lineLimit(1)
-            }
-        }
-    }
-
-    @ViewBuilder
-    func miniArtworkPlaceholder(size: CGSize) -> some View {
-        RoundedRectangle(cornerRadius: 6)
-            .fill(
-                LinearGradient(
-                    colors: [.blue, .blue.opacity(0.7)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .frame(width: size.width, height: size.height)
-    }
-    
-    @ViewBuilder
     func MiniPlayerView() -> some View{
         HStack(spacing: 15){
             // Make track info clickable to expand player
             HStack(spacing: 7) {
-                PlayerInfo(playerState.currentTrack, size: .init(width: 30, height: 30))
-                    .id(playerState.currentTrack.id)
-                    .contentTransition(.interpolate)
+                PlayerArtworkView(
+                    artwork: playerState.currentTrack.artwork,
+                    namespace: animation,
+                    id: playerState.currentTrack.id,
+                    size: 30,
+                    cornerRadius: 6,
+                    shadowRadius: 2
+                )
+
+                VStack(alignment: .leading, spacing: 0){
+                    Text(playerState.currentTrack.title)
+                        .font(.footnote.bold())
+                        .foregroundStyle(colorScheme == .dark ? .white : .black)
+                        .lineLimit(1)
+                    Text(playerState.currentTrack.artist)
+                        .font(.caption)
+                        .foregroundStyle(colorScheme == .dark ? .white : .black)
+                        .lineLimit(1)
+                }
                 Spacer(minLength: 0)
             }
             .contentShape(Rectangle())
