@@ -291,14 +291,22 @@ struct PlaylistDetailView: View {
 
 #Preview("Light Mode") {
     NavigationStack {
-        PlaylistDetailView(playlist: Playlist.samplePlaylists[0])
+        PlaylistDetailView(playlist: Playlist(
+            name: "Sample Playlist",
+            creator: "Artist",
+            artwork: ""
+        ))
     }
     .preferredColorScheme(.light)
 }
 
 #Preview("Dark Mode") {
     NavigationStack {
-        PlaylistDetailView(playlist: Playlist.samplePlaylists[0])
+        PlaylistDetailView(playlist: Playlist(
+            name: "Sample Playlist",
+            creator: "Artist",
+            artwork: ""
+        ))
     }
     .preferredColorScheme(.dark)
 }

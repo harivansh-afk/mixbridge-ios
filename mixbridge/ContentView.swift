@@ -14,20 +14,32 @@ struct ContentView: View {
     @State private var playerState = PlayerState.shared
     @Environment(\.colorScheme) private var colorScheme
 
+    @ViewBuilder
     var body: some View {
-        NativeTabView()
-            .tabBarMinimizeBehavior(.onScrollDown)
-            .tabViewBottomAccessory {
-                MiniPlayerView()
-                    .matchedTransitionSource(id: "MINIPLAYER", in: animation)
-                    .ignoresSafeArea(.keyboard, edges: .all)
-            }
-            .fullScreenCover(isPresented: $expandMiniPlayer) {
-                ExpandedMusicPlayer(
-                    isPresented: $expandMiniPlayer,
-                    namespace: animation
-                )
-            }
+        if playerState.hasActiveTrack {
+            NativeTabView()
+                .tabBarMinimizeBehavior(.onScrollDown)
+                .tabViewBottomAccessory {
+                    MiniPlayerView()
+                        .matchedTransitionSource(id: "MINIPLAYER", in: animation)
+                        .ignoresSafeArea(.keyboard, edges: .all)
+                }
+                .fullScreenCover(isPresented: $expandMiniPlayer) {
+                    ExpandedMusicPlayer(
+                        isPresented: $expandMiniPlayer,
+                        namespace: animation
+                    )
+                }
+        } else {
+            NativeTabView()
+                .tabBarMinimizeBehavior(.onScrollDown)
+                .fullScreenCover(isPresented: $expandMiniPlayer) {
+                    ExpandedMusicPlayer(
+                        isPresented: $expandMiniPlayer,
+                        namespace: animation
+                    )
+                }
+        }
     }
 
     @ViewBuilder

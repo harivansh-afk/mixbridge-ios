@@ -40,7 +40,11 @@ struct PlaylistCarousel: View {
     NavigationStack {
         PlaylistCarousel(
             title: "Recently Added",
-            playlists: Playlist.samplePlaylists
+            playlists: [
+                Playlist(name: "Playlist 1", creator: "Artist 1", artwork: ""),
+                Playlist(name: "Playlist 2", creator: "Artist 2", artwork: ""),
+                Playlist(name: "Playlist 3", creator: "Artist 3", artwork: "")
+            ]
         )
     }
     .preferredColorScheme(.light)
@@ -50,7 +54,11 @@ struct PlaylistCarousel: View {
     NavigationStack {
         PlaylistCarousel(
             title: "Your Playlists",
-            playlists: Playlist.samplePlaylists
+            playlists: [
+                Playlist(name: "Playlist 1", creator: "Artist 1", artwork: ""),
+                Playlist(name: "Playlist 2", creator: "Artist 2", artwork: ""),
+                Playlist(name: "Playlist 3", creator: "Artist 3", artwork: "")
+            ]
         )
     }
     .preferredColorScheme(.dark)

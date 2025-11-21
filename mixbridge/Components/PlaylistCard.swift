@@ -86,21 +86,33 @@ struct PlaylistCard: View {
 }
 
 #Preview("Single Card - Light") {
-    PlaylistCard(playlist: Playlist.samplePlaylists[0])
-        .padding()
-        .preferredColorScheme(.light)
+    PlaylistCard(playlist: Playlist(
+        name: "Sample Playlist",
+        creator: "Artist",
+        artwork: ""
+    ))
+    .padding()
+    .preferredColorScheme(.light)
 }
 
 #Preview("Single Card - Dark") {
-    PlaylistCard(playlist: Playlist.samplePlaylists[0])
-        .padding()
-        .preferredColorScheme(.dark)
+    PlaylistCard(playlist: Playlist(
+        name: "Sample Playlist",
+        creator: "Artist",
+        artwork: ""
+    ))
+    .padding()
+    .preferredColorScheme(.dark)
 }
 
 #Preview("Multiple Cards - Light") {
     ScrollView(.horizontal) {
         HStack(spacing: 16) {
-            ForEach(Playlist.samplePlaylists.prefix(3)) { playlist in
+            ForEach([
+                Playlist(name: "Playlist 1", creator: "Artist 1", artwork: ""),
+                Playlist(name: "Playlist 2", creator: "Artist 2", artwork: ""),
+                Playlist(name: "Playlist 3", creator: "Artist 3", artwork: "")
+            ]) { playlist in
                 PlaylistCard(playlist: playlist)
             }
         }
@@ -112,7 +124,11 @@ struct PlaylistCard: View {
 #Preview("Multiple Cards - Dark") {
     ScrollView(.horizontal) {
         HStack(spacing: 16) {
-            ForEach(Playlist.samplePlaylists.prefix(3)) { playlist in
+            ForEach([
+                Playlist(name: "Playlist 1", creator: "Artist 1", artwork: ""),
+                Playlist(name: "Playlist 2", creator: "Artist 2", artwork: ""),
+                Playlist(name: "Playlist 3", creator: "Artist 3", artwork: "")
+            ]) { playlist in
                 PlaylistCard(playlist: playlist)
             }
         }

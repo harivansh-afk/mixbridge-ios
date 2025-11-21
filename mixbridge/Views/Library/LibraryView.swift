@@ -27,9 +27,13 @@ struct LibraryView: View {
                         }
                         .frame(maxHeight: .infinity)
                     } else {
-                        playlistGridSection
+                        if !playlists.isEmpty {
+                            playlistGridSection
+                        }
                         navigationSection
-                        recentlyAddedGridSection
+                        if !playlists.isEmpty && playlists.count > 6 {
+                            recentlyAddedGridSection
+                        }
                     }
                 }
             }
@@ -137,7 +141,7 @@ struct LibraryView: View {
                 ],
                 spacing: 20
             ) {
-                ForEach(Array((playlists.isEmpty ? Array(Playlist.samplePlaylists.prefix(6)) : Array(playlists.prefix(6))).enumerated()), id: \.element.id) { index, playlist in
+                ForEach(Array(playlists.prefix(6).enumerated()), id: \.element.id) { index, playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
                             .navigationTransition(.zoom(sourceID: "top-\(playlist.id)", in: namespace))
@@ -269,7 +273,7 @@ struct LibraryView: View {
                 ],
                 spacing: 20
             ) {
-                ForEach(Array((playlists.isEmpty ? Array(Playlist.samplePlaylists.dropFirst(6)) : Array(playlists.dropFirst(6))).enumerated()), id: \.element.id) { index, playlist in
+                ForEach(Array(playlists.dropFirst(6).enumerated()), id: \.element.id) { index, playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
                             .navigationTransition(.zoom(sourceID: "recent-\(playlist.id)", in: namespace))

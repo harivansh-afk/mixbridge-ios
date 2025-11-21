@@ -51,6 +51,11 @@ final class PlayerState: NSObject {
         }
     }
     var errorMessage: String?
+    
+    /// Returns true if there's an active track (not idle and has valid duration)
+    var hasActiveTrack: Bool {
+        playbackStatus != .idle && duration > 0
+    }
 
     private let playbackCoordinator = PlaybackCoordinator.shared
     private let queueManager = QueueManager.shared
