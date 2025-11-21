@@ -216,7 +216,7 @@ struct HomeView: View {
                     artist: track.user.username,
                     album: track.genre ?? "",
                     artwork: highQualityArtwork,
-                    duration: Double(track.duration)
+                    duration: Double(track.duration) / 1000.0 // Convert ms to seconds
                 )
 
                 // Convert the SoundCloud track data to dictionary

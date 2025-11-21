@@ -172,7 +172,7 @@ struct PlayerProgressView: View {
                 
                 Spacer()
                 
-                Text("-\(formatTime(max(duration - value, 0)))")
+                Text("\(formatTime(max(duration - value, 0)))")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }

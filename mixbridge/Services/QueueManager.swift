@@ -127,7 +127,7 @@ class QueueManager {
                     artist: queueTrack.artist,
                     album: "",
                     artwork: highQualityArtwork,
-                    duration: queueTrack.duration
+                    duration: queueTrack.duration / 1000.0 // Convert ms to seconds
                 )
 
                 tracks.append(track)

@@ -207,7 +207,7 @@ struct ExpandedPlayerView: View {
             let cardSpacing: CGFloat = 40 // Spacing between cards in carousel (visible during swipe)
             let cornerRadius = screenWidth * 0.13 // 8% of width for rounded corners
             let contentSpacing = screenHeight * 0.04 // 4% of screen height
-            let progressTopSpacing = screenHeight * 0.025 // 2.5% of screen height
+            let progressTopSpacing = screenHeight * -0.05 // 2.5% of screen height
 
             //Main stack below body
             ZStack(alignment: .top) {
