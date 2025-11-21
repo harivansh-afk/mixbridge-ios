@@ -67,11 +67,8 @@ final class PlayerState: NSObject {
     private var artworkTask: Task<Void, Never>?
     private var lastPublishedStatus: PlaybackStatus = .idle
 
-    // Debouncer for seek operations to prevent excessive calls during scrubbing
-    private var seekDebouncer: Debouncer?
-
-    // Timestamp of the target seek position (updated immediately for UI responsiveness)
-    private var pendingSeekTime: Double?
+    /// Flag to prevent time observer updates during user scrubbing (prevents slider jitter)
+    var isSeeking: Bool = false
 
     // MARK: - Persistence Keys
     private let kSavedTrack = "mixbridge.savedTrack"
@@ -87,13 +84,6 @@ final class PlayerState: NSObject {
         )
         
         super.init()
-
-        // Initialize seek debouncer with 300ms delay (optimal for UI responsiveness)
-        seekDebouncer = Debouncer(delay: 0.3) { [weak self] in
-            guard let self, let targetTime = self.pendingSeekTime else { return }
-            self.playbackCoordinator.seek(to: targetTime)
-            self.pendingSeekTime = nil
-        }
 
         configureAudioSession()
         setupNotifications()
@@ -267,25 +257,13 @@ final class PlayerState: NSObject {
         updateNowPlayingInfo(playbackRate: 1)
     }
 
-    /// Seeks to a specific time position with debouncing to prevent excessive operations.
-    /// UI updates happen immediately while the actual AVPlayer seek is debounced by 300ms.
+    /// Seeks to a specific time position.
+    /// When called from UI scrubbing, the isSeeking flag prevents time observer conflicts.
     ///
     /// - Parameter time: The target playback position in seconds
-    /// - Parameter immediate: If true, bypasses debouncing and seeks immediately (default: false)
-    func seek(to time: Double, immediate: Bool = false) {
-        // Update UI immediately for smooth visual feedback
-        playbackPosition = time
-        pendingSeekTime = time
-
-        if immediate {
-            // Immediate seek (used for programmatic seeks, not user scrubbing)
-            seekDebouncer?.cancel()
-            playbackCoordinator.seek(to: time)
-            pendingSeekTime = nil
-        } else {
-            // Debounced seek (used for user scrubbing)
-            seekDebouncer?.call()
-        }
+    func seek(to time: Double) {
+        // Seek immediately - no debouncing needed since we only seek when drag ends
+        playbackCoordinator.seek(to: time)
 
         // Update Now Playing info with new position
         updateNowPlayingInfo()
@@ -420,8 +398,7 @@ final class PlayerState: NSObject {
                 return .commandFailed
             }
 
-            // Use immediate seek for lock screen scrubbing (no debounce needed)
-            self.seek(to: positionEvent.positionTime, immediate: true)
+            self.seek(to: positionEvent.positionTime)
             return .success
         }
 
@@ -438,7 +415,7 @@ final class PlayerState: NSObject {
             }
 
             let newPosition = min(self.playbackPosition + skipInterval, self.duration)
-            self.seek(to: newPosition, immediate: true)
+            self.seek(to: newPosition)
             return .success
         }
 
@@ -455,7 +432,7 @@ final class PlayerState: NSObject {
             }
 
             let newPosition = max(self.playbackPosition - skipInterval, 0)
-            self.seek(to: newPosition, immediate: true)
+            self.seek(to: newPosition)
             return .success
         }
 
@@ -626,7 +603,11 @@ extension PlayerState: PlaybackCoordinatorDelegate {
         }
 
         // Position and duration (update locally, but don't spam Now Playing)
-        playbackPosition = snapshot.currentTime
+        // CRITICAL: Only update playback position if user is NOT actively seeking
+        // This prevents the time observer from fighting with user's slider dragging
+        if !isSeeking {
+            playbackPosition = snapshot.currentTime
+        }
 
         // Only update duration if we get a valid value from AVPlayer
         // This prevents flicker when switching tracks - we keep the track's API duration

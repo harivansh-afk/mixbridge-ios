@@ -19,6 +19,9 @@ struct ExpandedMusicPlayer: View {
     @State private var isDraggingProgress = false
     @State private var isDraggingVolume = false
 
+    /// Local slider value used during dragging to prevent observer conflicts
+    @State private var localSliderPosition: Double = 0
+
     // Compute duration safely
     // Prefer PlayerState duration (from AVPlayer), fall back to Track metadata (from API)
     private var duration: Double {
@@ -95,8 +98,14 @@ struct ExpandedMusicPlayer: View {
             isPlaying: playerState.isPlaying,
             namespace: namespace,
             playbackPosition: Binding(
-                get: { playerState.playbackPosition },
-                set: { newValue in playerState.playbackPosition = newValue }
+                get: {
+                    // Use local value during dragging, otherwise use actual playback position
+                    isDraggingProgress ? localSliderPosition : playerState.playbackPosition
+                },
+                set: { newValue in
+                    // Update local value during dragging
+                    localSliderPosition = newValue
+                }
             ),
             duration: duration,
             volume: $playerState.volume,
@@ -110,9 +119,14 @@ struct ExpandedMusicPlayer: View {
             onNext: { playerState.playNextFromQueue() },
             onPrevious: { playerState.playPreviousFromQueue() },
             onSeek: { editing in
-                if !editing {
-                    // Seek only when drag ends
-                    playerState.seek(to: playerState.playbackPosition)
+                if editing {
+                    // User started dragging - block time observer updates
+                    playerState.isSeeking = true
+                    localSliderPosition = playerState.playbackPosition
+                } else {
+                    // User stopped dragging - seek immediately and resume time observer
+                    playerState.seek(to: localSliderPosition)
+                    playerState.isSeeking = false
                 }
             },
             onDismiss: {
