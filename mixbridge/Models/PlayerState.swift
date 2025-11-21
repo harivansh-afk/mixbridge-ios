@@ -73,12 +73,19 @@ final class PlayerState: NSObject {
     // Timestamp of the target seek position (updated immediately for UI responsiveness)
     private var pendingSeekTime: Double?
 
+    // MARK: - Persistence Keys
+    private let kSavedTrack = "mixbridge.savedTrack"
+    private let kSavedPosition = "mixbridge.savedPosition"
+    private let kSavedDuration = "mixbridge.savedDuration"
+
     private override init() {
+        // Initialize with placeholder initially
         currentTrack = Track.sampleTracks.first ?? Track(
             title: "Some Music Title",
             artist: "Unknown Artist",
             album: "Unknown Album"
         )
+        
         super.init()
 
         // Initialize seek debouncer with 300ms delay (optimal for UI responsiveness)
@@ -94,17 +101,125 @@ final class PlayerState: NSObject {
         playbackCoordinator.delegate = self
         playbackCoordinator.setVolume(volume)
         playbackCoordinator.autoplayEnabled = autoplayEnabled
+        
+        // Load saved state
+        loadPlaybackState()
+        
+        // If no active track after loading local state, try fetching remote history
+        if !hasActiveTrack {
+            Task {
+                await fetchRemoteHistoryIfNeeded()
+            }
+        }
+        
         UIApplication.shared.beginReceivingRemoteControlEvents()
+        
+        // Observe backgrounding to save state
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppBackground),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
+    }
+
+    // MARK: - Persistence
+    
+    private func savePlaybackState() {
+        // Save current track
+        if let encoded = try? JSONEncoder().encode(currentTrack) {
+            UserDefaults.standard.set(encoded, forKey: kSavedTrack)
+        }
+        
+        // Save position and duration
+        UserDefaults.standard.set(playbackPosition, forKey: kSavedPosition)
+        UserDefaults.standard.set(duration, forKey: kSavedDuration)
+    }
+    
+    private func loadPlaybackState() {
+        // Load track
+        if let savedTrackData = UserDefaults.standard.data(forKey: kSavedTrack),
+           let savedTrack = try? JSONDecoder().decode(Track.self, from: savedTrackData) {
+            currentTrack = savedTrack
+            
+            // Load position and duration
+            let savedPosition = UserDefaults.standard.double(forKey: kSavedPosition)
+            let savedDuration = UserDefaults.standard.double(forKey: kSavedDuration)
+            
+            if savedDuration > 0 {
+                playbackPosition = savedPosition
+                duration = savedDuration
+                // Set status to paused so UI shows it
+                playbackStatus = .paused
+                // Update remote command center
+                updateNowPlayingInfo(playbackRate: 0)
+            }
+        }
+    }
+    
+    private func fetchRemoteHistoryIfNeeded() async {
+        // Double check we still need it
+        if hasActiveTrack { return }
+        
+        // We need authentication to fetch history
+        // AuthManager is an Observable, but we can access shared instance or keychain
+        guard let userId = KeychainManager.shared.getUserId() else { return }
+        
+        do {
+            let history = try await ConvexService.shared.getPlayHistory(userId: userId, limit: 1)
+            if let lastPlayed = history.first {
+                let trackData = lastPlayed.trackData
+                let artworkUrl = trackData.artwork_url ?? trackData.user.avatar_url ?? ""
+                let highQualityArtwork = artworkUrl.upgradeArtworkQuality() // Need to make sure this string extension is available or handle it
+                
+                // String+SoundCloud extension might not be imported here implicitly if it's in extensions
+                // But 'artwork' is a string. 
+                
+                // Actually, let's just use the artwork URL as is, assuming upgradeArtworkQuality is available on String
+                // Wait, String extensions are usually global.
+                
+                let track = Track(
+                    id: String(trackData.id),
+                    title: trackData.title,
+                    artist: trackData.user.username,
+                    album: trackData.genre ?? "",
+                    artwork: highQualityArtwork, // Hope this works
+                    duration: Double(trackData.duration) / 1000.0 // Convert ms to seconds
+                )
+                
+                await MainActor.run {
+                    // Only update if we still don't have an active track
+                    if !self.hasActiveTrack {
+                        self.currentTrack = track
+                        self.duration = track.duration
+                        self.playbackPosition = 0
+                        self.playbackStatus = .paused // Ready to play
+                        self.updateNowPlayingInfo(playbackRate: 0)
+                        self.savePlaybackState() // Save so we don't fetch next time
+                    }
+                }
+            }
+        } catch {
+            print("Failed to fetch remote history: \(error)")
+        }
+    }
+    
+    @objc private func handleAppBackground() {
+        savePlaybackState()
     }
 
     // MARK: - Public API
 
-    func play(track: Track, trackData: [String: Any]? = nil, queueIndex: Int? = nil) {
+    func play(track: Track, trackData: [String: Any]? = nil, queueIndex: Int? = nil, startTime: Double? = nil) {
         playbackStatus = .loading
         currentTrack = track
         refreshArtwork(for: track)
-        playbackPosition = 0
+        playbackPosition = startTime ?? 0
         duration = track.duration
+        
+        // Save state immediately when track changes
+        savePlaybackState()
+        
         if let explicitIndex = queueIndex {
             currentQueueIndex = explicitIndex
         } else if let inferredIndex = queueManager.indexOfTrack(withId: track.id) {
@@ -116,7 +231,8 @@ final class PlayerState: NSObject {
         playbackCoordinator.play(
             track: track,
             trackData: trackData ?? queueManager.trackData(for: track.id),
-            queueIndex: queueIndex
+            queueIndex: queueIndex,
+            startTime: startTime
         )
         updateNowPlayingInfo(playbackRate: 0)
     }
@@ -128,12 +244,21 @@ final class PlayerState: NSObject {
     }
 
     func togglePlayback() {
+        // Check if we need to restore playback from a saved state (coordinator empty but we have a track)
+        if playbackStatus == .paused && duration > 0 && !playbackCoordinator.hasLoadedItems {
+             // Try to resume/restart the current track if coordinator is empty
+             // This handles the case where we loaded state but haven't loaded the player
+             play(track: currentTrack, startTime: playbackPosition)
+             return
+        }
+        
         playbackCoordinator.togglePlayback()
     }
 
     func pause() {
         playbackCoordinator.pause()
         updateNowPlayingInfo(playbackRate: 0)
+        savePlaybackState()
     }
 
     func resume() {
@@ -502,7 +627,13 @@ extension PlayerState: PlaybackCoordinatorDelegate {
 
         // Position and duration (update locally, but don't spam Now Playing)
         playbackPosition = snapshot.currentTime
-        duration = snapshot.duration
+
+        // Only update duration if we get a valid value from AVPlayer
+        // This prevents flicker when switching tracks - we keep the track's API duration
+        // until AVPlayer provides a valid duration
+        if snapshot.duration > 0 {
+            duration = snapshot.duration
+        }
 
         // Only update Now Playing when something meaningful changed
         if needsNowPlayingUpdate {

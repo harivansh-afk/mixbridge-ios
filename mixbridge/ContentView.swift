@@ -12,45 +12,55 @@ struct ContentView: View {
     @State private var expandMiniPlayer: Bool = false
     @Namespace private var animation
     @State private var playerState = PlayerState.shared
+    @State private var selectedTab = 0
     @Environment(\.colorScheme) private var colorScheme
 
     @ViewBuilder
     var body: some View {
+        NativeTabView(selectedTab: $selectedTab)
+            .tabBarMinimizeBehavior(.onScrollDown)
+            .modifier(MiniPlayerModifier(
+                playerState: playerState,
+                namespace: animation,
+                expandMiniPlayer: $expandMiniPlayer
+            ))
+            .fullScreenCover(isPresented: $expandMiniPlayer) {
+                ExpandedMusicPlayer(
+                    isPresented: $expandMiniPlayer,
+                    namespace: animation
+                )
+            }
+    }
+}
+
+struct MiniPlayerModifier: ViewModifier {
+    var playerState: PlayerState
+    var namespace: Namespace.ID
+    @Binding var expandMiniPlayer: Bool
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
         if playerState.hasActiveTrack {
-            NativeTabView()
-                .tabBarMinimizeBehavior(.onScrollDown)
+            content
                 .tabViewBottomAccessory {
                     MiniPlayerView()
-                        .matchedTransitionSource(id: "MINIPLAYER", in: animation)
+                        .matchedTransitionSource(id: "MINIPLAYER", in: namespace)
                         .ignoresSafeArea(.keyboard, edges: .all)
                 }
-                .fullScreenCover(isPresented: $expandMiniPlayer) {
-                    ExpandedMusicPlayer(
-                        isPresented: $expandMiniPlayer,
-                        namespace: animation
-                    )
-                }
+                .transition(.opacity)
         } else {
-            NativeTabView()
-                .tabBarMinimizeBehavior(.onScrollDown)
-                .fullScreenCover(isPresented: $expandMiniPlayer) {
-                    ExpandedMusicPlayer(
-                        isPresented: $expandMiniPlayer,
-                        namespace: animation
-                    )
-                }
+            content
         }
     }
-
+    
     @ViewBuilder
-    func MiniPlayerView() -> some View{
+    func MiniPlayerView() -> some View {
         HStack(spacing: 15){
             // Make track info clickable to expand player
             HStack(spacing: 7) {
+                // MiniPlayer artwork - no matchedGeometryEffect needed, using matchedTransitionSource on container
                 PlayerArtworkView(
                     artwork: playerState.currentTrack.artwork,
-                    namespace: animation,
-                    id: playerState.currentTrack.id,
                     size: 30,
                     cornerRadius: 6,
                     shadowRadius: 2
@@ -102,7 +112,7 @@ struct ContentView: View {
 }
 
 struct NativeTabView: View {
-    @State private var selectedTab = 0
+    @Binding var selectedTab: Int
 
     var body: some View {
         TabView(selection: $selectedTab) {

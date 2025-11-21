@@ -80,11 +80,15 @@ final class PlaybackCoordinator: NSObject {
     }
 
     // MARK: - Public Controls
+    
+    var hasLoadedItems: Bool {
+        !player.items().isEmpty
+    }
 
-    func play(track: Track, trackData: [String: Any]?, queueIndex: Int?) {
+    func play(track: Track, trackData: [String: Any]?, queueIndex: Int?, startTime: Double? = nil) {
         let context = PlaybackContext(track: track, trackData: trackData, queueIndex: queueIndex)
         Task {
-            await startPlayback(with: context)
+            await startPlayback(with: context, startTime: startTime)
         }
     }
 
@@ -162,7 +166,10 @@ final class PlaybackCoordinator: NSObject {
 
     // MARK: - Playback Pipeline
 
-    private func startPlayback(with context: PlaybackContext) async {
+    private func startPlayback(with context: PlaybackContext, startTime: Double? = nil) async {
+        // Set context BEFORE status to ensure snapshots have correct track info
+        // This prevents duration flicker when the loading snapshot is published
+        currentContext = context
         status = .loading
 
         do {
@@ -176,7 +183,11 @@ final class PlaybackCoordinator: NSObject {
 
             player.insert(playerItem, after: nil)
             itemContextMap[playerItem] = context
-            currentContext = context
+            
+            if let startTime = startTime, startTime > 0 {
+                await player.seek(to: CMTime(seconds: startTime, preferredTimescale: CMTimeScale(NSEC_PER_SEC)), toleranceBefore: .zero, toleranceAfter: .zero)
+            }
+            
             player.play()
             status = .playing
             Task { @MainActor in

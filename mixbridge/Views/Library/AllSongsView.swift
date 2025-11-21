@@ -71,7 +71,7 @@ struct AllSongsView: View {
                         artist: soundcloudTrack.user.username,
                         album: soundcloudTrack.genre ?? "",
                         artwork: highQualityArtwork,
-                        duration: Double(soundcloudTrack.duration)
+                        duration: Double(soundcloudTrack.duration) / 1000.0 // Convert ms to seconds
                     )
 
                     tracksList.append(track)

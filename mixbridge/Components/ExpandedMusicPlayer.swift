@@ -20,11 +20,13 @@ struct ExpandedMusicPlayer: View {
     @State private var isDraggingVolume = false
 
     // Compute duration safely
+    // Prefer PlayerState duration (from AVPlayer), fall back to Track metadata (from API)
     private var duration: Double {
         if playerState.duration > 0 {
             return playerState.duration
         }
-        return playerState.currentTrack.duration == 0 ? 210 : playerState.currentTrack.duration
+        // Use track's duration directly - it's preloaded from API
+        return max(playerState.currentTrack.duration, 0)
     }
 
     // Get queue index for any track
@@ -264,12 +266,13 @@ struct ExpandedPlayerView: View {
                             .id("prev-\(prevTrack.id)")
                         }
 
-                        // Current card (center)
+                        // Current card (center) - No matchedGeometryEffect needed as we use navigationTransition(.zoom)
                         TrackCard(
                             track: displayedTrack,
-                            namespace: namespace,
+                            namespace: nil,
                             artworkWidth: artworkMaxWidth,
-                            cornerRadius: cornerRadius
+                            cornerRadius: cornerRadius,
+                            isMatchedGeometrySource: false
                         )
                         .frame(width: artworkMaxWidth)
                         .offset(x: dragOffset)
@@ -590,14 +593,17 @@ struct TrackCard: View {
     let namespace: Namespace.ID?
     let artworkWidth: CGFloat
     let cornerRadius: CGFloat
+    var isMatchedGeometrySource: Bool = false
 
     var body: some View {
         VStack(spacing: 20) {
             // Artwork (flush to top)
+            // Only apply matched geometry effect to the source card to avoid conflicts
+            // Use constant ID to match MiniPlayer, not track.id
             PlayerArtworkView(
                 artwork: track.artwork,
-                namespace: namespace,
-                id: namespace != nil ? track.id : nil,
+                namespace: isMatchedGeometrySource ? namespace : nil,
+                id: isMatchedGeometrySource && namespace != nil ? "MINIPLAYER_ARTWORK" : nil,
                 cornerRadius: cornerRadius,
                 shadowRadius: 0
             )

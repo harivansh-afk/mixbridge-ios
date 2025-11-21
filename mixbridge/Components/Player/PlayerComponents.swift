@@ -72,14 +72,14 @@ struct PlayerArtworkView: View {
     }
     
     private var placeholder: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: [.blue, .blue.opacity(0.7)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(Color.gray.opacity(0.3))
+            
+            Image(systemName: "music.note")
+                .font(.system(size: (size ?? 50) * 0.5))
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

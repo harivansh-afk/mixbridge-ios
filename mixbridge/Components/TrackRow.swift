@@ -126,7 +126,14 @@ struct TrackRow: View {
                             .frame(width: coverSize, height: coverSize)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     case .failure:
-                        artworkPlaceholder
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color(.systemGray6))
+                            .frame(width: coverSize, height: coverSize)
+                            .overlay(
+                                Image(systemName: "music.note")
+                                    .font(.system(size: coverSize * 0.45))
+                                    .foregroundColor(.gray.opacity(0.7))
+                            )
                     @unknown default:
                         artworkPlaceholder
                     }
@@ -134,14 +141,13 @@ struct TrackRow: View {
             } else {
                 // Gradient placeholder
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(
-                        LinearGradient(
-                            colors: [.blue, .indigo],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(Color(.systemGray6))
                     .frame(width: coverSize, height: coverSize)
+                    .overlay(
+                        Image(systemName: "music.note")
+                            .font(.system(size: coverSize * 0.45))
+                            .foregroundColor(.gray.opacity(0.7))
+                    )
             }
         }
     }
@@ -149,13 +155,13 @@ struct TrackRow: View {
     private var artworkPlaceholder: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    LinearGradient(
-                        colors: [.blue, .indigo],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                .fill(Color(.systemGray6))
+                    .frame(width: coverSize, height: coverSize)
+                    .overlay(
+                        Image(systemName: "music.note")
+                            .font(.system(size: coverSize * 0.45))
+                            .foregroundColor(.gray.opacity(0.7))
                     )
-                )
 
             ProgressView()
                 .progressViewStyle(.circular)
