@@ -60,7 +60,11 @@ final class PlaybackCoordinator: NSObject {
     private let preloadTriggerProgress: Double = 0.75
 
     private var status: PlayerState.PlaybackStatus = .idle {
-        didSet { publishSnapshot() }
+        didSet {
+            Task { @MainActor in
+                publishSnapshot()
+            }
+        }
     }
 
     private override init() {
@@ -95,21 +99,27 @@ final class PlaybackCoordinator: NSObject {
     func pause() {
         player.pause()
         status = .paused
-        publishSnapshot()
+        Task { @MainActor in
+            publishSnapshot()
+        }
     }
 
     func resume() {
         guard player.items().isEmpty == false else { return }
         player.play()
         status = .playing
-        publishSnapshot()
+        Task { @MainActor in
+            publishSnapshot()
+        }
     }
 
     func seek(to time: Double) {
         let target = CMTime(seconds: time, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             guard let self else { return }
-            self.publishSnapshot()
+            Task { @MainActor in
+                self.publishSnapshot()
+            }
         }
     }
 
@@ -169,7 +179,9 @@ final class PlaybackCoordinator: NSObject {
             currentContext = context
             player.play()
             status = .playing
-            publishSnapshot()
+            Task { @MainActor in
+                publishSnapshot()
+            }
 
             // Preloading now happens at 75% progress (see addTimeObserver)
             // This optimizes bandwidth usage and reduces unnecessary preloads for skipped tracks
@@ -267,7 +279,9 @@ final class PlaybackCoordinator: NSObject {
                 }
 
                 // Publish snapshot for UI updates
-                self.publishSnapshot()
+                Task { @MainActor in
+                    self.publishSnapshot()
+                }
             }
         }
     }
@@ -286,7 +300,9 @@ final class PlaybackCoordinator: NSObject {
             currentContext = preloadedContext
             nextPreloadedContext = nil
             nextPreloadedItem = nil
-            publishSnapshot()
+            Task { @MainActor in
+                publishSnapshot()
+            }
             Task { [weak self] in
                 guard let self, let current = self.currentContext else { return }
                 await self.preloadNextItem(from: current)
@@ -304,12 +320,16 @@ final class PlaybackCoordinator: NSObject {
             hasPreloadedForCurrentTrack = false // Reset flag for new track
             nextPreloadedContext = nil
             nextPreloadedItem = nil
-            publishSnapshot()
+            Task { @MainActor in
+                publishSnapshot()
+            }
             // Preloading will happen at 75% progress (see addTimeObserver)
         } else {
             currentContext = nil
             status = .ready
-            publishSnapshot()
+            Task { @MainActor in
+                publishSnapshot()
+            }
         }
     }
 

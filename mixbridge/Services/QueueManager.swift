@@ -17,7 +17,14 @@ class QueueManager {
 
     // MARK: - State
 
-    var queueTracks: [Track] = []
+    var queueTracks: [Track] = [] {
+        didSet {
+            // Prefetch artwork whenever queue changes
+            Task {
+                await TrackPrefetcher.shared.prefetchForQueue(queueTracks, currentIndex: 0)
+            }
+        }
+    }
     private(set) var isLoading = false
     private var queueTrackIds: [String: String] = [:] // Track.id -> Convex queue track ID
     private var queueTrackData: [String: [String: Any]] = [:] // Track.id -> raw SoundCloud data

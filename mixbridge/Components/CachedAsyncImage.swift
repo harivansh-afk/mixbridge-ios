@@ -57,7 +57,7 @@ struct CachedAsyncImagePhase<Content: View>: View {
     let content: (AsyncImagePhase) -> Content
 
     @State private var image: UIImage?
-    @State private var isLoading = true
+    @State private var isLoading = false
     @State private var error: Error?
 
     init(
@@ -66,6 +66,11 @@ struct CachedAsyncImagePhase<Content: View>: View {
     ) {
         self.url = url
         self.content = content
+
+        // Check memory cache synchronously to prevent flicker
+        if let url = url {
+            _image = State(initialValue: MemoryImageCache.shared.get(url.absoluteString))
+        }
     }
 
     var body: some View {
@@ -80,16 +85,22 @@ struct CachedAsyncImagePhase<Content: View>: View {
                 content(.empty)
             }
         }
-        .task {
+        .task(id: url) {
             await loadImage()
         }
     }
 
     private func loadImage() async {
         guard let url = url else {
-            isLoading = false
             return
         }
+
+        // Skip if already have image (from memory cache in init)
+        guard image == nil else {
+            return
+        }
+
+        isLoading = true
 
         if let cachedImage = await ImageCacheManager.shared.getImage(for: url) {
             self.image = cachedImage

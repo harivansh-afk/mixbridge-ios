@@ -108,6 +108,7 @@ private struct SplashView: View {
             LottieView(
                 file: .logo,
                 loopMode: .playOnce,
+                speed: 1.5,
                 onComplete: {
                     onFinished()
                 }

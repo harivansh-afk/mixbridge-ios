@@ -5,6 +5,7 @@ struct AllPlaylistsView: View {
     @State private var playlists: [Playlist] = []
     @State private var isLoading = false
     @State private var hasLoaded = false
+    @Namespace private var namespace
 
     var body: some View {
         Group {
@@ -18,9 +19,10 @@ struct AllPlaylistsView: View {
                 )
             } else {
                 List {
-                    ForEach(playlists) { playlist in
+                    ForEach(Array(playlists.enumerated()), id: \.element.id) { index, playlist in
                         NavigationLink {
                             PlaylistDetailView(playlist: playlist)
+                                .navigationTransition(.zoom(sourceID: "all-\(playlist.id)", in: namespace))
                         } label: {
                             HStack(spacing: 12) {
                                 // Playlist artwork
@@ -60,6 +62,7 @@ struct AllPlaylistsView: View {
 
                                 Spacer()
                             }
+                            .matchedTransitionSource(id: "all-\(playlist.id)", in: namespace)
                         }
                         .haptic(.selection)
                     }

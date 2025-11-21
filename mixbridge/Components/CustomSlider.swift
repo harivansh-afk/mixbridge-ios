@@ -77,7 +77,7 @@ struct CustomSlider: View {
                             .fill(progressColor)
                             .frame(
                                 width: progressWidth(for: geometry),
-                                height: isDragging ? 10 : 2
+                                height: isDragging ? 4 : 2
                             )
                         Spacer(minLength: 0)
                     }
@@ -110,7 +110,11 @@ struct CustomSlider: View {
     private func progressWidth(for geometry: GeometryProxy) -> CGFloat {
         let normalizedValue = (value - bounds.lowerBound) / (bounds.upperBound - bounds.lowerBound)
         let clampedValue = max(0, min(1, normalizedValue))
-        return geometry.size.width * clampedValue
+        let width = geometry.size.width * clampedValue
+
+        // Prevent invalid frame dimensions
+        guard width.isFinite, width >= 0 else { return 0 }
+        return width
     }
 
     /// Handles drag gesture changes
@@ -234,7 +238,9 @@ struct ConditionalGlassEffect: ViewModifier {
 
     func body(content: Content) -> some View {
         if isDragging {
-            content.glassEffect(.clear)
+            content
+                .frame(minWidth: 0, maxWidth: .infinity)
+                .glassEffect(.clear)
         } else {
             content
         }

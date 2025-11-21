@@ -40,6 +40,7 @@ struct PlayerArtworkView: View {
                         image
                             .resizable()
                             .aspectRatio(contentMode: .fill)
+                            .frame(width: size, height: size)
                     case .failure:
                         placeholder
                     @unknown default:
@@ -50,6 +51,7 @@ struct PlayerArtworkView: View {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
             } else {
                 placeholder
             }
@@ -88,37 +90,41 @@ struct PlayerBackgroundView: View {
     let artwork: String
 
     var body: some View {
-        ZStack {
-            if artwork.starts(with: "http"), let url = URL(string: artwork) {
-                CachedAsyncImagePhase(url: url) { phase in
-                    if case .success(let image) = phase {
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .blur(radius: 60)
-                            .opacity(0.8)
-                    } else {
-                        // Blue gradient fallback while loading
-                        LinearGradient(
-                            colors: [.blue.opacity(0.8), .indigo.opacity(0.9)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+        GeometryReader { geometry in
+            ZStack {
+                if artwork.starts(with: "http"), let url = URL(string: artwork) {
+                    CachedAsyncImagePhase(url: url) { phase in
+                        if case .success(let image) = phase {
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: geometry.size.width, height: geometry.size.height)
+                                .blur(radius: 60)
+                                .opacity(0.8)
+                        } else {
+                            // Blue gradient fallback while loading
+                            LinearGradient(
+                                colors: [.blue.opacity(0.8), .indigo.opacity(0.9)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        }
                     }
+                } else if let image = UIImage(named: artwork) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .blur(radius: 60)
+                        .opacity(0.8)
+                } else {
+                    // Blue gradient fallback for no artwork
+                    LinearGradient(
+                        colors: [.blue.opacity(0.8), .indigo.opacity(0.9)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 }
-            } else if let image = UIImage(named: artwork) {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .blur(radius: 60)
-                    .opacity(0.8)
-            } else {
-                // Blue gradient fallback for no artwork
-                LinearGradient(
-                    colors: [.blue.opacity(0.8), .indigo.opacity(0.9)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
             }
         }
         .ignoresSafeArea()

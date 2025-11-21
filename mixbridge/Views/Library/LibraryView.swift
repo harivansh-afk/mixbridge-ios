@@ -13,6 +13,7 @@ struct LibraryView: View {
     @Environment(AuthManager.self) private var authManager
     @State private var playlists: [Playlist] = []
     @State private var isLoading = true
+    @Namespace private var namespace
 
     var body: some View {
         NavigationStack {
@@ -49,6 +50,9 @@ struct LibraryView: View {
                     userEmail: nil,
                     profileImage: nil
                 )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .interactiveDismissDisabled(false)
             }
         }
     }
@@ -133,9 +137,10 @@ struct LibraryView: View {
                 ],
                 spacing: 20
             ) {
-                ForEach(playlists.isEmpty ? Array(Playlist.samplePlaylists.prefix(6)) : Array(playlists.prefix(6))) { playlist in
+                ForEach(Array((playlists.isEmpty ? Array(Playlist.samplePlaylists.prefix(6)) : Array(playlists.prefix(6))).enumerated()), id: \.element.id) { index, playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
+                            .navigationTransition(.zoom(sourceID: "top-\(playlist.id)", in: namespace))
                     } label: {
                         VStack(alignment: .center, spacing: 6) {
                             // Artwork
@@ -180,6 +185,7 @@ struct LibraryView: View {
                                 .truncationMode(.tail)
                                 .frame(maxWidth: .infinity)
                         }
+                        .matchedTransitionSource(id: "top-\(playlist.id)", in: namespace)
                     }
                     .buttonStyle(.plain)
                     .haptic(.selection)
@@ -263,9 +269,10 @@ struct LibraryView: View {
                 ],
                 spacing: 20
             ) {
-                ForEach(playlists.isEmpty ? Array(Playlist.samplePlaylists.prefix(4)) : Array(playlists.dropFirst(6).prefix(4))) { playlist in
+                ForEach(Array((playlists.isEmpty ? Array(Playlist.samplePlaylists.dropFirst(6)) : Array(playlists.dropFirst(6))).enumerated()), id: \.element.id) { index, playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
+                            .navigationTransition(.zoom(sourceID: "recent-\(playlist.id)", in: namespace))
                     } label: {
                         VStack(alignment: .center, spacing: 6) {
                             // Artwork
@@ -310,6 +317,7 @@ struct LibraryView: View {
                                 .truncationMode(.tail)
                                 .frame(maxWidth: .infinity)
                         }
+                        .matchedTransitionSource(id: "recent-\(playlist.id)", in: namespace)
                     }
                     .buttonStyle(.plain)
                     .haptic(.selection)

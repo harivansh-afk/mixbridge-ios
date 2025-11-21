@@ -6,6 +6,7 @@ struct SwipeBackGesture: ViewModifier {
     @State private var backgroundOpacity: Double = 1.0
 
     private let threshold: CGFloat = 100
+    private let edgeWidth: CGFloat = 800 // Swipe detection area from left edge
 
     func body(content: Content) -> some View {
         GeometryReader { geometry in
@@ -24,8 +25,8 @@ struct SwipeBackGesture: ViewModifier {
         return
                 DragGesture(minimumDistance: 10)
                     .updating($dragOffset) { value, state, _ in
-                        // Only allow dragging from left edge (first 50 points)
-                        guard value.startLocation.x < 50 else { return }
+                        // Only allow dragging from left edge
+                        guard value.startLocation.x < edgeWidth else { return }
 
                         // Only allow right-direction drag
                         if value.translation.width > 0 {
@@ -33,7 +34,7 @@ struct SwipeBackGesture: ViewModifier {
                         }
                     }
                     .onChanged { value in
-                        guard value.startLocation.x < 50 && value.translation.width > 0 else { return }
+                        guard value.startLocation.x < edgeWidth && value.translation.width > 0 else { return }
 
                         // Update background opacity based on drag distance
                         let progress = min(value.translation.width / maxDrag, 1.0)
@@ -45,7 +46,7 @@ struct SwipeBackGesture: ViewModifier {
                         }
                     }
                     .onEnded { value in
-                        guard value.startLocation.x < 50 && value.translation.width > 0 else {
+                        guard value.startLocation.x < edgeWidth && value.translation.width > 0 else {
                             resetView()
                             return
                         }
