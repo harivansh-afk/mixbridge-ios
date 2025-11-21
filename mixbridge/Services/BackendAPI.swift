@@ -4,7 +4,7 @@ import Foundation
 final class BackendAPI {
     static let shared = BackendAPI()
 
-    private let baseURL = "https://mixbridge.vercel.app"
+    private let baseURL = "https://mixbridge.app"
     private let keychain = KeychainManager.shared
 
     private init() {}

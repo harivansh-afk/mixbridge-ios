@@ -16,7 +16,7 @@ class AuthManager {
 
     // MARK: - Configuration
 
-    private let backendUrl = "https://mixbridge.vercel.app"
+    private let backendUrl = "https://mixbridge.app"
     private let callbackScheme = "mixbridge"
 
     private let keychain = KeychainManager.shared

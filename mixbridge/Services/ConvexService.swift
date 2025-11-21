@@ -10,7 +10,7 @@ final class ConvexService {
 
     // MARK: - API Base URL
 
-    private let apiBaseUrl = "https://mixbridge.vercel.app"
+    private let apiBaseUrl = "https://mixbridge.app"
 
     // MARK: - Query
 
