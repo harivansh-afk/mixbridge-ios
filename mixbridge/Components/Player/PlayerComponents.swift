@@ -208,7 +208,7 @@ struct PlayerControlsView: View {
     let onPlayPause: () -> Void
     let onNext: () -> Void
     let onPrevious: () -> Void
-    
+
     var body: some View {
         HStack(spacing: 40) {
             Button(action: onPrevious) {
@@ -216,22 +216,42 @@ struct PlayerControlsView: View {
                     .font(.system(size: 30))
                     .foregroundStyle(.primary)
             }
-            .buttonStyle(.plain)
-            
+            .buttonStyle(PlayerButtonStyle(hapticStyle: .light))
+
             Button(action: onPlayPause) {
                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 50))
                     .foregroundStyle(.primary)
+                    .contentTransition(.symbolEffect(.replace))
             }
-            .buttonStyle(.plain)
-            
+            .buttonStyle(PlayerButtonStyle(hapticStyle: .medium, scaleAmount: 0.85))
+
             Button(action: onNext) {
                 Image(systemName: "forward.fill")
                     .font(.system(size: 30))
                     .foregroundStyle(.primary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlayerButtonStyle(hapticStyle: .light))
         }
+    }
+}
+
+// MARK: - Player Button Style
+/// Custom button style with haptics and subtle scale animation
+struct PlayerButtonStyle: ButtonStyle {
+    var hapticStyle: UIImpactFeedbackGenerator.FeedbackStyle = .light
+    var scaleAmount: CGFloat = 0.9
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? scaleAmount : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, isPressed in
+                if isPressed {
+                    let generator = UIImpactFeedbackGenerator(style: hapticStyle)
+                    generator.impactOccurred()
+                }
+            }
     }
 }
 

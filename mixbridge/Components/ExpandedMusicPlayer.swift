@@ -219,7 +219,7 @@ struct ExpandedPlayerView: View {
             let horizontalPadding = screenWidth * 0.06 // 6% of screen width
             let artworkMaxWidth = screenWidth // 95% of screen width (leaves small margin)
             let cardSpacing: CGFloat = 40 // Spacing between cards in carousel (visible during swipe)
-            let cornerRadius = screenWidth * 0.13 // 8% of width for rounded corners
+            let cornerRadius = screenWidth * 0.12 // 8% of width for rounded corners
             let contentSpacing = screenHeight * 0.04 // 4% of screen height
             let progressTopSpacing = screenHeight * -0.05 // 2.5% of screen height
 
@@ -625,12 +625,19 @@ struct TrackCard: View {
             .frame(width: artworkWidth, height: artworkWidth)
 
             // Song info
-            PlayerInfoView(
-                title: track.title.count > 20
-                    ? String(track.title.prefix(20)) + "…"
-                    : track.title,
-                artist: track.artist
-            )
+            VStack(spacing: 6) {
+                GlassEffectText(
+                    text: track.title.count > 20
+                        ? String(track.title.prefix(20)) + "…"
+                        : track.title,
+                    font: UIFont.systemFont(ofSize: 25, weight: .bold)
+                )
+
+                Text(track.artist)
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         } 
     }
 }

@@ -35,7 +35,7 @@ struct Track: Identifiable, Codable, Equatable {
 // MARK: - Sample Data
 extension Track {
     static let sampleTracks: [Track] = [
-        Track(title: "Yaro Ne Mere Vaste", artist: "Rajeev Raja", album: "Hindi Hits", artwork: "https://i1.sndcdn.com/artworks-000130423102-7uii2q-t500x500.jpg"),
+        Track(title: "Facilita", artist: "Fred again...", album: "Hindi Hits", artwork: "https://i1.sndcdn.com/artworks-000130423102-7uii2q-t500x500.jpg"),
         Track(title: "Samjho Na", artist: "Aditya Rikhari", album: "Romantic", artwork: "music.note"),
         Track(title: "Shendur Laal Chadh", artist: "Ravindra Sathe", album: "Devotional", artwork: "music.note"),
         Track(title: "Bhar Do Jholi Meri", artist: "Pritam & Adnan Sami", album: "Bajrangi Bhaijaan", artwork: "music.note"),
