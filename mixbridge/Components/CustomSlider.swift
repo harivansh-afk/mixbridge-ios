@@ -62,7 +62,7 @@ struct CustomSlider: View {
     
     var body: some View {
         GeometryReader { geometry in
-            let sliderHeight: CGFloat = 2 // Fixed thicker height for "solid" vibe
+            let sliderHeight: CGFloat = 7 // Fixed thicker height for "solid" vibe
             
             ZStack(alignment: Alignment(horizontal: .leading, vertical: verticalAlignment)) {
                 // Background track
@@ -77,7 +77,7 @@ struct CustomSlider: View {
                             .fill(progressColor)
                             .frame(
                                 width: progressWidth(for: geometry),
-                                height: isDragging ? 4 : 2
+                                height: isDragging ? 10 : 7
                             )
                         Spacer(minLength: 0)
                     }

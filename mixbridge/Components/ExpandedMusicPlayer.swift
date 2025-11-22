@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 // MARK: - Smart Container
 /// The "Smart" container that connects the PlayerState (Data) to the ExpandedPlayerView (UI).
@@ -211,7 +212,7 @@ struct ExpandedPlayerView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in    
+        GeometryReader { geometry in
             let screenWidth = geometry.size.width
             let screenHeight = geometry.size.height
 
@@ -324,14 +325,16 @@ struct ExpandedPlayerView: View {
                     .contentShape(Rectangle())
                     .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.78), value: dragOffset)
                     .animation(.interactiveSpring(response: 0.45, dampingFraction: 0.68), value: displayedTrack.id)
-                    .gesture(
-                        DragGesture(minimumDistance: 10)
-                            .onChanged { value in
-                                handleDragChanged(value, screenWidth: screenWidth)
+                    // Use custom gesture recognizer to allow vertical swipes (dismissal) to pass through
+                    .overlay(
+                        HorizontalPanGesture(
+                            onChanged: { translation, velocity in
+                                handleDragChanged(translation: translation, screenWidth: screenWidth)
+                            },
+                            onEnded: { translation, velocity in
+                                handleDragEnded(translation: translation, velocity: velocity, screenWidth: screenWidth)
                             }
-                            .onEnded { value in
-                                handleDragEnded(value, screenWidth: screenWidth)
-                            }
+                        )
                     )
                     .onChange(of: currentTrack.id) { oldValue, newValue in
                         // Sync carousel when player changes externally (buttons, auto-advance)
@@ -380,8 +383,25 @@ struct ExpandedPlayerView: View {
                         .padding(.top, contentSpacing)
                     }
 
+                    Spacer()
+
+                    // 4. Bottom Toolbar
+                    PlayerToolbar(onQueueTap: {
+                        // TODO: Show queue
+                    })
+                    .padding(.horizontal, horizontalPadding)
+                    .padding(.bottom, 8)
+
                 }
 
+            }
+            .overlay(alignment: .top) {
+                // Grab Handle
+                Capsule()
+                    .fill(Color.white.opacity(0.2))
+                    .frame(width: 60, height: 5)
+                    
+                    .allowsHitTesting(false) // Let swipes pass through
             }
         }
 
@@ -391,7 +411,7 @@ struct ExpandedPlayerView: View {
 
     // MARK: - Gesture Handlers
 
-    private func handleDragChanged(_ value: DragGesture.Value, screenWidth: CGFloat) {
+    private func handleDragChanged(translation: CGFloat, screenWidth: CGFloat) {
         // Start drag if not already dragging
         if !isDraggingArtwork {
             isDraggingArtwork = true
@@ -403,7 +423,7 @@ struct ExpandedPlayerView: View {
 
         // Apply boundary resistance for natural feel
         let resistedOffset = applyBoundaryResistance(
-            translation: value.translation.width,
+            translation: translation,
             hasNext: displayedNext != nil,
             hasPrevious: displayedPrevious != nil
         )
@@ -412,7 +432,7 @@ struct ExpandedPlayerView: View {
         dragOffset = resistedOffset
 
         // Progressive haptic feedback throughout the drag
-        let progress = abs(value.translation.width) / screenWidth
+        let progress = abs(translation) / screenWidth
         let currentThreshold = Int(progress * 100 / 10) // 0-10 scale
 
         if currentThreshold > lastHapticThreshold {
@@ -444,15 +464,14 @@ struct ExpandedPlayerView: View {
         return translation
     }
 
-    private func handleDragEnded(_ value: DragGesture.Value, screenWidth: CGFloat) {
+    private func handleDragEnded(translation: CGFloat, velocity: CGFloat, screenWidth: CGFloat) {
         let threshold = screenWidth * 0.25
-        let velocity = value.predictedEndTranslation.width - value.translation.width
 
         // Consider both distance AND velocity for natural feel
-        let shouldAdvance = abs(value.translation.width) > threshold || abs(velocity) > 500
+        let shouldAdvance = abs(translation) > threshold || abs(velocity) > 500
 
         if shouldAdvance {
-            if value.translation.width > 0 && displayedPrevious != nil {
+            if translation > 0 && displayedPrevious != nil {
                 // Swipe right → previous
                 heavyHaptic.impactOccurred(intensity: 1.0) // Final heavy haptic on commit
 
@@ -472,7 +491,7 @@ struct ExpandedPlayerView: View {
                 Task.detached { @MainActor in
                     onPrevious()
                 }
-            } else if value.translation.width < 0 && displayedNext != nil {
+            } else if translation < 0 && displayedNext != nil {
                 // Swipe left → next
                 heavyHaptic.impactOccurred(intensity: 1.0) // Final heavy haptic on commit
 
@@ -600,6 +619,78 @@ struct ExpandedPlayerView: View {
     }
 }
 
+// MARK: - Gesture Recognizer Helper
+struct HorizontalPanGesture: UIViewRepresentable {
+    var onChanged: (CGFloat, CGFloat) -> Void
+    var onEnded: (CGFloat, CGFloat) -> Void
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        let gesture = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
+        gesture.delegate = context.coordinator
+        view.addGestureRecognizer(gesture)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onChanged: onChanged, onEnded: onEnded)
+    }
+
+    class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var onChanged: (CGFloat, CGFloat) -> Void
+        var onEnded: (CGFloat, CGFloat) -> Void
+
+        init(onChanged: @escaping (CGFloat, CGFloat) -> Void, onEnded: @escaping (CGFloat, CGFloat) -> Void) {
+            self.onChanged = onChanged
+            self.onEnded = onEnded
+        }
+
+        @objc func handlePan(_ gesture: UIPanGestureRecognizer) {
+            let translation = gesture.translation(in: gesture.view).x
+            let velocity = gesture.velocity(in: gesture.view).x
+
+            switch gesture.state {
+            case .changed:
+                onChanged(translation, velocity)
+            case .ended, .cancelled:
+                onEnded(translation, velocity)
+            default:
+                break
+            }
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
+            let velocity = pan.velocity(in: pan.view)
+            // Only begin if horizontal motion dominates
+            return abs(velocity.x) > abs(velocity.y)
+        }
+    }
+}
+
+
+// MARK: - Player Toolbar (Bottom glass bar)
+struct PlayerToolbar: View {
+    let onQueueTap: () -> Void
+
+    var body: some View {
+        HStack {
+            Spacer()
+
+            Button(action: onQueueTap) {
+                Image(systemName: "list.bullet")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(PlayerButtonStyle(hapticStyle: .light))
+            .glassEffect(.clear)
+        }
+    }
+}
 
 // MARK: - Track Card Component (Artwork + Title grouped)
 struct TrackCard: View {
@@ -630,7 +721,7 @@ struct TrackCard: View {
                     text: track.title.count > 20
                         ? String(track.title.prefix(20)) + "…"
                         : track.title,
-                    font: UIFont.systemFont(ofSize: 25, weight: .bold)
+                    font: UIFont.systemFont(ofSize: 30, weight: .bold)
                 )
 
                 Text(track.artist)
