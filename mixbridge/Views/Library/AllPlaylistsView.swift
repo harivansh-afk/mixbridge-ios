@@ -70,7 +70,6 @@ struct AllPlaylistsView: View {
                 .listStyle(.plain)
             }
         }
-        .swipeBackGesture()
         .navigationTitle("Playlists")
         .onAppear {
             if !hasLoaded {

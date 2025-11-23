@@ -59,7 +59,6 @@ struct AllArtistsView: View {
                 .listStyle(.plain)
             }
         }
-        .swipeBackGesture()
         .navigationTitle("Artists")
         .onAppear {
             if !hasLoaded {

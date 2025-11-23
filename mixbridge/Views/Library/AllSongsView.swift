@@ -34,7 +34,6 @@ struct AllSongsView: View {
                 .listStyle(.plain)
             }
         }
-        .swipeBackGesture()
         .navigationTitle("Songs")
         .onAppear {
             if !hasLoaded {
