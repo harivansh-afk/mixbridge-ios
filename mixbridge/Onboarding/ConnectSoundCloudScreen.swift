@@ -21,18 +21,11 @@ struct ConnectSoundCloudScreen: View {
 
                 VStack(spacing: -11) {
                     Spacer()
-
-                    // Title
-                    Text("Welcome to")
-                        .font(.custom("InstrumentSerif-Regular", size:30))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                    Text("Mixbridge")
-                        .font(.custom("InstrumentSerif-Italic", size: 46))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
+                GlassEffectText(
+                        text: "Mixbridge",
+                        font: UIFont(name: "InstrumentSerif-Italic", size: 46) ?? .systemFont(ofSize: 46)
+                    )
+                    .frame(height: 60)
 
                     Spacer()
 
