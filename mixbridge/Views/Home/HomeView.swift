@@ -39,6 +39,9 @@ struct HomeView: View {
                     userEmail: nil,
                     profileImage: nil
                 )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.hidden)
+                .interactiveDismissDisabled(false)
             }
             .task {
                 if let userId = authManager.currentUserId {
@@ -119,38 +122,11 @@ struct HomeView: View {
 
     private var homeList: some View {
         List {
-            // Queue Section
-            if !queueManager.queueTracks.isEmpty {
-                Section {
-                    // Subheading row
-                    Text("Queue")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.primary)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 4, trailing: 16))
-                        .listRowSeparator(.hidden)
-
-                    // Track rows
-                    ForEach(Array(queueManager.queueTracks.enumerated()), id: \.element.id) { index, track in
-                        TrackRow(
-                            track,
-                            number: index + 1,
-                            showCover: true,
-                            onDelete: {
-                                Task {
-                                    try? await queueManager.removeTrack(track)
-                                }
-                            }
-                        )
-                    }
-                }
-            }
-
             // Recently Played Section
             if !recentlyPlayed.isEmpty {
                 Section {
                     // Subheading row
-                    Text("Recently Played")
+                    Text("Recents")
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundStyle(.primary)
@@ -158,7 +134,7 @@ struct HomeView: View {
                         .listRowSeparator(.hidden)
 
                     // Track rows
-                    ForEach(Array(recentlyPlayed.prefix(10).enumerated()), id: \.element.id) { index, track in
+                    ForEach(Array(recentlyPlayed.prefix(100).enumerated()), id: \.element.id) { index, track in
                         TrackRow(
                             track,
                             number: index + 1,

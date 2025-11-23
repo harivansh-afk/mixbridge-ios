@@ -34,6 +34,9 @@ struct LikedView: View {
                         userEmail: nil,
                         profileImage: nil
                     )
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.hidden)
+                    .interactiveDismissDisabled(false)
                 }
                 .task {
                     if let userId = authManager.currentUserId {

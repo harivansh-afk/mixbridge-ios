@@ -126,8 +126,7 @@ struct AccountBottomSheet: View {
 
             }
             .listStyle(InsetGroupedListStyle())
-            .listSectionSpacing(20)
-            .navigationTitle("Account")
+            .contentMargins(.top, 5, for: .scrollContent)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -143,6 +142,7 @@ struct AccountBottomSheet: View {
             }
         }
         .preferredColorScheme(themeMode.colorScheme)
+        .presentationDragIndicator(.hidden)
     }
 
     // MARK: - Convex Profile Header

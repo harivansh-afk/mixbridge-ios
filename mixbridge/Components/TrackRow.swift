@@ -12,7 +12,9 @@ struct TrackRow: View {
     let track: Track
     let number: Int
     let showCover: Bool
+    var isQueueContext: Bool = false
     var onAddToQueue: (() -> Void)?
+    var onRemoveFromQueue: (() -> Void)?
     var onLike: (() -> Void)?
     var onDelete: (() -> Void)?
     var onTrackAddedToQueue: ((Track, String) -> Void)? // Callback with track + queue track ID
@@ -26,7 +28,9 @@ struct TrackRow: View {
         _ track: Track,
         number: Int,
         showCover: Bool = false,
+        isQueueContext: Bool = false,
         onAddToQueue: (() -> Void)? = nil,
+        onRemoveFromQueue: (() -> Void)? = nil,
         onLike: (() -> Void)? = nil,
         onDelete: (() -> Void)? = nil,
         onTrackAddedToQueue: ((Track, String) -> Void)? = nil,
@@ -36,7 +40,9 @@ struct TrackRow: View {
         self.track = track
         self.number = number
         self.showCover = showCover
+        self.isQueueContext = isQueueContext
         self.onAddToQueue = onAddToQueue
+        self.onRemoveFromQueue = onRemoveFromQueue
         self.onLike = onLike
         self.onDelete = onDelete
         self.onTrackAddedToQueue = onTrackAddedToQueue
@@ -71,20 +77,31 @@ struct TrackRow: View {
             handlePlayTapped()
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button(role: .destructive) {
-                handleDelete()
-            } label: {
-                Label("", systemImage: "trash")
+            if isQueueContext {
+                Button {
+                    onRemoveFromQueue?()
+                } label: {
+                    Label("", systemImage: "minus")
+                }
+                .tint(.red)
+            } else {
+                Button(role: .destructive) {
+                    handleDelete()
+                } label: {
+                    Label("", systemImage: "trash")
+                }
+                .tint(.red)
             }
-            .tint(.red)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            Button {
-                handleAddToQueue()
-            } label: {
-                Label("", systemImage: "text.line.first.and.arrowtriangle.forward")
+            if !isQueueContext {
+                Button {
+                    handleAddToQueue()
+                } label: {
+                    Label("", systemImage: "text.line.last.and.arrowtriangle.forward")
+                }
+                .tint(Color(red: 117/255, green: 114/255, blue: 255/255))
             }
-            .tint(.blue)
         }
         .alert("Error", isPresented: $showError) {
             Button("OK", role: .cancel) {}
@@ -183,13 +200,14 @@ struct TrackRow: View {
         }
     }
 
+    @ViewBuilder
     private var trailingActions: some View {
-        HStack(spacing: 16) {
-            Button(action: {}) {
-                Image(systemName: "ellipsis")
-                    .font(.title3)
-            }
-            .buttonStyle(.plain)
+        if isQueueContext {
+            Image(systemName: "line.3.horizontal")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+        } else {
+            EmptyView()
         }
     }
 

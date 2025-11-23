@@ -175,12 +175,19 @@ struct ExpandedPlayerView: View {
     let onSeek: (Bool) -> Void
     let onDismiss: () -> Void
 
+    // Preview support
+    var previewQueueTracks: [Track]? = nil
+    var initialShowQueue: Bool = false
+
     // MARK: - Carousel State (Direct @State for immediate updates)
     @State private var displayedTrack: Track
     @State private var displayedNext: Track?
     @State private var displayedPrevious: Track?
     @State private var dragOffset: CGFloat = 0
     @State private var isDraggingArtwork = false
+    @State private var showQueueSheet: Bool
+    @State private var queueExpansion: CGFloat // How much queue pushes content up
+    @State private var queueDragStart: CGFloat = 0 // Starting expansion when drag begins
 
     // Haptic generators (prepared for instant feedback)
     @State private var lightHaptic = UIImpactFeedbackGenerator(style: .light)
@@ -188,7 +195,7 @@ struct ExpandedPlayerView: View {
     @State private var heavyHaptic = UIImpactFeedbackGenerator(style: .heavy)
     @State private var lastHapticThreshold: Int = 0
 
-    init(currentTrack: Track, nextTrack: Track?, previousTrack: Track?, isPlaying: Bool, namespace: Namespace.ID, playbackPosition: Binding<Double>, duration: Double, volume: Binding<Double>, isDraggingProgress: Binding<Bool>, isDraggingVolume: Binding<Bool>, onPlayPause: @escaping () -> Void, onNext: @escaping () -> Void, onPrevious: @escaping () -> Void, onSeek: @escaping (Bool) -> Void, onDismiss: @escaping () -> Void) {
+    init(currentTrack: Track, nextTrack: Track?, previousTrack: Track?, isPlaying: Bool, namespace: Namespace.ID, playbackPosition: Binding<Double>, duration: Double, volume: Binding<Double>, isDraggingProgress: Binding<Bool>, isDraggingVolume: Binding<Bool>, onPlayPause: @escaping () -> Void, onNext: @escaping () -> Void, onPrevious: @escaping () -> Void, onSeek: @escaping (Bool) -> Void, onDismiss: @escaping () -> Void, previewQueueTracks: [Track]? = nil, initialShowQueue: Bool = false) {
         self.currentTrack = currentTrack
         self.nextTrack = nextTrack
         self.previousTrack = previousTrack
@@ -204,11 +211,15 @@ struct ExpandedPlayerView: View {
         self.onPrevious = onPrevious
         self.onSeek = onSeek
         self.onDismiss = onDismiss
+        self.previewQueueTracks = previewQueueTracks
+        self.initialShowQueue = initialShowQueue
 
         // Initialize display state
         _displayedTrack = State(initialValue: currentTrack)
         _displayedNext = State(initialValue: nextTrack)
         _displayedPrevious = State(initialValue: previousTrack)
+        _showQueueSheet = State(initialValue: initialShowQueue)
+        _queueExpansion = State(initialValue: initialShowQueue ? 200 : 0)
     }
 
     var body: some View {
@@ -217,7 +228,7 @@ struct ExpandedPlayerView: View {
             let screenHeight = geometry.size.height
 
             // Responsive sizing
-            let horizontalPadding = screenWidth * 0.06 // 6% of screen width
+            let horizontalPadding = screenWidth * 0.075// 7.5% of screen width
             let artworkMaxWidth = screenWidth // 95% of screen width (leaves small margin)
             let cardSpacing: CGFloat = 40 // Spacing between cards in carousel (visible during swipe)
             let cornerRadius = screenWidth * 0.12 // 8% of width for rounded corners
@@ -258,6 +269,8 @@ struct ExpandedPlayerView: View {
                 .animation(.smooth(duration: 0.7), value: displayedTrack.id)
 
                 VStack(spacing: 0) {
+                    // Top section (artwork + controls) - moves up when queue expands
+                    Group {
                     // 2. Artwork + Title Carousel (grouped together)
                     ZStack(alignment: .top) {
                         // Previous card (left, off-screen)
@@ -349,11 +362,9 @@ struct ExpandedPlayerView: View {
                         }
                     }
                     .clipped()
-                    .ignoresSafeArea(.all, edges: .top) // Flush to very top
                     .onAppear {
                         // Prepare all haptic generators
                         lightHaptic.prepare()
-                        mediumHaptic.prepare()
                         heavyHaptic.prepare()
 
                         // Initialize carousel with current tracks
@@ -382,15 +393,112 @@ struct ExpandedPlayerView: View {
                         .padding(.horizontal, horizontalPadding)
                         .padding(.top, contentSpacing)
                     }
+                    }
+                    // Apply offset to entire top section (artwork + controls) when queue expands
+                    .offset(y: showQueueSheet ? -queueExpansion : 0)
+                    .ignoresSafeArea(.all, edges: .top) // Flush artwork to top, applied to whole group
+                    .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.8), value: queueExpansion)
 
-                    Spacer()
+                    // 4. Queue List or Toolbar
+                    if showQueueSheet {
+                        VStack(spacing: 0) {
+                            // Drag handle area - larger hit target
+                            VStack(spacing: 8) {
+                                Capsule()
+                                    .fill(Color.white.opacity(0.2))
+                                    .frame(width: 60, height: 5)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
+                            .padding(.bottom, 8)
+                            .background(Color.clear)
+                            .contentShape(Rectangle())
+                            .highPriorityGesture(
+                                DragGesture(minimumDistance: 5)
+                                    .onChanged { value in
+                                        // Capture start position on first drag movement
+                                        if queueDragStart == 0 {
+                                            queueDragStart = queueExpansion
+                                        }
 
-                    // 4. Bottom Toolbar
-                    PlayerToolbar(onQueueTap: {
-                        // TODO: Show queue
-                    })
-                    .padding(.horizontal, horizontalPadding)
-                    .padding(.bottom, 8)
+                                        // Negative translation = dragging up = expand
+                                        let drag = -value.translation.height
+                                        let newExpansion = max(0, min(300, queueDragStart + drag))
+
+                                        // Haptic at thresholds
+                                        let oldThreshold = Int(queueExpansion / 50)
+                                        let newThreshold = Int(newExpansion / 50)
+                                        if newThreshold != oldThreshold {
+                                            lightHaptic.impactOccurred(intensity: 0.5)
+                                        }
+
+                                        withAnimation(.interactiveSpring(response: 0.15, dampingFraction: 0.8)) {
+                                            queueExpansion = newExpansion
+                                        }
+                                    }
+                                    .onEnded { value in
+                                        queueDragStart = 0
+
+                                        // Swipe down to close
+                                        if value.translation.height > 100 && queueExpansion < 100 {
+                                            mediumHaptic.impactOccurred()
+                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                                showQueueSheet = false
+                                                queueExpansion = 0
+                                            }
+                                        } else {
+                                            // Snap to expanded or collapsed based on position
+                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                                queueExpansion = queueExpansion > 100 ? 200 : 0
+                                            }
+                                        }
+                                    }
+                            )
+
+                            List {
+                                ForEach(Array((previewQueueTracks ?? queueManager.queueTracks).enumerated()), id: \.element.id) { index, track in
+                                    TrackRow(
+                                        track,
+                                        number: index + 1,
+                                        showCover: true,
+                                        isQueueContext: true,
+                                        onRemoveFromQueue: {
+                                            removeFromQueue(at: index)
+                                        }
+                                    )
+                                    .listRowSeparator(.hidden)
+                                }
+                                .onMove(perform: moveQueueItem)
+                                .onDelete(perform: deleteQueueItem)
+                            }
+                            .listStyle(.plain)
+                            .scrollContentBackground(.hidden)
+                            .contentMargins(.bottom, 60, for: .scrollContent)
+                        }
+                        .frame(height: 280 + queueExpansion)
+                        .offset(y: -queueExpansion)
+                        .layoutPriority(1)
+                        .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.8), value: queueExpansion)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else {
+                        Spacer()
+
+                        // Queue button
+                        HStack {
+                            Spacer()
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    showQueueSheet = true
+                                    queueExpansion = 200 // Start expanded
+                                }
+                            } label: {
+                                Image("queue")
+                                    .font(.system(size: 18, weight: .semibold))
+                            }
+                            .buttonStyle(GlassToolbarButtonStyle())
+                        }
+                        .padding(.horizontal, horizontalPadding)
+                    }
 
                 }
 
@@ -398,10 +506,9 @@ struct ExpandedPlayerView: View {
             .overlay(alignment: .top) {
                 // Grab Handle
                 Capsule()
-                    .fill(Color.white.opacity(0.2))
+                    .fill(Color.white.opacity(0.4))
                     .frame(width: 60, height: 5)
-                    
-                    .allowsHitTesting(false) // Let swipes pass through
+                    .allowsHitTesting(false)
             }
         }
 
@@ -417,7 +524,7 @@ struct ExpandedPlayerView: View {
             isDraggingArtwork = true
             lastHapticThreshold = 0
             lightHaptic.prepare()
-            mediumHaptic.prepare()
+            
             heavyHaptic.prepare()
         }
 
@@ -441,9 +548,6 @@ struct ExpandedPlayerView: View {
             if progress < 0.15 {
                 // Light haptic at start (10-15%)
                 lightHaptic.impactOccurred(intensity: 0.3)
-            } else if progress < 0.25 {
-                // Medium haptic near threshold (15-25%)
-                mediumHaptic.impactOccurred(intensity: 0.5)
             } else if progress >= 0.25 && progress < 0.35 {
                 // Heavy haptic past threshold (25-35%)
                 heavyHaptic.impactOccurred(intensity: 0.8)
@@ -550,6 +654,22 @@ struct ExpandedPlayerView: View {
         guard let currentIndex = getQueueIndex(for: track) else { return nil }
         let prevIndex = currentIndex - 1
         return prevIndex >= 0 ? queueManager.queueTracks[prevIndex] : nil
+    }
+
+    // Move queue item for reordering
+    private func moveQueueItem(from source: IndexSet, to destination: Int) {
+        queueManager.queueTracks.move(fromOffsets: source, toOffset: destination)
+    }
+
+    // Delete queue item (for swipe to delete)
+    private func deleteQueueItem(at offsets: IndexSet) {
+        queueManager.queueTracks.remove(atOffsets: offsets)
+    }
+
+    // Remove single item from queue
+    private func removeFromQueue(at index: Int) {
+        guard index >= 0 && index < queueManager.queueTracks.count else { return }
+        queueManager.queueTracks.remove(at: index)
     }
 
     private enum Direction {
@@ -672,23 +792,20 @@ struct HorizontalPanGesture: UIViewRepresentable {
 }
 
 
-// MARK: - Player Toolbar (Bottom glass bar)
-struct PlayerToolbar: View {
-    let onQueueTap: () -> Void
-
-    var body: some View {
-        HStack {
-            Spacer()
-
-            Button(action: onQueueTap) {
-                Image(systemName: "list.bullet")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .frame(width: 44, height: 44)
+// MARK: - Glass Button Style
+struct GlassToolbarButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.primary)
+            .frame(width: 44, height: 44)
+            .scaleEffect(configuration.isPressed ? 0.9 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
+            .glassEffect(.regular, in: .capsule)
+            .onChange(of: configuration.isPressed) { _, isPressed in
+                if isPressed {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
             }
-            .buttonStyle(PlayerButtonStyle(hapticStyle: .light))
-            .glassEffect(.clear)
-        }
     }
 }
 
@@ -754,7 +871,46 @@ struct TrackCard: View {
         onNext: {},
         onPrevious: {},
         onSeek: { _ in },
-        onDismiss: {}
+        onDismiss: {},
+        previewQueueTracks: Track.sampleTracks,
+        initialShowQueue: true
     )
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Queue List") {
+    @Previewable @State var queueExpansion: CGFloat = 200
+
+    VStack(spacing: 0) {
+        // Drag handle
+        VStack(spacing: 8) {
+            Capsule()
+                .fill(Color.white.opacity(0.4))
+                .frame(width: 40, height: 5)
+
+            Text("Up Next")
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 30)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
+
+        List {
+            ForEach(Array(Track.sampleTracks.enumerated()), id: \.element.id) { index, track in
+                TrackRow(
+                    track,
+                    number: index + 1,
+                    showCover: true
+                )
+                .listRowSeparator(.hidden)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+    }
+    .frame(height: 280 + queueExpansion)
+    .background(Color.blue.opacity(0.3))
     .preferredColorScheme(.dark)
 }

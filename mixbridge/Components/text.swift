@@ -45,7 +45,7 @@ struct TextToShape: Shape {
         return path.applying(centerTransform)
     }
 }
-
+    
 extension UIFont {
     /// Converting UIFont into CTFont
     nonisolated

@@ -55,7 +55,7 @@ struct LibraryView: View {
                     profileImage: nil
                 )
                 .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+                .presentationDragIndicator(.hidden)
                 .interactiveDismissDisabled(false)
             }
         }
