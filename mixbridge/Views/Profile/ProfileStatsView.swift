@@ -18,7 +18,7 @@ struct ProfileStatsView: View {
                 .resizable()
                 .scaledToFill()
                 .ignoresSafeArea()
-                .grayscale(0.7)
+                .grayscale(1)
                 .blur(radius: 5, opaque: true)
              
 
@@ -67,7 +67,6 @@ struct ProfileStatsView: View {
                 }
             }
         }
-        .swipeBackGesture()
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {

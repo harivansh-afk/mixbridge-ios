@@ -41,6 +41,13 @@ class AuthManager {
                     currentUserId = extractedUserId
                 }
             }
+
+            // If username is nil, try to extract it from token
+            if keychain.getUsername() == nil {
+                if let extractedUsername = SessionTokenDecoder.getUsername(from: token) {
+                    try? keychain.saveUsername(extractedUsername)
+                }
+            }
         } else {
             isAuthenticated = false
             currentUserId = nil
@@ -89,6 +96,11 @@ class AuthManager {
             if let userId = SessionTokenDecoder.getUserId(from: token) {
                 try keychain.saveUserId(userId)
                 currentUserId = userId
+            }
+
+            // Extract and save username from JWT
+            if let username = SessionTokenDecoder.getUsername(from: token) {
+                try keychain.saveUsername(username)
             }
 
             // Set long expiry for session token (30 days)

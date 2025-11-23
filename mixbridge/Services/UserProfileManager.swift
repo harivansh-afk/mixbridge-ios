@@ -47,11 +47,11 @@ class UserProfileManager {
     }
 
     var displayName: String {
-        profile?.profile.full_name ?? profile?.profile.username ?? "User"
+        profile?.profile.full_name ?? profile?.profile.username ?? KeychainManager.shared.getUsername() ?? "User"
     }
 
     var username: String {
-        profile?.profile.username ?? "user"
+        profile?.profile.username ?? KeychainManager.shared.getUsername() ?? "user"
     }
 
     var followersCount: Int {
