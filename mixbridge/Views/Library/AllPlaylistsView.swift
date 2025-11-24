@@ -33,20 +33,12 @@ struct AllPlaylistsView: View {
                                             .resizable()
                                             .scaledToFill()
                                     } placeholder: {
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(.gray.opacity(0.3))
+                                        Color.clear
                                     }
                                     .frame(width: 60, height: 60)
                                     .clipShape(RoundedRectangle(cornerRadius: 8))
                                 } else {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [.blue, .blue.opacity(0.7)],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
+                                    Color.clear
                                         .frame(width: 60, height: 60)
                                 }
 

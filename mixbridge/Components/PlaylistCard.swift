@@ -54,34 +54,15 @@ struct PlaylistCard: View {
                     }
                 }
             } else {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(
-                        LinearGradient(
-                            colors: [.blue, .blue.opacity(0.7)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                Color.clear
                     .frame(width: artworkSize, height: artworkSize)
             }
         }
     }
 
     private var artworkPlaceholder: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    LinearGradient(
-                        colors: [.blue, .blue.opacity(0.7)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            ProgressView()
-                .progressViewStyle(.circular)
-        }
-        .frame(width: artworkSize, height: artworkSize)
+        Color.clear
+            .frame(width: artworkSize, height: artworkSize)
     }
 }
 

@@ -72,14 +72,7 @@ struct PlayerArtworkView: View {
     }
     
     private var placeholder: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(Color.gray.opacity(0.3))
-            
-            Image(systemName: "music.note")
-                .font(.system(size: (size ?? 50) * 0.5))
-                .foregroundStyle(.secondary)
-        }
+        Color.clear
     }
 }
 
@@ -102,12 +95,7 @@ struct PlayerBackgroundView: View {
                                 .blur(radius: 60)
                                 .opacity(0.8)
                         } else {
-                            // Blue gradient fallback while loading
-                            LinearGradient(
-                                colors: [.blue.opacity(0.8), .indigo.opacity(0.9)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+                            Color.clear
                         }
                     }
                 } else if let image = UIImage(named: artwork) {
@@ -118,12 +106,7 @@ struct PlayerBackgroundView: View {
                         .blur(radius: 60)
                         .opacity(0.8)
                 } else {
-                    // Blue gradient fallback for no artwork
-                    LinearGradient(
-                        colors: [.blue.opacity(0.8), .indigo.opacity(0.9)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                    Color.clear
                 }
             }
         }

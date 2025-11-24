@@ -174,14 +174,7 @@ struct LibraryView: View {
                                         }
                                     }
                                 } else {
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [.blue, .blue.opacity(0.7)],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
+                                    Color.clear
                                         .aspectRatio(1, contentMode: .fit)
                                 }
                             }
@@ -306,14 +299,7 @@ struct LibraryView: View {
                                         }
                                     }
                                 } else {
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [.blue, .blue.opacity(0.7)],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
+                                    Color.clear
                                         .aspectRatio(1, contentMode: .fit)
                                 }
                             }

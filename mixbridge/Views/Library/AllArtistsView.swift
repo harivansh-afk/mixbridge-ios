@@ -33,19 +33,13 @@ struct AllArtistsView: View {
                                             .resizable()
                                             .scaledToFill()
                                     } placeholder: {
-                                        Circle()
-                                            .fill(.gray.opacity(0.3))
+                                        Color.clear
                                     }
                                     .frame(width: 50, height: 50)
                                     .clipShape(Circle())
                                 } else {
-                                    Circle()
-                                        .fill(.gray.opacity(0.3))
+                                    Color.clear
                                         .frame(width: 50, height: 50)
-                                        .overlay(
-                                            Image(systemName: "music.mic")
-                                                .foregroundStyle(.gray)
-                                        )
                                 }
 
                                 VStack(alignment: .leading, spacing: 4) {

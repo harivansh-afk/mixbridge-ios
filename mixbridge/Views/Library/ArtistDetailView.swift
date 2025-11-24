@@ -116,22 +116,8 @@ struct ArtistDetailView: View {
     }
 
     private var avatarPlaceholder: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [.purple, .purple.opacity(0.7)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            Image(systemName: "music.mic")
-                .font(.system(size: 50))
-                .foregroundStyle(.white.opacity(0.8))
-        }
-        .frame(width: avatarSize, height: avatarSize)
-        .shadow(color: .black.opacity(0.2), radius: 16, y: 8)
+        Color.clear
+            .frame(width: avatarSize, height: avatarSize)
     }
 
     private var artistInfo: some View {
@@ -239,20 +225,12 @@ struct ArtistDetailView: View {
                             .resizable()
                             .scaledToFill()
                     } placeholder: {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(.gray.opacity(0.3))
+                        Color.clear
                     }
                     .frame(width: 160, height: 160)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 } else {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(
-                            LinearGradient(
-                                colors: [.blue, .blue.opacity(0.7)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                    Color.clear
                         .frame(width: 160, height: 160)
                 }
             }

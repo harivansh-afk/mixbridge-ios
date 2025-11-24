@@ -93,38 +93,17 @@ struct PlaylistDetailView: View {
                     }
                 }
             } else {
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(
-                        LinearGradient(
-                            colors: [.blue, .blue.opacity(0.7)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                Color.clear
                     .aspectRatio(1, contentMode: .fit)
                     .frame(width: artworkSize, height: artworkSize)
-                    .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
             }
         }
     }
 
     private var artworkPlaceholder: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 20)
-                .fill(
-                    LinearGradient(
-                        colors: [.blue, .blue.opacity(0.7)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            ProgressView()
-                .progressViewStyle(.circular)
-        }
-        .aspectRatio(1, contentMode: .fit)
-        .frame(width: artworkSize, height: artworkSize)
-        .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .frame(width: artworkSize, height: artworkSize)
     }
 
     private var playlistInfo: some View {
