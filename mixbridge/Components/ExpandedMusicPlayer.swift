@@ -503,13 +503,6 @@ struct ExpandedPlayerView: View {
                 }
 
             }
-            .overlay(alignment: .top) {
-                // Grab Handle
-                Capsule()
-                    .fill(Color.white.opacity(0.4))
-                    .frame(width: 60, height: 5)
-                    .allowsHitTesting(false)
-            }
         }
 
         // Setup the hero transition

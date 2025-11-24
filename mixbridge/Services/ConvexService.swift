@@ -48,6 +48,73 @@ final class ConvexService {
         }
     }
 
+    // MARK: - Mutation
+
+    private func mutation<T: Codable>(_ path: String, args: [String: Any] = [:]) async throws -> T {
+        let url = URL(string: "\(deploymentUrl)/api/mutation")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "path": path,
+            "args": args,
+            "format": "json"
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw ConvexError.requestFailed
+        }
+
+        let convexResponse = try JSONDecoder().decode(ConvexResponse<T>.self, from: data)
+
+        guard convexResponse.status == "success" else {
+            throw ConvexError.mutationFailed(convexResponse.errorMessage ?? "Unknown error")
+        }
+
+        if let value = convexResponse.value {
+            return value
+        } else {
+            throw ConvexError.noData
+        }
+    }
+
+    @discardableResult
+    private func mutationVoid(_ path: String, args: [String: Any] = [:]) async throws -> String? {
+        let url = URL(string: "\(deploymentUrl)/api/mutation")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "path": path,
+            "args": args,
+            "format": "json"
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw ConvexError.requestFailed
+        }
+
+        let convexResponse = try JSONDecoder().decode(ConvexResponse<String>.self, from: data)
+
+        guard convexResponse.status == "success" else {
+            throw ConvexError.mutationFailed(convexResponse.errorMessage ?? "Unknown error")
+        }
+
+        return convexResponse.value
+    }
+
     // MARK: - User Profile
 
     func getUserProfile(userId: String) async throws -> ConvexUserProfile? {
@@ -96,6 +163,19 @@ final class ConvexService {
             args: [
                 "userId": userId,
                 "limit": limit
+            ]
+        )
+    }
+
+    /// Log a track play to history (matches Next.js webapp implementation)
+    func addPlay(userId: String, trackId: String, trackData: [String: Any]) async throws {
+        try await mutationVoid(
+            "playHistory:addPlay",
+            args: [
+                "userId": userId,
+                "trackId": trackId,
+                "source": "soundcloud",
+                "trackData": trackData
             ]
         )
     }
@@ -285,6 +365,7 @@ struct ConvexResponse<T: Codable>: Codable {
 enum ConvexError: LocalizedError {
     case requestFailed
     case queryFailed(String)
+    case mutationFailed(String)
     case noData
     case alreadyInQueue
     case unauthorized
@@ -296,6 +377,8 @@ enum ConvexError: LocalizedError {
             return "Request to Convex failed"
         case .queryFailed(let message):
             return "Query failed: \(message)"
+        case .mutationFailed(let message):
+            return "Mutation failed: \(message)"
         case .noData:
             return "No data in cache"
         case .alreadyInQueue:

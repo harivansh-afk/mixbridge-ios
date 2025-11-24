@@ -16,6 +16,7 @@ struct SearchView: View {
     @State private var isSearching = false
     @State private var searchTask: Task<Void, Never>?
     @State private var lastSearchedQuery = ""
+    @State private var recentSearchManager = RecentSearchManager.shared
 
     var body: some View {
         NavigationStack {
@@ -58,11 +59,58 @@ struct SearchView: View {
     }
 
     private var emptyState: some View {
-        ContentUnavailableView(
-            "Search SoundCloud",
-            systemImage: "magnifyingglass",
-            description: Text("Find tracks, playlists, and artists")
-        )
+        Group {
+            if recentSearchManager.recentSearches.isEmpty {
+                ContentUnavailableView(
+                    "Search for music",
+                    systemImage: "magnifyingglass",
+                )
+            } else {
+                recentSearchesView
+            }
+        }
+    }
+
+    private var recentSearchesView: some View {
+        List {
+            Section {
+                ForEach(recentSearchManager.recentSearches, id: \.self) { query in
+                    Button {
+                        searchText = query
+                        HapticManager.selection()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .foregroundStyle(.secondary)
+
+                            Text(query)
+                                .foregroundStyle(.primary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+                .onDelete { indexSet in
+                    for index in indexSet {
+                        recentSearchManager.removeSearch(recentSearchManager.recentSearches[index])
+                    }
+                    HapticManager.light()
+                }
+            } header: {
+                HStack {
+                    Text("Recent")
+                    Spacer()
+                    Button("Clear") {
+                        withAnimation {
+                            recentSearchManager.clearAll()
+                        }
+                        HapticManager.light()
+                    }
+                    .font(.caption)
+                    .textCase(.none)
+                }
+            }
+        }
+        .listStyle(.plain)
     }
 
     private func resultsView(results: SearchResponse) -> some View {
@@ -176,6 +224,9 @@ struct SearchView: View {
             if query == searchText {
                 self.searchResults = results
                 self.lastSearchedQuery = query
+
+                // Save to recent searches
+                recentSearchManager.addSearch(query)
             }
         } catch {
             // Silently handle errors

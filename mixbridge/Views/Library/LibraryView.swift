@@ -115,6 +115,12 @@ struct LibraryView: View {
         isLoading = false
     }
 
+    private var recentlyAddedPlaylists: [Playlist] {
+        let remaining = Array(playlists.dropFirst(6))
+        let evenCount = remaining.count - (remaining.count % 2)
+        return Array(remaining.prefix(evenCount))
+    }
+
     private func convertToPlaylists(_ soundcloudPlaylists: [SoundCloudPlaylist]) -> [Playlist] {
         return soundcloudPlaylists.map { soundcloudPlaylist in
             let artworkUrl = soundcloudPlaylist.artwork_url ?? soundcloudPlaylist.user.avatar_url ?? ""
@@ -273,7 +279,7 @@ struct LibraryView: View {
                 ],
                 spacing: 20
             ) {
-                ForEach(Array(playlists.dropFirst(6).enumerated()), id: \.element.id) { index, playlist in
+                ForEach(Array(recentlyAddedPlaylists.enumerated()), id: \.element.id) { index, playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
                             .navigationTransition(.zoom(sourceID: "recent-\(playlist.id)", in: namespace))

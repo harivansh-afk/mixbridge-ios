@@ -5,6 +5,7 @@ struct AllArtistsView: View {
     @State private var artists: [ArtistInfo] = []
     @State private var isLoading = false
     @State private var hasLoaded = false
+    @Namespace private var namespace
 
     var body: some View {
         Group {
@@ -20,7 +21,8 @@ struct AllArtistsView: View {
                 List {
                     ForEach(artists) { artist in
                         NavigationLink {
-                            Text("Artist: \(artist.name)")
+                            ArtistDetailView(artist: artist)
+                                .navigationTransition(.zoom(sourceID: "artist-\(artist.id)", in: namespace))
                         } label: {
                             HStack(spacing: 12) {
                                 // Artist avatar
@@ -40,20 +42,26 @@ struct AllArtistsView: View {
                                     Circle()
                                         .fill(.gray.opacity(0.3))
                                         .frame(width: 50, height: 50)
+                                        .overlay(
+                                            Image(systemName: "music.mic")
+                                                .foregroundStyle(.gray)
+                                        )
                                 }
 
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(artist.name)
                                         .font(.body)
 
-                                    Text("\(artist.trackCount) track\(artist.trackCount == 1 ? "" : "s")")
+                                    Text("\(artist.trackCount) song\(artist.trackCount == 1 ? "" : "s")")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
 
                                 Spacer()
                             }
+                            .matchedTransitionSource(id: "artist-\(artist.id)", in: namespace)
                         }
+                        .haptic(.selection)
                     }
                 }
                 .listStyle(.plain)
@@ -84,19 +92,50 @@ struct AllArtistsView: View {
                 // Group tracks by artist
                 var artistsDict: [Int: ArtistInfo] = [:]
 
-                for track in cached.tracks {
-                    let artistId = track.user.id
+                for soundcloudTrack in cached.tracks {
+                    let artistId = soundcloudTrack.user.id
+                    let artworkUrl = soundcloudTrack.artwork_url ?? soundcloudTrack.user.avatar_url ?? ""
+                    let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
+                    let trackId = String(soundcloudTrack.id)
+
+                    let track = Track(
+                        id: trackId,
+                        title: soundcloudTrack.title,
+                        artist: soundcloudTrack.user.username,
+                        album: soundcloudTrack.genre ?? "",
+                        artwork: highQualityArtwork,
+                        duration: Double(soundcloudTrack.duration) / 1000.0
+                    )
+
+                    // Get raw data for queue operations
+                    var rawData: [String: Any]? = nil
+                    if let rawDict = try? JSONSerialization.jsonObject(
+                        with: JSONEncoder().encode(soundcloudTrack),
+                        options: []
+                    ) as? [String: Any] {
+                        rawData = rawDict
+                    }
+
                     if var existing = artistsDict[artistId] {
                         existing.trackCount += 1
+                        existing.tracks.append(track)
+                        if let rawData = rawData {
+                            existing.tracksData[trackId] = rawData
+                        }
                         artistsDict[artistId] = existing
                     } else {
-                        let avatarUrl = track.user.avatar_url?.upgradeArtworkQuality()
-                        artistsDict[artistId] = ArtistInfo(
+                        let avatarUrl = soundcloudTrack.user.avatar_url?.upgradeArtworkQuality()
+                        var newArtist = ArtistInfo(
                             id: String(artistId),
-                            name: track.user.username,
+                            name: soundcloudTrack.user.username,
                             avatarUrl: avatarUrl,
                             trackCount: 1
                         )
+                        newArtist.tracks = [track]
+                        if let rawData = rawData {
+                            newArtist.tracksData[trackId] = rawData
+                        }
+                        artistsDict[artistId] = newArtist
                     }
                 }
 
@@ -115,6 +154,8 @@ struct ArtistInfo: Identifiable {
     let name: String
     let avatarUrl: String?
     var trackCount: Int
+    var tracks: [Track] = []
+    var tracksData: [String: [String: Any]] = [:]
 }
 
 #Preview {

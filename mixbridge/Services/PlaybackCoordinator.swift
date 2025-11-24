@@ -45,6 +45,7 @@ final class PlaybackCoordinator: NSObject {
     private let queueManager = QueueManager.shared
     private let backendAPI = BackendAPI.shared
     private let keychain = KeychainManager.shared
+    private let convexService = ConvexService.shared
 
     private let player = AVQueuePlayer()
     private var timeObserverToken: Any?
@@ -194,6 +195,24 @@ final class PlaybackCoordinator: NSObject {
                 publishSnapshot()
             }
 
+            // Log play to history (matches Next.js webapp implementation)
+            if let userId = AuthManager.shared.currentUserId,
+               autoplayEnabled,
+               let trackData = context.trackData {
+                Task {
+                    do {
+                        try await convexService.addPlay(
+                            userId: userId,
+                            trackId: String(context.track.id),
+                            trackData: trackData
+                        )
+                    } catch {
+                        // Play history logging failures shouldn't affect playback
+                        print("Failed to log play history: \(error)")
+                    }
+                }
+            }
+
             // Preloading now happens at 75% progress (see addTimeObserver)
             // This optimizes bandwidth usage and reduces unnecessary preloads for skipped tracks
         } catch {
@@ -311,9 +330,27 @@ final class PlaybackCoordinator: NSObject {
             currentContext = preloadedContext
             nextPreloadedContext = nil
             nextPreloadedItem = nil
+            hasPreloadedForCurrentTrack = false
             Task { @MainActor in
                 publishSnapshot()
             }
+
+            // Log auto-advanced track to play history
+            if let userId = AuthManager.shared.currentUserId,
+               let trackData = preloadedContext.trackData {
+                Task { [convexService] in
+                    do {
+                        try await convexService.addPlay(
+                            userId: userId,
+                            trackId: String(preloadedContext.track.id),
+                            trackData: trackData
+                        )
+                    } catch {
+                        print("Failed to log play history: \(error)")
+                    }
+                }
+            }
+
             Task { [weak self] in
                 guard let self, let current = self.currentContext else { return }
                 await self.preloadNextItem(from: current)
