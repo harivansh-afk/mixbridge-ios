@@ -51,10 +51,6 @@ struct AllArtistsView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(artist.name)
                                         .font(.body)
-
-                                    Text("\(artist.trackCount) song\(artist.trackCount == 1 ? "" : "s")")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
                                 }
 
                                 Spacer()

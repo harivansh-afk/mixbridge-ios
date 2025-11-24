@@ -144,10 +144,20 @@ struct PlaylistDetailView: View {
     private var actionButtons: some View {
         PlaylistActionButtons(
             onPlay: {
-                // Play action
+                if let firstTrack = tracks.first {
+                    PlayerState.shared.play(
+                        track: firstTrack,
+                        trackData: tracksData[firstTrack.id]
+                    )
+                }
             },
             onShuffle: {
-                // Shuffle action
+                if let randomTrack = tracks.randomElement() {
+                    PlayerState.shared.play(
+                        track: randomTrack,
+                        trackData: tracksData[randomTrack.id]
+                    )
+                }
             }
         )
     }
