@@ -474,6 +474,17 @@ struct ExpandedPlayerView: View {
                             .listStyle(.plain)
                             .scrollContentBackground(.hidden)
                             .contentMargins(.bottom, 60, for: .scrollContent)
+                            .mask(
+                                VStack(spacing: 0) {
+                                    LinearGradient(
+                                        colors: [.clear, .white],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                    .frame(height: 30)
+                                    Color.black
+                                }
+                            )
                         }
                         .frame(height: 280 + queueExpansion)
                         .offset(y: -queueExpansion)

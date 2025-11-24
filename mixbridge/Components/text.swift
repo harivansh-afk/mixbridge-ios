@@ -126,7 +126,7 @@ struct MarqueeGlassText: View {
         guard needsScroll, !isAnimating else { return }
         isAnimating = true
         loopCount = 0
-        setOffset(5)
+        setOffset(0)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + startDelay) {
             guard isAnimating else { return }
