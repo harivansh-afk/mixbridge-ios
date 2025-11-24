@@ -1,0 +1,52 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+*.xcscmblueprint
+
+# User-specific workspace data
+xcuserdata/
+
+# Build products
+build/
+DerivedData/
+index.noindex/
+
+# Swift Package Manager
+.swiftpm/
+.build/
+Packages/
+
+# CocoaPods (if you ever add it)
+Pods/
+Podfile.lock
+*.xcworkspace
+
+# Carthage (if you ever add it)
+Carthage/Build/
+
+# Fastlane (if you ever add it)
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output/
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# Logs
+*.log
+
+# Archives & generated artifacts
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift concurrency crash logs (rare, but can show up)
+*.crash

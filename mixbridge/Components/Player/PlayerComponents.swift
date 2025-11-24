@@ -72,7 +72,14 @@ struct PlayerArtworkView: View {
     }
     
     private var placeholder: some View {
-        Color.clear
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(Color(.systemGray6))
+            Image(systemName: "music.note")
+                .font(.system(size: (size ?? 100) * 0.35))
+                .foregroundStyle(.gray.opacity(0.6))
+        }
+        .frame(width: size, height: size)
     }
 }
 

@@ -230,7 +230,7 @@ struct ExpandedPlayerView: View {
             // Responsive sizing
             let horizontalPadding = screenWidth * 0.075// 7.5% of screen width
             let artworkMaxWidth = screenWidth // 95% of screen width (leaves small margin)
-            let cardSpacing: CGFloat = 40 // Spacing between cards in carousel (visible during swipe)
+            let cardSpacing: CGFloat = 60 // Spacing between cards in carousel (visible during swipe)
             let cornerRadius = screenWidth * 0.12 // 8% of width for rounded corners
             let contentSpacing = screenHeight * 0.04 // 4% of screen height
             let progressTopSpacing = screenHeight * -0.05 // 2.5% of screen height
@@ -827,12 +827,14 @@ struct TrackCard: View {
 
             // Song info
             VStack(spacing: 6) {
-                GlassEffectText(
-                    text: track.title.count > 20
-                        ? String(track.title.prefix(20)) + "…"
-                        : track.title,
-                    font: UIFont.systemFont(ofSize: 30, weight: .bold)
+                MarqueeGlassText(
+                    text: track.title,
+                    font: UIFont.systemFont(ofSize: 30, weight: .bold),
+                    leftFade: 10,
+                    rightFade: 10,
+                    startDelay: 5.0
                 )
+                .frame(maxWidth: artworkWidth - 40) // Padding on sides
 
                 Text(track.artist)
                     .font(.headline)
