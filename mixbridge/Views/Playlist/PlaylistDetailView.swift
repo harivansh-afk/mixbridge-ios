@@ -150,6 +150,7 @@ struct PlaylistDetailView: View {
                     Spacer()
                 }
                 .padding()
+                .listRowSeparator(.hidden)
             } else if !tracks.isEmpty {
                 ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                     TrackRow(
@@ -170,7 +171,7 @@ struct PlaylistDetailView: View {
                     .padding()
             }
         }
-        .listSectionSeparator(.visible, edges: .top)
+        .listSectionSeparator(isLoadingTracks ? .hidden : .visible, edges: .top)
     }
 
     private func loadPlaylistTracks() async {
