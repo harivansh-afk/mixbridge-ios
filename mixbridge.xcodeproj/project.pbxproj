@@ -28,7 +28,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		5EF67A752ECA7B5900D6673D /* Exceptions for "mixbridge" folder in "mixbridge" target */ = {
+		5E855C332EDFD25600A53184 /* Exceptions for "mixbridge" folder in "mixbridge" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -41,7 +41,7 @@
 		5E55D33F2EC1567E005A5D2C /* mixbridge */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				5EF67A752ECA7B5900D6673D /* Exceptions for "mixbridge" folder in "mixbridge" target */,
+				5E855C332EDFD25600A53184 /* Exceptions for "mixbridge" folder in "mixbridge" target */,
 			);
 			path = mixbridge;
 			sourceTree = "<group>";

@@ -212,6 +212,21 @@ struct LibraryView: View {
     private var navigationSection: some View {
         VStack(spacing: 0) {
             NavigationLink {
+                LikedView()
+            } label: {
+                LibraryNavigationRow(
+                    icon: "heart.fill",
+                    title: "Liked",
+                    iconColor: .primary
+                )
+            }
+            .buttonStyle(.plain)
+            .haptic(.selection)
+
+            Divider()
+                .padding(.leading, 60)
+
+            NavigationLink {
                 AllPlaylistsView()
             } label: {
                 LibraryNavigationRow(

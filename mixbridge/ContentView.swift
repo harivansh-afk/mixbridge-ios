@@ -126,12 +126,7 @@ struct NativeTabView: View {
             } label: {
                 Image("list")
             }
-            Tab(value: 2) {
-                LikedView()
-            } label: {
-                Image("heart")
-            }
-            Tab(value: 3, role:.search) {
+            Tab(value: 2, role:.search) {
                 SearchView()
             } label: {
                 Image("magnifying-glass")
