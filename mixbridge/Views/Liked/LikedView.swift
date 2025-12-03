@@ -140,6 +140,7 @@ struct LikedView: View {
         }
         .listStyle(.plain)
         .listSectionSpacing(0)
+        .navigationAllowDismissalGestures()
     }
 }
 

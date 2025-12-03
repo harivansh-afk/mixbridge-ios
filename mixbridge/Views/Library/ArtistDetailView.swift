@@ -56,6 +56,7 @@ struct ArtistDetailView: View {
             }
         }
         .listStyle(.plain)
+        .navigationAllowDismissalGestures()
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -200,7 +201,6 @@ struct ArtistDetailView: View {
                     ForEach(artistPlaylists) { playlist in
                         NavigationLink {
                             PlaylistDetailView(playlist: playlist)
-                                .navigationAllowDismissalGestures()
                                 .navigationTransition(.zoom(sourceID: "artist-release-\(playlist.id)", in: namespace))
                         } label: {
                             releaseCard(playlist)
@@ -368,6 +368,7 @@ struct ArtistAllSongsView: View {
             }
         }
         .listStyle(.plain)
+        .navigationAllowDismissalGestures()
         .navigationTitle(artistName)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)

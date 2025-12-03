@@ -22,7 +22,6 @@ struct AllArtistsView: View {
                     ForEach(artists) { artist in
                         NavigationLink {
                             ArtistDetailView(artist: artist)
-                                .navigationAllowDismissalGestures()
                                 .navigationTransition(.zoom(sourceID: "artist-\(artist.id)", in: namespace))
                         } label: {
                             HStack(spacing: 12) {
@@ -56,6 +55,7 @@ struct AllArtistsView: View {
                     }
                 }
                 .listStyle(.plain)
+                .navigationAllowDismissalGestures()
             }
         }
         .navigationTitle("Artists")

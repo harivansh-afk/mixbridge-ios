@@ -32,6 +32,7 @@ struct AllSongsView: View {
                     }
                 }
                 .listStyle(.plain)
+                .navigationAllowDismissalGestures()
             }
         }
         .navigationTitle("Songs")

@@ -39,6 +39,7 @@ struct PlaylistDetailView: View {
             tracksSection
         }
         .listStyle(.plain)
+        .navigationAllowDismissalGestures()
         .navigationBarBackButtonHidden(true)
         .onAppear {
             if !hasLoaded {
