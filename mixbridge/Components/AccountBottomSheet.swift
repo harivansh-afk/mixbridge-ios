@@ -17,6 +17,9 @@ struct AccountBottomSheet: View {
     @State private var Personalization: Bool = true
     @State private var convexProfile: ConvexUserProfile?
     @State private var isLoadingProfile = false
+    @State private var showDeleteConfirmation = false
+    @State private var showFinalDeleteConfirmation = false
+    @State private var isDeleting = false
 
     let userName: String
     let userEmail: String?
@@ -124,9 +127,31 @@ struct AccountBottomSheet: View {
                     }
                 }
 
+                // Delete Account Section
+                Section {
+                    Button(action: {
+                        showDeleteConfirmation = true
+                    }) {
+                        HStack {
+                            Image(systemName: "trash")
+                                .font(.system(size: 18))
+                                .foregroundStyle(.red)
+                            Text("Delete Account")
+                                .font(.system(size: 18))
+                                .foregroundStyle(.red)
+                            Spacer()
+                            if isDeleting {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            }
+                        }
+                    }
+                    .disabled(isDeleting)
+                }
+
             }
             .listStyle(InsetGroupedListStyle())
-            .listSectionSpacing(20)
+            .listSectionSpacing(25)
             .contentMargins(.top, 5, for: .scrollContent)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -140,6 +165,22 @@ struct AccountBottomSheet: View {
             }
             .task {
                 await loadProfile()
+            }
+            .alert("Delete Account?", isPresented: $showDeleteConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete", role: .destructive) {
+                    showFinalDeleteConfirmation = true
+                }
+            }
+            .alert("Are you sure?", isPresented: $showFinalDeleteConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete Forever", role: .destructive) {
+                    Task {
+                        await deleteAccount()
+                    }
+                }
+            } message: {
+                Text("This will permanently delete all your data including playlists, play history, and preferences. This action cannot be undone.")
             }
         }
         .preferredColorScheme(themeMode.colorScheme)
@@ -218,6 +259,27 @@ struct AccountBottomSheet: View {
         }
 
         isLoadingProfile = false
+    }
+
+    private func deleteAccount() async {
+        guard let userId = authManager.currentUserId else {
+            return
+        }
+
+        isDeleting = true
+
+        do {
+            try await BackgroundExecutor.run {
+                try await ConvexService.shared.deleteAllUserData(userId: userId)
+            }
+        } catch {
+            // Continue with logout even if deletion fails
+        }
+
+        // Always logout and dismiss after attempting deletion
+        isDeleting = false
+        authManager.logout()
+        isPresented = false
     }
 
     // MARK: - Private Views

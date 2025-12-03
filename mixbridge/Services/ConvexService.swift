@@ -350,6 +350,15 @@ final class ConvexService {
             throw ConvexError.requestFailed
         }
     }
+
+    // MARK: - Account Deletion
+
+    func deleteAllUserData(userId: String) async throws {
+        try await mutationVoid(
+            "accountDeletion:deleteAllUserData",
+            args: ["userId": userId]
+        )
+    }
 }
 
 // MARK: - Response Models
