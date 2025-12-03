@@ -27,9 +27,22 @@
 		5E55D33D2EC1567E005A5D2C /* mixbridge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mixbridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5E855C332EDFD25600A53184 /* Exceptions for "mixbridge" folder in "mixbridge" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5E55D33C2EC1567E005A5D2C /* mixbridge */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5E55D33F2EC1567E005A5D2C /* mixbridge */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5E855C332EDFD25600A53184 /* Exceptions for "mixbridge" folder in "mixbridge" target */,
+			);
 			path = mixbridge;
 			sourceTree = "<group>";
 		};
