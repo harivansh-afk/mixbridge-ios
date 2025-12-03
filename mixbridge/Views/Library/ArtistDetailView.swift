@@ -200,6 +200,7 @@ struct ArtistDetailView: View {
                     ForEach(artistPlaylists) { playlist in
                         NavigationLink {
                             PlaylistDetailView(playlist: playlist)
+                                .navigationAllowDismissalGestures()
                                 .navigationTransition(.zoom(sourceID: "artist-release-\(playlist.id)", in: namespace))
                         } label: {
                             releaseCard(playlist)

@@ -22,6 +22,7 @@ struct AllPlaylistsView: View {
                     ForEach(Array(playlists.enumerated()), id: \.element.id) { index, playlist in
                         NavigationLink {
                             PlaylistDetailView(playlist: playlist)
+                                .navigationAllowDismissalGestures()
                                 .navigationTransition(.zoom(sourceID: "all-\(playlist.id)", in: namespace))
                         } label: {
                             HStack(spacing: 12) {
