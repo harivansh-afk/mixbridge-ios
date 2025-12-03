@@ -150,6 +150,7 @@ struct LibraryView: View {
                 ForEach(Array(playlists.prefix(6).enumerated()), id: \.element.id) { index, playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
+                            .navigationAllowDismissalGestures()
                             .navigationTransition(.zoom(sourceID: "top-\(playlist.id)", in: namespace))
                     } label: {
                         VStack(alignment: .center, spacing: 6) {
@@ -290,6 +291,7 @@ struct LibraryView: View {
                 ForEach(Array(recentlyAddedPlaylists.enumerated()), id: \.element.id) { index, playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
+                            .navigationAllowDismissalGestures()
                             .navigationTransition(.zoom(sourceID: "recent-\(playlist.id)", in: namespace))
                     } label: {
                         VStack(alignment: .center, spacing: 6) {
