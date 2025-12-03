@@ -218,8 +218,8 @@ struct ExpandedPlayerView: View {
         _displayedTrack = State(initialValue: currentTrack)
         _displayedNext = State(initialValue: nextTrack)
         _displayedPrevious = State(initialValue: previousTrack)
-        _showQueueSheet = State(initialValue: initialShowQueue)
-        _queueExpansion = State(initialValue: initialShowQueue ? 200 : 0)
+        _showQueueSheet = State(initialValue: true)
+        _queueExpansion = State(initialValue: 200) // Queue partially open by default
     }
 
     var body: some View {

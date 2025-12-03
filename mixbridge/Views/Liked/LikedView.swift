@@ -8,9 +8,7 @@
 import SwiftUI
 
 struct LikedView: View {
-    @State private var showingAccount = false
     @Environment(AuthManager.self) private var authManager
-    @Environment(UserProfileManager.self) private var profileManager
     @Environment(QueueManager.self) private var queueManager
     @State private var likedTracks: [Track] = []
     @State private var likedTracksData: [String: [String: Any]] = [:] // Track ID -> raw data
@@ -18,39 +16,16 @@ struct LikedView: View {
     @State private var hasLoaded = false
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Liked")
-                .navigationBarTitleDisplayMode(.large)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        profileAvatar
+        content
+            .navigationTitle("Liked")
+            .navigationBarTitleDisplayMode(.large)
+            .onAppear {
+                if !hasLoaded {
+                    Task {
+                        await loadLikedTracks()
                     }
                 }
-                .sheet(isPresented: $showingAccount) {
-                    AccountBottomSheet(
-                        isPresented: $showingAccount,
-                        userName: profileManager.displayName,
-                        userEmail: nil,
-                        profileImage: nil
-                    )
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.hidden)
-                    .interactiveDismissDisabled(false)
-                }
-                .task {
-                    if let userId = authManager.currentUserId {
-                        await profileManager.loadProfile(userId: userId)
-                    }
-                }
-                .onAppear {
-                    if !hasLoaded {
-                        Task {
-                            await loadLikedTracks()
-                        }
-                    }
-                }
-        }
+            }
     }
 
     private func loadLikedTracks() async {
@@ -149,36 +124,6 @@ struct LikedView: View {
         )
     }
 
-    private var profileAvatar: some View {
-        HStack {
-            if let avatarUrl = profileManager.avatarUrl,
-               let url = URL(string: avatarUrl) {
-                CachedAsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                } placeholder: {
-                    Color.clear
-                }
-                .frame(width: 35, height: 35)
-                .clipShape(Circle())
-                .onTapGesture {
-                    HapticManager.light()
-                    showingAccount.toggle()
-                }
-            } else {
-                ProfileCircleView(
-                    profileImage: nil,
-                    userName: profileManager.displayName,
-                )
-                .onTapGesture {
-                    HapticManager.light()
-                    showingAccount.toggle()
-                }
-            }
-        }
-    }
-
     private var likedList: some View {
         List {
             Section {
@@ -199,17 +144,19 @@ struct LikedView: View {
 }
 
 #Preview("Light Mode") {
-    LikedView()
-        .environment(AuthManager.shared)
-        .environment(UserProfileManager.shared)
-        .environment(QueueManager.shared)
-        .preferredColorScheme(.light)
+    NavigationStack {
+        LikedView()
+    }
+    .environment(AuthManager.shared)
+    .environment(QueueManager.shared)
+    .preferredColorScheme(.light)
 }
 
 #Preview("Dark Mode") {
-    LikedView()
-        .environment(AuthManager.shared)
-        .environment(UserProfileManager.shared)
-        .environment(QueueManager.shared)
-        .preferredColorScheme(.dark)
+    NavigationStack {
+        LikedView()
+    }
+    .environment(AuthManager.shared)
+    .environment(QueueManager.shared)
+    .preferredColorScheme(.dark)
 }
