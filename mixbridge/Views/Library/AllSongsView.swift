@@ -7,6 +7,7 @@ struct AllSongsView: View {
     @State private var tracksData: [String: [String: Any]] = [:] // Track ID -> raw data
     @State private var isLoading = false
     @State private var hasLoaded = false
+    @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
     var body: some View {
         Group {
@@ -32,10 +33,14 @@ struct AllSongsView: View {
                     }
                 }
                 .listStyle(.plain)
-                .navigationAllowDismissalGestures()
+                .navigationAllowDismissalGestures(allowDismissalGesture)
             }
         }
         .navigationTitle("Songs")
+        .task {
+            try? await Task.sleep(for: .seconds(1))
+            allowDismissalGesture = .all
+        }
         .onAppear {
             if !hasLoaded {
                 Task {

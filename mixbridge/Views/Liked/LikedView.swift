@@ -14,6 +14,7 @@ struct LikedView: View {
     @State private var likedTracksData: [String: [String: Any]] = [:] // Track ID -> raw data
     @State private var isLoading = false
     @State private var hasLoaded = false
+    @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
     var body: some View {
         content
@@ -140,7 +141,11 @@ struct LikedView: View {
         }
         .listStyle(.plain)
         .listSectionSpacing(0)
-        .navigationAllowDismissalGestures()
+        .navigationAllowDismissalGestures(allowDismissalGesture)
+        .task {
+            try? await Task.sleep(for: .seconds(1))
+            allowDismissalGesture = .all
+        }
     }
 }
 

@@ -5,6 +5,7 @@ struct AllPlaylistsView: View {
     @State private var playlists: [Playlist] = []
     @State private var isLoading = false
     @State private var hasLoaded = false
+    @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
     @Namespace private var namespace
 
     var body: some View {
@@ -60,10 +61,14 @@ struct AllPlaylistsView: View {
                     }
                 }
                 .listStyle(.plain)
-                .navigationAllowDismissalGestures()
+                .navigationAllowDismissalGestures(allowDismissalGesture)
             }
         }
         .navigationTitle("Playlists")
+        .task {
+            try? await Task.sleep(for: .seconds(1))
+            allowDismissalGesture = .all
+        }
         .onAppear {
             if !hasLoaded {
                 Task {

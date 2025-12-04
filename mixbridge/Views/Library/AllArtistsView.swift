@@ -5,6 +5,7 @@ struct AllArtistsView: View {
     @State private var artists: [ArtistInfo] = []
     @State private var isLoading = false
     @State private var hasLoaded = false
+    @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
     @Namespace private var namespace
 
     var body: some View {
@@ -55,10 +56,14 @@ struct AllArtistsView: View {
                     }
                 }
                 .listStyle(.plain)
-                .navigationAllowDismissalGestures()
+                .navigationAllowDismissalGestures(allowDismissalGesture)
             }
         }
         .navigationTitle("Artists")
+        .task {
+            try? await Task.sleep(for: .seconds(1))
+            allowDismissalGesture = .all
+        }
         .onAppear {
             if !hasLoaded {
                 Task {

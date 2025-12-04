@@ -16,6 +16,7 @@ struct PlaylistDetailView: View {
     @State private var tracksData: [String: [String: Any]] = [:] // Track ID -> raw data
     @State private var isLoadingTracks = false
     @State private var hasLoaded = false
+    @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
     private let artworkSize: CGFloat = 300
 
@@ -39,8 +40,12 @@ struct PlaylistDetailView: View {
             tracksSection
         }
         .listStyle(.plain)
-        .navigationAllowDismissalGestures()
+        .navigationAllowDismissalGestures(allowDismissalGesture)
         .navigationBarBackButtonHidden(true)
+        .task {
+            try? await Task.sleep(for: .seconds(1))
+            allowDismissalGesture = .all
+        }
         .onAppear {
             if !hasLoaded {
                 Task {

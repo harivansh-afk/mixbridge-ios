@@ -11,6 +11,7 @@ struct ArtistDetailView: View {
     @State private var artistPlaylists: [Playlist] = []
     @State private var isLoading = false
     @State private var hasLoaded = false
+    @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
     private let avatarSize: CGFloat = 200
 
@@ -56,8 +57,12 @@ struct ArtistDetailView: View {
             }
         }
         .listStyle(.plain)
-        .navigationAllowDismissalGestures()
+        .navigationAllowDismissalGestures(allowDismissalGesture)
         .navigationBarBackButtonHidden(true)
+        .task {
+            try? await Task.sleep(for: .seconds(1))
+            allowDismissalGesture = .all
+        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
@@ -355,6 +360,7 @@ struct ArtistAllSongsView: View {
     let tracks: [Track]
     let tracksData: [String: [String: Any]]
     @Environment(\.dismiss) private var dismiss
+    @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
     var body: some View {
         List {
@@ -368,10 +374,14 @@ struct ArtistAllSongsView: View {
             }
         }
         .listStyle(.plain)
-        .navigationAllowDismissalGestures()
+        .navigationAllowDismissalGestures(allowDismissalGesture)
         .navigationTitle(artistName)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .task {
+            try? await Task.sleep(for: .seconds(1))
+            allowDismissalGesture = .all
+        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
