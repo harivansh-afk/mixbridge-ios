@@ -6,6 +6,7 @@ struct AllArtistsView: View {
     @State private var isLoading = false
     @State private var hasLoaded = false
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
+    @State private var selectedArtist: ArtistInfo?
     @Namespace private var namespace
 
     var body: some View {
@@ -21,38 +22,41 @@ struct AllArtistsView: View {
             } else {
                 List {
                     ForEach(artists) { artist in
-                        NavigationLink {
-                            ArtistDetailView(artist: artist)
-                                .navigationTransition(.zoom(sourceID: "artist-\(artist.id)", in: namespace))
-                        } label: {
-                            HStack(spacing: 12) {
-                                // Artist avatar
-                                if let avatarUrl = artist.avatarUrl,
-                                   let url = URL(string: avatarUrl) {
-                                    CachedAsyncImage(url: url) { image in
-                                        image
-                                            .resizable()
-                                            .scaledToFill()
-                                    } placeholder: {
-                                        Color.clear
-                                    }
-                                    .frame(width: 50, height: 50)
-                                    .clipShape(Circle())
-                                } else {
+                        HStack(spacing: 12) {
+                            // Artist avatar
+                            if let avatarUrl = artist.avatarUrl,
+                               let url = URL(string: avatarUrl) {
+                                CachedAsyncImage(url: url) { image in
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                } placeholder: {
                                     Color.clear
-                                        .frame(width: 50, height: 50)
                                 }
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(artist.name)
-                                        .font(.body)
-                                }
-
-                                Spacer()
+                                .frame(width: 50, height: 50)
+                                .clipShape(Circle())
+                            } else {
+                                Color.clear
+                                    .frame(width: 50, height: 50)
                             }
-                            .matchedTransitionSource(id: "artist-\(artist.id)", in: namespace)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(artist.name)
+                                    .font(.body)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
                         }
-                        .haptic(.selection)
+                        .matchedTransitionSource(id: "artist-\(artist.id)", in: namespace)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            HapticManager.selection()
+                            selectedArtist = artist
+                        }
                     }
                 }
                 .listStyle(.plain)
@@ -60,6 +64,10 @@ struct AllArtistsView: View {
             }
         }
         .navigationTitle("Artists")
+        .navigationDestination(item: $selectedArtist) { artist in
+            ArtistDetailView(artist: artist)
+                .navigationTransition(.zoom(sourceID: "artist-\(artist.id)", in: namespace))
+        }
         .task {
             try? await Task.sleep(for: .seconds(1))
             allowDismissalGesture = .all
@@ -145,13 +153,21 @@ struct AllArtistsView: View {
     }
 }
 
-struct ArtistInfo: Identifiable {
+struct ArtistInfo: Identifiable, Hashable {
     let id: String
     let name: String
     let avatarUrl: String?
     var trackCount: Int
     var tracks: [Track] = []
     var tracksData: [String: [String: Any]] = [:]
+
+    static func == (lhs: ArtistInfo, rhs: ArtistInfo) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 }
 
 #Preview {

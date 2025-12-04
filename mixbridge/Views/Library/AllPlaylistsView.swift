@@ -6,6 +6,7 @@ struct AllPlaylistsView: View {
     @State private var isLoading = false
     @State private var hasLoaded = false
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
+    @State private var selectedPlaylist: Playlist?
     @Namespace private var namespace
 
     var body: some View {
@@ -20,44 +21,47 @@ struct AllPlaylistsView: View {
                 )
             } else {
                 List {
-                    ForEach(Array(playlists.enumerated()), id: \.element.id) { index, playlist in
-                        NavigationLink {
-                            PlaylistDetailView(playlist: playlist)
-                                .navigationTransition(.zoom(sourceID: "all-\(playlist.id)", in: namespace))
-                        } label: {
-                            HStack(spacing: 12) {
-                                // Playlist artwork
-                                if playlist.artwork.starts(with: "http"),
-                                   let url = URL(string: playlist.artwork) {
-                                    CachedAsyncImage(url: url) { image in
-                                        image
-                                            .resizable()
-                                            .scaledToFill()
-                                    } placeholder: {
-                                        Color.clear
-                                    }
-                                    .frame(width: 60, height: 60)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                                } else {
+                    ForEach(playlists) { playlist in
+                        HStack(spacing: 12) {
+                            // Playlist artwork
+                            if playlist.artwork.starts(with: "http"),
+                               let url = URL(string: playlist.artwork) {
+                                CachedAsyncImage(url: url) { image in
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                } placeholder: {
                                     Color.clear
-                                        .frame(width: 60, height: 60)
                                 }
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(playlist.name)
-                                        .font(.body)
-                                        .lineLimit(1)
-
-                                    Text(playlist.creator)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                Spacer()
+                                .frame(width: 60, height: 60)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            } else {
+                                Color.clear
+                                    .frame(width: 60, height: 60)
                             }
-                            .matchedTransitionSource(id: "all-\(playlist.id)", in: namespace)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(playlist.name)
+                                    .font(.body)
+                                    .lineLimit(1)
+
+                                Text(playlist.creator)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
                         }
-                        .haptic(.selection)
+                        .matchedTransitionSource(id: "all-\(playlist.id)", in: namespace)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            HapticManager.selection()
+                            selectedPlaylist = playlist
+                        }
                     }
                 }
                 .listStyle(.plain)
@@ -65,6 +69,10 @@ struct AllPlaylistsView: View {
             }
         }
         .navigationTitle("Playlists")
+        .navigationDestination(item: $selectedPlaylist) { playlist in
+            PlaylistDetailView(playlist: playlist)
+                .navigationTransition(.zoom(sourceID: "all-\(playlist.id)", in: namespace))
+        }
         .task {
             try? await Task.sleep(for: .seconds(1))
             allowDismissalGesture = .all

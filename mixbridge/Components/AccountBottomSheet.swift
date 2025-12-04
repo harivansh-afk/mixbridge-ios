@@ -151,7 +151,7 @@ struct AccountBottomSheet: View {
 
             }
             .listStyle(InsetGroupedListStyle())
-            .listSectionSpacing(25)
+            .listSectionSpacing(23)
             .contentMargins(.top, 5, for: .scrollContent)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
