@@ -26,7 +26,7 @@ struct PlaybackSnapshot {
 
 private struct PlaybackContext: Equatable {
     let track: Track
-    let trackData: [String: Any]?
+    let soundCloudTrack: SoundCloudTrack?
     let queueIndex: Int?
 
     static func == (lhs: PlaybackContext, rhs: PlaybackContext) -> Bool {
@@ -86,8 +86,8 @@ final class PlaybackCoordinator: NSObject {
         !player.items().isEmpty
     }
 
-    func play(track: Track, trackData: [String: Any]?, queueIndex: Int?, startTime: Double? = nil) {
-        let context = PlaybackContext(track: track, trackData: trackData, queueIndex: queueIndex)
+    func play(track: Track, soundCloudTrack: SoundCloudTrack?, queueIndex: Int?, startTime: Double? = nil) {
+        let context = PlaybackContext(track: track, soundCloudTrack: soundCloudTrack, queueIndex: queueIndex)
         Task {
             await startPlayback(with: context, startTime: startTime)
         }
@@ -135,7 +135,7 @@ final class PlaybackCoordinator: NSObject {
     func playNext(manual: Bool = false) {
         guard let currentContext else {
             if let first = queueManager.queueTracks.first {
-                play(track: first, trackData: queueManager.trackData(for: first.id), queueIndex: 0)
+                play(track: first, soundCloudTrack: queueManager.soundCloudTrack(for: first.id), queueIndex: 0)
             }
             return
         }
@@ -144,7 +144,7 @@ final class PlaybackCoordinator: NSObject {
             player.advanceToNextItem()
             adoptCurrentItemContext()
         } else if let next = queueManager.nextTrack(after: currentContext.queueIndex ?? queueManager.indexOfTrack(withId: currentContext.track.id) ?? -1) {
-            play(track: next.track, trackData: queueManager.trackData(for: next.track.id), queueIndex: next.index)
+            play(track: next.track, soundCloudTrack: queueManager.soundCloudTrack(for: next.track.id), queueIndex: next.index)
         }
 
         if manual {
@@ -159,7 +159,7 @@ final class PlaybackCoordinator: NSObject {
         }
 
         if let previous = queueManager.previousTrack(before: currentContext.queueIndex ?? queueManager.indexOfTrack(withId: currentContext.track.id) ?? 0) {
-            play(track: previous.track, trackData: queueManager.trackData(for: previous.track.id), queueIndex: previous.index)
+            play(track: previous.track, soundCloudTrack: queueManager.soundCloudTrack(for: previous.track.id), queueIndex: previous.index)
         } else {
             seek(to: 0)
         }
@@ -195,19 +195,14 @@ final class PlaybackCoordinator: NSObject {
                 publishSnapshot()
             }
 
-            // Log play to history (matches Next.js webapp implementation)
+            // Log play to history
             if let userId = AuthManager.shared.currentUserId,
                autoplayEnabled,
-               let trackData = context.trackData {
+               let scTrack = context.soundCloudTrack {
                 Task {
                     do {
-                        try await convexService.addPlay(
-                            userId: userId,
-                            trackId: String(context.track.id),
-                            trackData: trackData
-                        )
+                        try await convexService.addPlay(userId: userId, track: scTrack)
                     } catch {
-                        // Play history logging failures shouldn't affect playback
                         print("Failed to log play history: \(error)")
                     }
                 }
@@ -272,7 +267,7 @@ final class PlaybackCoordinator: NSObject {
 
         return PlaybackContext(
             track: next.track,
-            trackData: queueManager.trackData(for: next.track.id),
+            soundCloudTrack: queueManager.soundCloudTrack(for: next.track.id),
             queueIndex: next.index
         )
     }
@@ -337,14 +332,10 @@ final class PlaybackCoordinator: NSObject {
 
             // Log auto-advanced track to play history
             if let userId = AuthManager.shared.currentUserId,
-               let trackData = preloadedContext.trackData {
+               let scTrack = preloadedContext.soundCloudTrack {
                 Task { [convexService] in
                     do {
-                        try await convexService.addPlay(
-                            userId: userId,
-                            trackId: String(preloadedContext.track.id),
-                            trackData: trackData
-                        )
+                        try await convexService.addPlay(userId: userId, track: scTrack)
                     } catch {
                         print("Failed to log play history: \(error)")
                     }

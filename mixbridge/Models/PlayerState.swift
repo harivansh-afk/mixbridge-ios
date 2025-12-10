@@ -200,16 +200,16 @@ final class PlayerState: NSObject {
 
     // MARK: - Public API
 
-    func play(track: Track, trackData: [String: Any]? = nil, queueIndex: Int? = nil, startTime: Double? = nil) {
+    func play(track: Track, soundCloudTrack: SoundCloudTrack? = nil, queueIndex: Int? = nil, startTime: Double? = nil) {
         playbackStatus = .loading
         currentTrack = track
         refreshArtwork(for: track)
         playbackPosition = startTime ?? 0
         duration = track.duration
-        
+
         // Save state immediately when track changes
         savePlaybackState()
-        
+
         if let explicitIndex = queueIndex {
             currentQueueIndex = explicitIndex
         } else if let inferredIndex = queueManager.indexOfTrack(withId: track.id) {
@@ -220,7 +220,7 @@ final class PlayerState: NSObject {
         try? activateAudioSession()
         playbackCoordinator.play(
             track: track,
-            trackData: trackData ?? queueManager.trackData(for: track.id),
+            soundCloudTrack: soundCloudTrack ?? queueManager.soundCloudTrack(for: track.id),
             queueIndex: queueIndex,
             startTime: startTime
         )
@@ -230,7 +230,7 @@ final class PlayerState: NSObject {
     func playFromQueue(index: Int) {
         guard queueManager.queueTracks.indices.contains(index) else { return }
         let track = queueManager.queueTracks[index]
-        play(track: track, trackData: queueManager.trackData(for: track.id), queueIndex: index)
+        play(track: track, soundCloudTrack: queueManager.soundCloudTrack(for: track.id), queueIndex: index)
     }
 
     func togglePlayback() {

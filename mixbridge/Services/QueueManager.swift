@@ -19,15 +19,14 @@ class QueueManager {
 
     var queueTracks: [Track] = [] {
         didSet {
-            // Prefetch artwork whenever queue changes
             Task {
                 await TrackPrefetcher.shared.prefetchForQueue(queueTracks, currentIndex: 0)
             }
         }
     }
     private(set) var isLoading = false
-    private var queueTrackIds: [String: String] = [:] // Track.id -> Convex queue track ID
-    private var queueTrackData: [String: [String: Any]] = [:] // Track.id -> raw SoundCloud data
+    private var queueTrackIds: [String: String] = [:]  // Track.id -> Convex queue track ID
+    private var soundCloudTracks: [String: SoundCloudTrack] = [:]  // Track.id -> SoundCloud data
 
     private init() {}
 
@@ -35,37 +34,28 @@ class QueueManager {
 
     /// Check if a track is already in the queue
     func isInQueue(_ trackId: String) -> Bool {
-        return queueTracks.contains(where: { $0.id == trackId })
+        queueTracks.contains { $0.id == trackId }
     }
 
-    /// Add track to queue with optimistic update
-    func addTrack(_ track: Track, rawData: [String: Any]) async throws {
-        // Check for duplicates
+    /// Add track to queue
+    func addTrack(_ track: Track, soundCloudTrack: SoundCloudTrack) async throws {
         if isInQueue(track.id) {
             throw ConvexError.alreadyInQueue
         }
 
-        // Call API (not optimistic - wait for server response to get queue track ID)
         do {
             let queueTrackId = try await BackgroundExecutor.run {
-                try await ConvexService.shared.addTrackToQueue(
-                    trackId: track.id,
-                    trackData: rawData
-                )
+                try await ConvexService.shared.addTrackToQueue(track: soundCloudTrack)
             }
 
-            // Update state after successful API call
             queueTracks.append(track)
             queueTrackIds[track.id] = queueTrackId
-            queueTrackData[track.id] = rawData
+            soundCloudTracks[track.id] = soundCloudTrack
 
-            // Haptic feedback for success
             HapticManager.success()
 
         } catch ConvexError.alreadyInQueue {
             throw ConvexError.alreadyInQueue
-        } catch {
-            throw error
         }
     }
 
@@ -75,28 +65,29 @@ class QueueManager {
             throw ConvexError.notFound
         }
 
-        // Store original state for rollback
         let removedTrack = track
-        let originalIndex = queueTracks.firstIndex(where: { $0.id == track.id })
+        let originalIndex = queueTracks.firstIndex { $0.id == track.id }
+        let removedSoundCloudTrack = soundCloudTracks[track.id]
 
-        // 1. Optimistically remove from UI - INSTANT
+        // Optimistically remove from UI
         queueTracks.removeAll { $0.id == track.id }
         queueTrackIds.removeValue(forKey: track.id)
-        queueTrackData.removeValue(forKey: track.id)
+        soundCloudTracks.removeValue(forKey: track.id)
 
-        // Haptic feedback for delete
         HapticManager.warning()
 
-        // 2. Call API in background
         do {
             try await BackgroundExecutor.run {
                 try await ConvexService.shared.removeTrackFromQueue(queueTrackId: convexQueueTrackId)
             }
         } catch {
-            // Rollback: re-insert track at original position
+            // Rollback on failure
             if let index = originalIndex {
                 queueTracks.insert(removedTrack, at: min(index, queueTracks.count))
                 queueTrackIds[track.id] = convexQueueTrackId
+                if let scTrack = removedSoundCloudTrack {
+                    soundCloudTracks[track.id] = scTrack
+                }
             }
             throw error
         }
@@ -113,35 +104,20 @@ class QueueManager {
 
             var tracks: [Track] = []
             var trackIdMap: [String: String] = [:]
-            var rawDataMap: [String: [String: Any]] = [:]
+            var scTracks: [String: SoundCloudTrack] = [:]
 
             let orderedTracks = queueData.sorted { $0.position < $1.position }
 
             for queueTrack in orderedTracks {
-                let artworkUrl = queueTrack.artworkUrl ?? ""
-                let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
-
-                let track = Track(
-                    id: queueTrack.trackId,
-                    title: queueTrack.title,
-                    artist: queueTrack.artist,
-                    album: "",
-                    artwork: highQualityArtwork,
-                    duration: queueTrack.duration / 1000.0 // Convert ms to seconds
-                )
-
+                let track = queueTrack.trackData.toTrack()
                 tracks.append(track)
                 trackIdMap[queueTrack.trackId] = queueTrack._id
-
-                if let encodedData = try? JSONEncoder().encode(queueTrack.trackData),
-                   let jsonObject = try? JSONSerialization.jsonObject(with: encodedData) as? [String: Any] {
-                    rawDataMap[queueTrack.trackId] = jsonObject
-                }
+                scTracks[queueTrack.trackId] = queueTrack.trackData
             }
 
             self.queueTracks = tracks
             self.queueTrackIds = trackIdMap
-            self.queueTrackData = rawDataMap
+            self.soundCloudTracks = scTracks
 
         } catch {
             throw error
@@ -154,17 +130,17 @@ class QueueManager {
     func clearQueue() {
         queueTracks.removeAll()
         queueTrackIds.removeAll()
-        queueTrackData.removeAll()
+        soundCloudTracks.removeAll()
     }
 
     // MARK: - Helpers
 
-    func trackData(for trackId: String) -> [String: Any]? {
-        queueTrackData[trackId]
+    func soundCloudTrack(for trackId: String) -> SoundCloudTrack? {
+        soundCloudTracks[trackId]
     }
 
     func indexOfTrack(withId trackId: String) -> Int? {
-        queueTracks.firstIndex(where: { $0.id == trackId })
+        queueTracks.firstIndex { $0.id == trackId }
     }
 
     func nextTrack(after index: Int) -> (track: Track, index: Int)? {

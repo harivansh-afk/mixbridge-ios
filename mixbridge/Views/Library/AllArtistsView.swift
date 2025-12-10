@@ -5,14 +5,17 @@ struct AllArtistsView: View {
     @State private var artists: [ArtistInfo] = []
     @State private var isLoading = false
     @State private var hasLoaded = false
+    @State private var error: Error?
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
     @State private var selectedArtist: ArtistInfo?
     @Namespace private var namespace
 
     var body: some View {
         Group {
-            if isLoading {
-                ProgressView("")
+            if isLoading && !hasLoaded {
+                ProgressView()
+            } else if let error {
+                errorView(error)
             } else if artists.isEmpty {
                 ContentUnavailableView(
                     "No Artists",
@@ -23,7 +26,6 @@ struct AllArtistsView: View {
                 List {
                     ForEach(artists) { artist in
                         HStack(spacing: 12) {
-                            // Artist avatar
                             if let avatarUrl = artist.avatarUrl,
                                let url = URL(string: avatarUrl) {
                                 CachedAsyncImage(url: url) { image in
@@ -74,10 +76,24 @@ struct AllArtistsView: View {
         }
         .onAppear {
             if !hasLoaded {
-                Task {
-                    await loadArtists()
-                }
+                Task { await loadArtists() }
             }
+        }
+        .refreshable {
+            await loadArtists()
+        }
+    }
+
+    private func errorView(_ error: Error) -> some View {
+        ContentUnavailableView {
+            Label("Unable to Load", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(error.localizedDescription)
+        } actions: {
+            Button("Try Again") {
+                Task { await loadArtists() }
+            }
+            .buttonStyle(.bordered)
         }
     }
 
@@ -86,66 +102,39 @@ struct AllArtistsView: View {
         guard !isLoading else { return }
 
         isLoading = true
+        error = nil
 
         do {
-            let cached = try await BackgroundExecutor.run {
+            let tracks = try await BackgroundExecutor.run {
                 try await ConvexService.shared.getLikedTracks(userId: userId)
             }
 
-            if let cached = cached {
-                // Group tracks by artist
-                var artistsDict: [Int: ArtistInfo] = [:]
+            // Group tracks by artist
+            var artistsDict: [Int: ArtistInfo] = [:]
 
-                for soundcloudTrack in cached.tracks {
-                    let artistId = soundcloudTrack.user.id
-                    let artworkUrl = soundcloudTrack.artwork_url ?? soundcloudTrack.user.avatar_url ?? ""
-                    let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
-                    let trackId = String(soundcloudTrack.id)
+            for scTrack in tracks {
+                let artistId = scTrack.user.id
 
-                    let track = Track(
-                        id: trackId,
-                        title: soundcloudTrack.title,
-                        artist: soundcloudTrack.user.username,
-                        album: soundcloudTrack.genre ?? "",
-                        artwork: highQualityArtwork,
-                        duration: Double(soundcloudTrack.duration) / 1000.0
+                if var existing = artistsDict[artistId] {
+                    existing.trackCount += 1
+                    existing.trackItems.append(TrackItem(soundCloudTrack: scTrack))
+                    artistsDict[artistId] = existing
+                } else {
+                    let avatarUrl = scTrack.user.avatar_url?.upgradeArtworkQuality()
+                    var newArtist = ArtistInfo(
+                        id: String(artistId),
+                        name: scTrack.user.username,
+                        avatarUrl: avatarUrl,
+                        trackCount: 1
                     )
-
-                    // Get raw data for queue operations
-                    var rawData: [String: Any]? = nil
-                    if let rawDict = try? JSONSerialization.jsonObject(
-                        with: JSONEncoder().encode(soundcloudTrack),
-                        options: []
-                    ) as? [String: Any] {
-                        rawData = rawDict
-                    }
-
-                    if var existing = artistsDict[artistId] {
-                        existing.trackCount += 1
-                        existing.tracks.append(track)
-                        if let rawData = rawData {
-                            existing.tracksData[trackId] = rawData
-                        }
-                        artistsDict[artistId] = existing
-                    } else {
-                        let avatarUrl = soundcloudTrack.user.avatar_url?.upgradeArtworkQuality()
-                        var newArtist = ArtistInfo(
-                            id: String(artistId),
-                            name: soundcloudTrack.user.username,
-                            avatarUrl: avatarUrl,
-                            trackCount: 1
-                        )
-                        newArtist.tracks = [track]
-                        if let rawData = rawData {
-                            newArtist.tracksData[trackId] = rawData
-                        }
-                        artistsDict[artistId] = newArtist
-                    }
+                    newArtist.trackItems = [TrackItem(soundCloudTrack: scTrack)]
+                    artistsDict[artistId] = newArtist
                 }
-
-                self.artists = artistsDict.values.sorted { $0.trackCount > $1.trackCount }
             }
+
+            self.artists = artistsDict.values.sorted { $0.trackCount > $1.trackCount }
         } catch {
+            self.error = error
         }
 
         hasLoaded = true
@@ -158,8 +147,7 @@ struct ArtistInfo: Identifiable, Hashable {
     let name: String
     let avatarUrl: String?
     var trackCount: Int
-    var tracks: [Track] = []
-    var tracksData: [String: [String: Any]] = [:]
+    var trackItems: [TrackItem] = []
 
     static func == (lhs: ArtistInfo, rhs: ArtistInfo) -> Bool {
         lhs.id == rhs.id

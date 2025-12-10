@@ -1,18 +1,16 @@
 import Foundation
 
-/// Convex HTTP API client - no SDK needed, works immediately
+/// Convex client for all data operations
+/// Calls Convex actions that handle caching and SoundCloud API fetching automatically
 final class ConvexService {
     static let shared = ConvexService()
 
     private let deploymentUrl = "https://avid-falcon-471.convex.cloud"
+    private let apiBaseUrl = "https://mixbridge.app"
 
     private init() {}
 
-    // MARK: - API Base URL
-
-    private let apiBaseUrl = "https://mixbridge.app"
-
-    // MARK: - Query
+    // MARK: - Core API Methods
 
     private func query<T: Codable>(_ path: String, args: [String: Any] = [:]) async throws -> T {
         let url = URL(string: "\(deploymentUrl)/api/query")!
@@ -41,17 +39,15 @@ final class ConvexService {
             throw ConvexError.queryFailed(convexResponse.errorMessage ?? "Unknown error")
         }
 
-        if let value = convexResponse.value {
-            return value
-        } else {
+        guard let value = convexResponse.value else {
             throw ConvexError.noData
         }
+
+        return value
     }
 
-    // MARK: - Mutation
-
-    private func mutation<T: Codable>(_ path: String, args: [String: Any] = [:]) async throws -> T {
-        let url = URL(string: "\(deploymentUrl)/api/mutation")!
+    private func action<T: Codable>(_ path: String, args: [String: Any] = [:]) async throws -> T {
+        let url = URL(string: "\(deploymentUrl)/api/action")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -74,18 +70,18 @@ final class ConvexService {
         let convexResponse = try JSONDecoder().decode(ConvexResponse<T>.self, from: data)
 
         guard convexResponse.status == "success" else {
-            throw ConvexError.mutationFailed(convexResponse.errorMessage ?? "Unknown error")
+            throw ConvexError.actionFailed(convexResponse.errorMessage ?? "Unknown error")
         }
 
-        if let value = convexResponse.value {
-            return value
-        } else {
+        guard let value = convexResponse.value else {
             throw ConvexError.noData
         }
+
+        return value
     }
 
     @discardableResult
-    private func mutationVoid(_ path: String, args: [String: Any] = [:]) async throws -> String? {
+    private func mutation(_ path: String, args: [String: Any] = [:]) async throws -> String? {
         let url = URL(string: "\(deploymentUrl)/api/mutation")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -115,86 +111,76 @@ final class ConvexService {
         return convexResponse.value
     }
 
-    // MARK: - User Profile
+    // MARK: - Data Fetching (Convex Actions - Auto-fetch from SoundCloud if needed)
 
-    func getUserProfile(userId: String) async throws -> ConvexUserProfile? {
-        return try await query("cache:getProfile", args: ["userId": userId])
+    /// Get user's liked tracks
+    /// Convex action will check cache and fetch from SoundCloud if needed
+    func getLikedTracks(userId: String) async throws -> [SoundCloudTrack] {
+        let result: ConvexTracksResponse = try await action(
+            "actions/likedTracks:get",
+            args: ["userId": userId]
+        )
+        return result.tracks
     }
 
-    // MARK: - Liked Tracks
-
-    func getLikedTracks(userId: String) async throws -> ConvexCachedLikedTracks? {
-        return try await query("cache:getLikedTracks", args: ["userId": userId])
+    /// Get user's playlists
+    /// Convex action will check cache and fetch from SoundCloud if needed
+    func getPlaylists(userId: String) async throws -> [SoundCloudPlaylist] {
+        let result: ConvexPlaylistsResponse = try await action(
+            "actions/playlists:getAll",
+            args: ["userId": userId]
+        )
+        return result.playlists
     }
 
-    // MARK: - Playlists
-
-    func getPlaylists(userId: String) async throws -> ConvexCachedPlaylists? {
-        return try await query("cache:getPlaylists", args: ["userId": userId])
+    /// Get tracks for a specific playlist
+    /// Convex action will check cache and fetch from SoundCloud if needed
+    func getPlaylistTracks(userId: String, playlistId: String) async throws -> [SoundCloudTrack] {
+        let result: ConvexPlaylistResponse = try await action(
+            "actions/playlists:getTracks",
+            args: ["userId": userId, "playlistId": playlistId]
+        )
+        // The action returns the full playlist object with tracks
+        return result.playlist.tracks ?? []
     }
 
-    func getPlaylistTracks(userId: String, playlistId: String) async throws -> ConvexPlaylistTracks? {
-        return try await query(
-            "cache:getPlaylistTracks",
-            args: [
-                "userId": userId,
-                "playlistId": playlistId
-            ]
+    /// Search for tracks, playlists, and users
+    /// Convex action handles search with caching
+    func search(userId: String, query: String, limit: Int = 20) async throws -> SearchResult {
+        return try await action(
+            "actions/search:search",
+            args: ["userId": userId, "query": query, "limit": limit]
         )
     }
 
-    // MARK: - Discoveries
-
-    func getDiscoveries(userId: String, limit: Int = 20) async throws -> [ConvexDiscovery] {
-        return try await query(
-            "discoveries:getDiscoveries",
-            args: [
-                "userId": userId,
-                "limit": limit
-            ]
+    /// Get user profile
+    func getUserProfile(userId: String) async throws -> SoundCloudProfile {
+        let result: ConvexProfileResponse = try await action(
+            "actions/profile:get",
+            args: ["userId": userId]
         )
+        return result.profile
     }
 
-    // MARK: - Play History
-
+    /// Get play history
     func getPlayHistory(userId: String, limit: Int = 100) async throws -> [ConvexPlayHistory] {
         return try await query(
             "playHistory:getPlayHistory",
-            args: [
-                "userId": userId,
-                "limit": limit
-            ]
+            args: ["userId": userId, "limit": limit]
         )
     }
 
-    /// Log a track play to history (matches Next.js webapp implementation)
-    func addPlay(userId: String, trackId: String, trackData: [String: Any]) async throws {
-        try await mutationVoid(
-            "playHistory:addPlay",
-            args: [
-                "userId": userId,
-                "trackId": trackId,
-                "source": "soundcloud",
-                "trackData": trackData
-            ]
-        )
-    }
-
-    // MARK: - Queue
-
-    func getQueue(userId: String) async throws -> ConvexQueue? {
+    /// Get AI discoveries
+    func getDiscoveries(userId: String, limit: Int = 20) async throws -> [ConvexDiscovery] {
         return try await query(
-            "queues:getByUserId",
-            args: [
-                "userId": userId,
-                "paginationOpts": [
-                    "numItems": 1000,
-                    "cursor": NSNull()
-                ] as [String: Any]
-            ]
+            "discoveries:getDiscoveries",
+            args: ["userId": userId, "limit": limit]
         )
     }
 
+    // MARK: - Queue Operations
+
+    /// Get queue tracks
     func getQueueTracks(userId: String) async throws -> [ConvexQueueTrack] {
         let queueData: QueueWithTracksResponse? = try await query(
             "queues:getByUserId",
@@ -206,25 +192,24 @@ final class ConvexService {
                 ] as [String: Any]
             ]
         )
-
         return queueData?.tracks ?? []
     }
 
-    // MARK: - Queue Mutations
-
-    func addTrackToQueue(trackId: String, trackData: [String: Any]) async throws -> String {
+    /// Add track to queue
+    func addTrackToQueue(track: SoundCloudTrack) async throws -> String {
         guard let authToken = KeychainManager.shared.getAccessToken() else {
-            throw ConvexError.requestFailed
+            throw ConvexError.unauthorized
         }
 
         let url = URL(string: "\(apiBaseUrl)/api/queue")!
-
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
 
-        let body: [String: Any] = ["track": trackData]
+        let trackData = try JSONEncoder().encode(track)
+        let trackDict = try JSONSerialization.jsonObject(with: trackData) as? [String: Any] ?? [:]
+        let body: [String: Any] = ["track": trackDict]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -246,122 +231,122 @@ final class ConvexService {
         }
 
         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let track = json["track"] as? [String: Any],
-           let queueTrackId = track["id"] as? String {
+           let trackResponse = json["track"] as? [String: Any],
+           let queueTrackId = trackResponse["id"] as? String {
             return queueTrackId
         }
 
         throw ConvexError.noData
     }
 
-    func reorderQueue(fromIndex: Int, toIndex: Int) async throws {
-        guard let authToken = KeychainManager.shared.getAccessToken() else {
-            throw ConvexError.requestFailed
-        }
-
-        let url = URL(string: "\(apiBaseUrl)/api/queue/reorder")!
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
-
-        let body: [String: Any] = [
-            "fromIndex": fromIndex,
-            "toIndex": toIndex
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (_, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ConvexError.requestFailed
-        }
-
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw ConvexError.requestFailed
-        }
-    }
-
+    /// Remove track from queue
     func removeTrackFromQueue(queueTrackId: String) async throws {
         guard let authToken = KeychainManager.shared.getAccessToken() else {
-            throw ConvexError.requestFailed
+            throw ConvexError.unauthorized
         }
 
         let url = URL(string: "\(apiBaseUrl)/api/queue/\(queueTrackId)")!
-
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
 
         let (_, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ConvexError.requestFailed
-        }
-
-        guard (200...299).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
             throw ConvexError.requestFailed
         }
     }
 
-    // MARK: - Like Mutations
+    /// Reorder queue
+    func reorderQueue(fromIndex: Int, toIndex: Int) async throws {
+        guard let authToken = KeychainManager.shared.getAccessToken() else {
+            throw ConvexError.unauthorized
+        }
 
+        let url = URL(string: "\(apiBaseUrl)/api/queue/reorder")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+
+        let body: [String: Any] = ["fromIndex": fromIndex, "toIndex": toIndex]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw ConvexError.requestFailed
+        }
+    }
+
+    // MARK: - Mutations
+
+    /// Log a track play to history
+    func addPlay(userId: String, track: SoundCloudTrack) async throws {
+        let trackData = try JSONEncoder().encode(track)
+        let trackDict = try JSONSerialization.jsonObject(with: trackData) as? [String: Any] ?? [:]
+
+        try await mutation(
+            "playHistory:addPlay",
+            args: [
+                "userId": userId,
+                "trackId": String(track.id),
+                "source": "soundcloud",
+                "trackData": trackDict
+            ]
+        )
+    }
+
+    /// Like a track
     func likeTrack(trackId: String) async throws {
         guard let authToken = KeychainManager.shared.getAccessToken() else {
-            throw ConvexError.requestFailed
+            throw ConvexError.unauthorized
         }
 
         let url = URL(string: "\(apiBaseUrl)/api/soundcloud/likes/\(trackId)")!
-
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
         request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
 
         let (_, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ConvexError.requestFailed
-        }
-
-        guard (200...299).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
             throw ConvexError.requestFailed
         }
     }
 
+    /// Unlike a track
     func unlikeTrack(trackId: String) async throws {
         guard let authToken = KeychainManager.shared.getAccessToken() else {
-            throw ConvexError.requestFailed
+            throw ConvexError.unauthorized
         }
 
         let url = URL(string: "\(apiBaseUrl)/api/soundcloud/likes/\(trackId)")!
-
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
 
         let (_, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ConvexError.requestFailed
-        }
-
-        guard (200...299).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
             throw ConvexError.requestFailed
         }
     }
 
-    // MARK: - Account Deletion
-
+    /// Delete all user data
     func deleteAllUserData(userId: String) async throws {
-        try await mutationVoid(
+        try await mutation(
             "accountDeletion:deleteAllUserData",
             args: ["userId": userId]
         )
     }
 }
 
-// MARK: - Response Models
+// MARK: - Response Types
 
 struct ConvexResponse<T: Codable>: Codable {
     let status: String
@@ -369,11 +354,38 @@ struct ConvexResponse<T: Codable>: Codable {
     let errorMessage: String?
 }
 
+struct ConvexTracksResponse: Codable {
+    let tracks: [SoundCloudTrack]
+    let source: String?
+}
+
+struct ConvexPlaylistsResponse: Codable {
+    let playlists: [SoundCloudPlaylist]
+    let source: String?
+}
+
+struct ConvexPlaylistResponse: Codable {
+    let playlist: SoundCloudPlaylist
+    let source: String?
+}
+
+struct ConvexProfileResponse: Codable {
+    let profile: SoundCloudProfile
+    let source: String?
+}
+
+struct SearchResult: Codable {
+    let tracks: [SoundCloudTrack]
+    let playlists: [SoundCloudPlaylist]
+    let users: [SoundCloudUser]
+}
+
 // MARK: - Errors
 
 enum ConvexError: LocalizedError {
     case requestFailed
     case queryFailed(String)
+    case actionFailed(String)
     case mutationFailed(String)
     case noData
     case alreadyInQueue
@@ -383,17 +395,19 @@ enum ConvexError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .requestFailed:
-            return "Request to Convex failed"
+            return "Unable to connect. Please check your internet connection."
         case .queryFailed(let message):
-            return "Query failed: \(message)"
+            return message
+        case .actionFailed(let message):
+            return message
         case .mutationFailed(let message):
-            return "Mutation failed: \(message)"
+            return message
         case .noData:
-            return "No data in cache"
+            return "No data available"
         case .alreadyInQueue:
             return "Track is already in your queue"
         case .unauthorized:
-            return "Authentication required"
+            return "Please sign in to continue"
         case .notFound:
             return "Item not found"
         }

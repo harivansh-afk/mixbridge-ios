@@ -9,7 +9,7 @@ class UserProfileManager {
 
     // MARK: - State
 
-    var profile: ConvexUserProfile?
+    var profile: SoundCloudProfile?
     var isLoading = false
     var errorMessage: String?
 
@@ -27,12 +27,7 @@ class UserProfileManager {
             let fetchedProfile = try await BackgroundExecutor.run {
                 try await ConvexService.shared.getUserProfile(userId: userId)
             }
-
-            if let fetchedProfile = fetchedProfile {
-                self.profile = fetchedProfile
-            } else {
-                errorMessage = "Profile not cached"
-            }
+            self.profile = fetchedProfile
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -43,22 +38,22 @@ class UserProfileManager {
     // MARK: - Convenience Accessors
 
     var avatarUrl: String? {
-        profile?.profile.avatar_url
+        profile?.avatar_url
     }
 
     var displayName: String {
-        profile?.profile.full_name ?? profile?.profile.username ?? KeychainManager.shared.getUsername() ?? "User"
+        profile?.full_name ?? profile?.username ?? KeychainManager.shared.getUsername() ?? "User"
     }
 
     var username: String {
-        profile?.profile.username ?? KeychainManager.shared.getUsername() ?? "user"
+        profile?.username ?? KeychainManager.shared.getUsername() ?? "user"
     }
 
     var followersCount: Int {
-        profile?.profile.followers_count ?? 0
+        profile?.followers_count ?? 0
     }
 
     var playlistCount: Int {
-        profile?.profile.playlist_count ?? 0
+        profile?.playlist_count ?? 0
     }
 }

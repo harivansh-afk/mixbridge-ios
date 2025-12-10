@@ -12,10 +12,11 @@ struct PlaylistDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
     @Environment(QueueManager.self) private var queueManager
-    @State private var tracks: [Track] = []
-    @State private var tracksData: [String: [String: Any]] = [:] // Track ID -> raw data
-    @State private var isLoadingTracks = false
+
+    @State private var trackItems: [TrackItem] = []
+    @State private var isLoading = false
     @State private var hasLoaded = false
+    @State private var error: Error?
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
     private let artworkSize: CGFloat = 300
@@ -48,10 +49,11 @@ struct PlaylistDetailView: View {
         }
         .onAppear {
             if !hasLoaded {
-                Task {
-                    await loadPlaylistTracks()
-                }
+                Task { await loadPlaylistTracks() }
             }
+        }
+        .refreshable {
+            await loadPlaylistTracks()
         }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -129,18 +131,18 @@ struct PlaylistDetailView: View {
     private var actionButtons: some View {
         PlaylistActionButtons(
             onPlay: {
-                if let firstTrack = tracks.first {
+                if let firstItem = trackItems.first {
                     PlayerState.shared.play(
-                        track: firstTrack,
-                        trackData: tracksData[firstTrack.id]
+                        track: firstItem.track,
+                        soundCloudTrack: firstItem.soundCloudTrack
                     )
                 }
             },
             onShuffle: {
-                if let randomTrack = tracks.randomElement() {
+                if let randomItem = trackItems.randomElement() {
                     PlayerState.shared.play(
-                        track: randomTrack,
-                        trackData: tracksData[randomTrack.id]
+                        track: randomItem.track,
+                        soundCloudTrack: randomItem.soundCloudTrack
                     )
                 }
             }
@@ -149,25 +151,35 @@ struct PlaylistDetailView: View {
 
     private var tracksSection: some View {
         Section {
-            if isLoadingTracks {
+            if isLoading && !hasLoaded {
                 HStack {
                     Spacer()
-                    ProgressView("")
+                    ProgressView()
                     Spacer()
                 }
                 .padding()
                 .listRowSeparator(.hidden)
-            } else if !tracks.isEmpty {
-                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+            } else if let error {
+                VStack(spacing: 12) {
+                    Text("Unable to load tracks")
+                        .foregroundStyle(.secondary)
+                    Button("Try Again") {
+                        Task { await loadPlaylistTracks() }
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+            } else if !trackItems.isEmpty {
+                ForEach(Array(trackItems.enumerated()), id: \.element.id) { index, item in
                     TrackRow(
-                        track,
+                        item.track,
                         number: index + 1,
                         showCover: true,
-                        trackData: tracksData[track.id]
+                        soundCloudTrack: item.soundCloudTrack
                     )
                 }
             } else if !playlist.tracks.isEmpty {
-                // Fallback to playlist.tracks if available (no queue support)
                 ForEach(Array(playlist.tracks.enumerated()), id: \.element.id) { index, track in
                     TrackRow(track, number: index + 1, showCover: true)
                 }
@@ -177,110 +189,30 @@ struct PlaylistDetailView: View {
                     .padding()
             }
         }
-        .listSectionSeparator(isLoadingTracks ? .hidden : .visible, edges: .top)
+        .listSectionSeparator(isLoading ? .hidden : .visible, edges: .top)
     }
 
     private func loadPlaylistTracks() async {
-        guard let userId = authManager.currentUserId else {
-            return
-        }
-        guard !isLoadingTracks else {
-            return
-        }
+        guard let userId = authManager.currentUserId else { return }
+        guard !isLoading else { return }
 
-        isLoadingTracks = true
+        isLoading = true
+        error = nil
 
-        // Try Convex cache first
         do {
-            let cached = try await BackgroundExecutor.run {
+            let tracks = try await BackgroundExecutor.run {
                 try await ConvexService.shared.getPlaylistTracks(
                     userId: userId,
                     playlistId: playlist.id
                 )
             }
-
-            if let cached = cached {
-                var tracksList: [Track] = []
-                var rawData: [String: [String: Any]] = [:]
-
-                for soundcloudTrack in cached.tracks {
-                    let artworkUrl = soundcloudTrack.artwork_url ?? soundcloudTrack.user.avatar_url ?? ""
-                    let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
-                    let trackId = String(soundcloudTrack.id)
-
-                    let track = Track(
-                        id: trackId,
-                        title: soundcloudTrack.title,
-                        artist: soundcloudTrack.user.username,
-                        album: soundcloudTrack.genre ?? "",
-                        artwork: highQualityArtwork,
-                        duration: Double(soundcloudTrack.duration) / 1000.0 // Convert ms to seconds
-                    )
-
-                    tracksList.append(track)
-
-                    // Store raw data for queue operations
-                    if let rawDict = try? JSONSerialization.jsonObject(
-                        with: JSONEncoder().encode(soundcloudTrack),
-                        options: []
-                    ) as? [String: Any] {
-                        rawData[trackId] = rawDict
-                    }
-                }
-
-                self.tracks = tracksList
-                self.tracksData = rawData
-                hasLoaded = true
-                isLoadingTracks = false
-                return
-            }
-        } catch ConvexError.noData {
+            self.trackItems = tracks.toTrackItems()
         } catch {
-        }
-
-        // Fallback: Fetch from backend API
-        do {
-            let response = try await BackgroundExecutor.run {
-                try await BackendAPI.shared.getPlaylist(playlistId: playlist.id)
-            }
-
-            if let soundcloudTracks = response.playlist.tracks {
-                var tracksList: [Track] = []
-                var rawData: [String: [String: Any]] = [:]
-
-                for soundcloudTrack in soundcloudTracks {
-                    let artworkUrl = soundcloudTrack.artwork_url ?? soundcloudTrack.user.avatar_url ?? ""
-                    let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
-                    let trackId = String(soundcloudTrack.id)
-
-                    let track = Track(
-                        id: trackId,
-                        title: soundcloudTrack.title,
-                        artist: soundcloudTrack.user.username,
-                        album: soundcloudTrack.genre ?? "",
-                        artwork: highQualityArtwork,
-                        duration: Double(soundcloudTrack.duration) / 1000.0 // Convert ms to seconds
-                    )
-
-                    tracksList.append(track)
-
-                    // Store raw data for queue operations
-                    if let rawDict = try? JSONSerialization.jsonObject(
-                        with: JSONEncoder().encode(soundcloudTrack),
-                        options: []
-                    ) as? [String: Any] {
-                        rawData[trackId] = rawDict
-                    }
-                }
-
-                self.tracks = tracksList
-                self.tracksData = rawData
-            }
-        } catch {
+            self.error = error
         }
 
         hasLoaded = true
-        isLoadingTracks = false
+        isLoading = false
     }
 }
 

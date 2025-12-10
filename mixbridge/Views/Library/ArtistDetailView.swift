@@ -3,21 +3,20 @@ import SwiftUI
 struct ArtistDetailView: View {
     let artist: ArtistInfo
     @Environment(\.dismiss) private var dismiss
+    @Environment(AuthManager.self) private var authManager
     @Namespace private var namespace
 
-    // Fetched content
-    @State private var artistTracks: [Track] = []
-    @State private var artistTracksData: [String: [String: Any]] = [:]
+    @State private var fetchedTrackItems: [TrackItem] = []
     @State private var artistPlaylists: [Playlist] = []
     @State private var isLoading = false
     @State private var hasLoaded = false
+    @State private var error: Error?
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
     private let avatarSize: CGFloat = 200
 
     var body: some View {
         List {
-            // Header Section
             Section {
                 VStack(spacing: 20) {
                     avatarView
@@ -34,7 +33,7 @@ struct ArtistDetailView: View {
                 .listRowSeparator(.hidden)
             }
 
-            if isLoading {
+            if isLoading && !hasLoaded {
                 Section {
                     HStack {
                         Spacer()
@@ -45,12 +44,10 @@ struct ArtistDetailView: View {
                     .listRowSeparator(.hidden)
                 }
             } else {
-                // Top Songs Section
-                if !combinedTracks.isEmpty {
+                if !combinedTrackItems.isEmpty {
                     topSongsSection
                 }
 
-                // Releases Section
                 if !artistPlaylists.isEmpty {
                     releasesSection
                 }
@@ -139,17 +136,19 @@ struct ArtistDetailView: View {
     private var actionButtons: some View {
         PlaylistActionButtons(
             onPlay: {
-                let allTracks = combinedTracks
-                if let firstTrack = allTracks.first {
-                    let trackData = combinedTracksData[firstTrack.id]
-                    PlayerState.shared.play(track: firstTrack, trackData: trackData)
+                if let firstItem = combinedTrackItems.first {
+                    PlayerState.shared.play(
+                        track: firstItem.track,
+                        soundCloudTrack: firstItem.soundCloudTrack
+                    )
                 }
             },
             onShuffle: {
-                let allTracks = combinedTracks
-                if let randomTrack = allTracks.randomElement() {
-                    let trackData = combinedTracksData[randomTrack.id]
-                    PlayerState.shared.play(track: randomTrack, trackData: trackData)
+                if let randomItem = combinedTrackItems.randomElement() {
+                    PlayerState.shared.play(
+                        track: randomItem.track,
+                        soundCloudTrack: randomItem.soundCloudTrack
+                    )
                 }
             }
         )
@@ -159,12 +158,11 @@ struct ArtistDetailView: View {
 
     private var topSongsSection: some View {
         Section {
-            if combinedTracks.count > 5 {
+            if combinedTrackItems.count > 5 {
                 NavigationLink {
                     ArtistAllSongsView(
                         artistName: artist.name,
-                        tracks: combinedTracks,
-                        tracksData: combinedTracksData
+                        trackItems: combinedTrackItems
                     )
                 } label: {
                     Text("Top Songs")
@@ -180,12 +178,12 @@ struct ArtistDetailView: View {
                     .listRowSeparator(.hidden)
             }
 
-            ForEach(Array(combinedTracks.prefix(5).enumerated()), id: \.element.id) { index, track in
+            ForEach(Array(combinedTrackItems.prefix(5).enumerated()), id: \.element.id) { index, item in
                 TrackRow(
-                    track,
+                    item.track,
                     number: index + 1,
                     showCover: true,
-                    trackData: combinedTracksData[track.id]
+                    soundCloudTrack: item.soundCloudTrack
                 )
             }
         }
@@ -255,97 +253,64 @@ struct ArtistDetailView: View {
 
     // MARK: - Combined Tracks
 
-    private var combinedTracks: [Track] {
+    private var combinedTrackItems: [TrackItem] {
         var seen = Set<String>()
-        var result: [Track] = []
+        var result: [TrackItem] = []
 
-        for track in artistTracks {
-            if !seen.contains(track.id) {
-                seen.insert(track.id)
-                result.append(track)
+        // Fetched tracks first
+        for item in fetchedTrackItems {
+            if !seen.contains(item.track.id) {
+                seen.insert(item.track.id)
+                result.append(item)
             }
         }
 
-        for track in artist.tracks {
-            if !seen.contains(track.id) {
-                seen.insert(track.id)
-                result.append(track)
+        // Then artist's pre-loaded tracks
+        for item in artist.trackItems {
+            if !seen.contains(item.track.id) {
+                seen.insert(item.track.id)
+                result.append(item)
             }
         }
 
-        return result
-    }
-
-    private var combinedTracksData: [String: [String: Any]] {
-        var result = artistTracksData
-        for (key, value) in artist.tracksData {
-            if result[key] == nil {
-                result[key] = value
-            }
-        }
         return result
     }
 
     // MARK: - Data Loading
 
     private func loadArtistContent() async {
+        guard let userId = authManager.currentUserId else { return }
         isLoading = true
+        error = nil
 
         do {
-            let searchResults = try await BackendAPI.shared.search(query: artist.name, limit: 50)
-
-            let artistId = Int(artist.id) ?? 0
-            let filteredTracks = searchResults.tracks.filter { $0.user.id == artistId }
-
-            var tracks: [Track] = []
-            var tracksData: [String: [String: Any]] = [:]
-
-            for soundcloudTrack in filteredTracks {
-                let artworkUrl = soundcloudTrack.artwork_url ?? soundcloudTrack.user.avatar_url ?? ""
-                let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
-                let trackId = String(soundcloudTrack.id)
-
-                let track = Track(
-                    id: trackId,
-                    title: soundcloudTrack.title,
-                    artist: soundcloudTrack.user.username,
-                    album: soundcloudTrack.genre ?? "",
-                    artwork: highQualityArtwork,
-                    duration: Double(soundcloudTrack.duration) / 1000.0
-                )
-
-                tracks.append(track)
-
-                if let rawDict = try? JSONSerialization.jsonObject(
-                    with: JSONEncoder().encode(soundcloudTrack),
-                    options: []
-                ) as? [String: Any] {
-                    tracksData[trackId] = rawDict
-                }
+            let searchResults = try await BackgroundExecutor.run {
+                try await ConvexService.shared.search(userId: userId, query: artist.name, limit: 50)
             }
 
-            let filteredPlaylists = searchResults.playlists.filter { $0.user.id == artistId }
+            let artistId = Int(artist.id) ?? 0
 
-            let playlists = filteredPlaylists.map { soundcloudPlaylist in
-                let artworkUrl = soundcloudPlaylist.artwork_url ?? soundcloudPlaylist.user.avatar_url ?? ""
+            // Filter tracks by this artist
+            let filteredTracks = searchResults.tracks.filter { $0.user.id == artistId }
+            self.fetchedTrackItems = filteredTracks.toTrackItems()
+
+            // Filter playlists by this artist
+            let filteredPlaylists = searchResults.playlists.filter { $0.user.id == artistId }
+            self.artistPlaylists = filteredPlaylists.map { scPlaylist in
+                let artworkUrl = scPlaylist.artwork_url ?? scPlaylist.user.avatar_url ?? ""
                 let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
 
                 return Playlist(
-                    id: String(soundcloudPlaylist.id),
-                    name: soundcloudPlaylist.title,
-                    creator: soundcloudPlaylist.user.username,
+                    id: String(scPlaylist.id),
+                    name: scPlaylist.title,
+                    creator: scPlaylist.user.username,
                     artwork: highQualityArtwork,
                     tracks: [],
                     lastUpdated: Date()
                 )
             }
-
-            self.artistTracks = tracks
-            self.artistTracksData = tracksData
-            self.artistPlaylists = playlists
-
         } catch {
-            // Silently fail - we still have liked tracks
+            self.error = error
         }
 
         hasLoaded = true
@@ -357,19 +322,18 @@ struct ArtistDetailView: View {
 
 struct ArtistAllSongsView: View {
     let artistName: String
-    let tracks: [Track]
-    let tracksData: [String: [String: Any]]
+    let trackItems: [TrackItem]
     @Environment(\.dismiss) private var dismiss
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
     var body: some View {
         List {
-            ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+            ForEach(Array(trackItems.enumerated()), id: \.element.id) { index, item in
                 TrackRow(
-                    track,
+                    item.track,
                     number: index + 1,
                     showCover: true,
-                    trackData: tracksData[track.id]
+                    soundCloudTrack: item.soundCloudTrack
                 )
             }
         }
@@ -406,6 +370,7 @@ struct ArtistAllSongsView: View {
             trackCount: 5
         ))
     }
+    .environment(AuthManager.shared)
     .preferredColorScheme(.light)
 }
 
@@ -418,5 +383,6 @@ struct ArtistAllSongsView: View {
             trackCount: 5
         ))
     }
+    .environment(AuthManager.shared)
     .preferredColorScheme(.dark)
 }

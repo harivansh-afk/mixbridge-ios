@@ -60,3 +60,29 @@ struct SoundCloudProfile: Codable {
     let city: String?
     let country: String?
 }
+
+// MARK: - Track Conversion
+
+extension SoundCloudTrack {
+    /// Convert SoundCloud track to app's Track model
+    func toTrack() -> Track {
+        let artworkUrl = artwork_url ?? user.avatar_url ?? ""
+        let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
+
+        return Track(
+            id: String(id),
+            title: title,
+            artist: user.username,
+            album: genre ?? "",
+            artwork: highQualityArtwork,
+            duration: Double(duration) / 1000.0
+        )
+    }
+}
+
+extension Array where Element == SoundCloudTrack {
+    /// Convert array of SoundCloud tracks to app's Track models
+    func toTracks() -> [Track] {
+        map { $0.toTrack() }
+    }
+}

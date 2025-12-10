@@ -99,17 +99,11 @@ struct LibraryView: View {
 
         isLoading = true
 
-        // Try Convex cache first (instant)
         do {
-            let cached = try await ConvexService.shared.getPlaylists(userId: userId)
-
-            if let cached = cached {
-                self.playlists = convertToPlaylists(cached.playlists)
-                isLoading = false
-                return
-            }
-        } catch ConvexError.noData {
+            let scPlaylists = try await ConvexService.shared.getPlaylists(userId: userId)
+            self.playlists = convertToPlaylists(scPlaylists)
         } catch {
+            // Handle error silently
         }
 
         isLoading = false
