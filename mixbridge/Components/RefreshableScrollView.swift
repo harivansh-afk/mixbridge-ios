@@ -76,7 +76,9 @@ struct RefreshableScrollView<Content: View>: View {
             guard newValue else { return }
             Task {
                 await onRefresh()
-                isRefreshing = false
+                await MainActor.run {
+                    isRefreshing = false
+                }
             }
         }
         .animation(.default, value: isRefreshing)
