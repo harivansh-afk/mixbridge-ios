@@ -15,6 +15,7 @@ struct HomeView: View {
 
     @State private var trackItems: [TrackItem] = []
     @State private var isLoading = false
+    @State private var isRefreshing = false
     @State private var hasLoaded = false
     @State private var error: Error?
 
@@ -23,9 +24,6 @@ struct HomeView: View {
             content
                 .navigationTitle("Home")
                 .navigationBarTitleDisplayMode(.large)
-                .refreshable {
-                    await loadHomeData()
-                }
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         profileAvatar
@@ -59,11 +57,11 @@ struct HomeView: View {
 
     @ViewBuilder
     private var content: some View {
-        if isLoading && !hasLoaded {
+        if isLoading && !hasLoaded && !isRefreshing {
             skeletonLoadingView
         } else if let error {
             errorView(error)
-        } else if queueManager.queueTracks.isEmpty && trackItems.isEmpty {
+        } else if queueManager.queueTracks.isEmpty && trackItems.isEmpty && hasLoaded {
             emptyState
         } else {
             homeList
@@ -132,32 +130,41 @@ struct HomeView: View {
     }
 
     private var homeList: some View {
-        List {
+        RefreshableScrollView(isRefreshing: $isRefreshing) {
+            await loadHomeData(forceRefresh: true)
+        } content: {
             if !trackItems.isEmpty {
-                Section {
+                VStack(alignment: .leading, spacing: 0) {
                     Text("Recents")
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundStyle(.primary)
-                        .listRowInsets(EdgeInsets(top: 24, leading: 16, bottom: 4, trailing: 16))
-                        .listRowSeparator(.hidden)
+                        .padding(.horizontal)
+                        .padding(.top, 24)
+                        .padding(.bottom, 8)
 
-                    ForEach(Array(trackItems.prefix(100).enumerated()), id: \.element.id) { index, item in
-                        TrackRow(
-                            item.track,
-                            number: index + 1,
-                            showCover: true,
-                            soundCloudTrack: item.soundCloudTrack
-                        )
+                    Divider()
+
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(trackItems.prefix(100).enumerated()), id: \.element.id) { index, item in
+                            TrackRow(
+                                item.track,
+                                number: index + 1,
+                                showCover: true,
+                                soundCloudTrack: item.soundCloudTrack
+                            )
+                            .padding(.horizontal)
+
+                            Divider()
+                                .padding(.leading, 78)
+                        }
                     }
                 }
             }
         }
-        .listStyle(.plain)
-        .listSectionSpacing(0)
     }
 
-    private func loadHomeData() async {
+    private func loadHomeData(forceRefresh: Bool = false) async {
         guard let userId = authManager.currentUserId else { return }
         if isLoading { return }
 

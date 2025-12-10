@@ -29,11 +29,11 @@ struct LikedView: View {
                 }
             }
             .refreshable {
-                await loadLikedTracks()
+                await loadLikedTracks(forceRefresh: true)
             }
     }
 
-    private func loadLikedTracks() async {
+    private func loadLikedTracks(forceRefresh: Bool = false) async {
         guard let userId = authManager.currentUserId else { return }
         guard !isLoading else { return }
 
@@ -42,7 +42,7 @@ struct LikedView: View {
 
         do {
             let tracks = try await BackgroundExecutor.run {
-                try await ConvexService.shared.getLikedTracks(userId: userId)
+                try await ConvexService.shared.getLikedTracks(userId: userId, forceRefresh: forceRefresh)
             }
             self.trackItems = tracks.toTrackItems()
         } catch {

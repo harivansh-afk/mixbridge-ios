@@ -53,7 +53,7 @@ struct PlaylistDetailView: View {
             }
         }
         .refreshable {
-            await loadPlaylistTracks()
+            await loadPlaylistTracks(forceRefresh: true)
         }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -192,7 +192,7 @@ struct PlaylistDetailView: View {
         .listSectionSeparator(isLoading ? .hidden : .visible, edges: .top)
     }
 
-    private func loadPlaylistTracks() async {
+    private func loadPlaylistTracks(forceRefresh: Bool = false) async {
         guard let userId = authManager.currentUserId else { return }
         guard !isLoading else { return }
 
@@ -203,7 +203,8 @@ struct PlaylistDetailView: View {
             let tracks = try await BackgroundExecutor.run {
                 try await ConvexService.shared.getPlaylistTracks(
                     userId: userId,
-                    playlistId: playlist.id
+                    playlistId: playlist.id,
+                    forceRefresh: forceRefresh
                 )
             }
             self.trackItems = tracks.toTrackItems()

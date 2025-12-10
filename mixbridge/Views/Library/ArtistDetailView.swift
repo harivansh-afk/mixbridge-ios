@@ -86,6 +86,9 @@ struct ArtistDetailView: View {
                 await loadArtistContent()
             }
         }
+        .refreshable {
+            await loadArtistContent(forceRefresh: true)
+        }
     }
 
     // MARK: - Avatar
@@ -278,14 +281,14 @@ struct ArtistDetailView: View {
 
     // MARK: - Data Loading
 
-    private func loadArtistContent() async {
+    private func loadArtistContent(forceRefresh: Bool = false) async {
         guard let userId = authManager.currentUserId else { return }
         isLoading = true
         error = nil
 
         do {
             let searchResults = try await BackgroundExecutor.run {
-                try await ConvexService.shared.search(userId: userId, query: artist.name, limit: 50)
+                try await ConvexService.shared.search(userId: userId, query: artist.name, limit: 50, forceRefresh: forceRefresh)
             }
 
             let artistId = Int(artist.id) ?? 0
@@ -297,14 +300,11 @@ struct ArtistDetailView: View {
             // Filter playlists by this artist
             let filteredPlaylists = searchResults.playlists.filter { $0.user.id == artistId }
             self.artistPlaylists = filteredPlaylists.map { scPlaylist in
-                let artworkUrl = scPlaylist.artwork_url ?? scPlaylist.user.avatar_url ?? ""
-                let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
-
-                return Playlist(
+                Playlist(
                     id: String(scPlaylist.id),
                     name: scPlaylist.title,
                     creator: scPlaylist.user.username,
-                    artwork: highQualityArtwork,
+                    artwork: scPlaylist.primaryArtworkUrl,
                     tracks: [],
                     lastUpdated: Date()
                 )

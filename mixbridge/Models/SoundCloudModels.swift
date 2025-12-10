@@ -86,3 +86,24 @@ extension Array where Element == SoundCloudTrack {
         map { $0.toTrack() }
     }
 }
+
+// MARK: - Playlist Helpers
+
+extension SoundCloudPlaylist {
+    /// Best-effort artwork for a playlist.
+    /// 1) Use playlist artwork if present.
+    /// 2) Otherwise fall back to the first track's artwork (when tracks are included).
+    /// 3) Otherwise return an empty string so UI can show a neutral placeholder
+    ///    instead of the user's profile picture.
+    var primaryArtworkUrl: String {
+        if let artwork_url {
+            return artwork_url.upgradeArtworkQuality()
+        }
+
+        if let trackArtwork = tracks?.first?.artwork_url {
+            return trackArtwork.upgradeArtworkQuality()
+        }
+
+        return ""
+    }
+}

@@ -114,50 +114,70 @@ final class ConvexService {
     // MARK: - Data Fetching (Convex Actions - Auto-fetch from SoundCloud if needed)
 
     /// Get user's liked tracks
-    /// Convex action will check cache and fetch from SoundCloud if needed
-    func getLikedTracks(userId: String) async throws -> [SoundCloudTrack] {
+    /// - Parameter forceRefresh: If true, bypasses cache and fetches directly from SoundCloud
+    func getLikedTracks(userId: String, forceRefresh: Bool = false) async throws -> [SoundCloudTrack] {
+        var args: [String: Any] = ["userId": userId]
+        if forceRefresh {
+            args["forceRefresh"] = true
+        }
         let result: ConvexTracksResponse = try await action(
             "actions/likedTracks:get",
-            args: ["userId": userId]
+            args: args
         )
         return result.tracks
     }
 
     /// Get user's playlists
-    /// Convex action will check cache and fetch from SoundCloud if needed
-    func getPlaylists(userId: String) async throws -> [SoundCloudPlaylist] {
+    /// - Parameter forceRefresh: If true, bypasses cache and fetches directly from SoundCloud
+    func getPlaylists(userId: String, forceRefresh: Bool = false) async throws -> [SoundCloudPlaylist] {
+        var args: [String: Any] = ["userId": userId]
+        if forceRefresh {
+            args["forceRefresh"] = true
+        }
         let result: ConvexPlaylistsResponse = try await action(
             "actions/playlists:getAll",
-            args: ["userId": userId]
+            args: args
         )
         return result.playlists
     }
 
     /// Get tracks for a specific playlist
-    /// Convex action will check cache and fetch from SoundCloud if needed
-    func getPlaylistTracks(userId: String, playlistId: String) async throws -> [SoundCloudTrack] {
+    /// - Parameter forceRefresh: If true, bypasses cache and fetches directly from SoundCloud
+    func getPlaylistTracks(userId: String, playlistId: String, forceRefresh: Bool = false) async throws -> [SoundCloudTrack] {
+        var args: [String: Any] = ["userId": userId, "playlistId": playlistId]
+        if forceRefresh {
+            args["forceRefresh"] = true
+        }
         let result: ConvexPlaylistResponse = try await action(
             "actions/playlists:getTracks",
-            args: ["userId": userId, "playlistId": playlistId]
+            args: args
         )
-        // The action returns the full playlist object with tracks
         return result.playlist.tracks ?? []
     }
 
     /// Search for tracks, playlists, and users
-    /// Convex action handles search with caching
-    func search(userId: String, query: String, limit: Int = 20) async throws -> SearchResult {
+    /// - Parameter forceRefresh: If true, bypasses cache and fetches directly from SoundCloud
+    func search(userId: String, query: String, limit: Int = 20, forceRefresh: Bool = false) async throws -> SearchResult {
+        var args: [String: Any] = ["userId": userId, "query": query, "limit": limit]
+        if forceRefresh {
+            args["forceRefresh"] = true
+        }
         return try await action(
             "actions/search:search",
-            args: ["userId": userId, "query": query, "limit": limit]
+            args: args
         )
     }
 
     /// Get user profile
-    func getUserProfile(userId: String) async throws -> SoundCloudProfile {
+    /// - Parameter forceRefresh: If true, bypasses cache and fetches directly from SoundCloud
+    func getUserProfile(userId: String, forceRefresh: Bool = false) async throws -> SoundCloudProfile {
+        var args: [String: Any] = ["userId": userId]
+        if forceRefresh {
+            args["forceRefresh"] = true
+        }
         let result: ConvexProfileResponse = try await action(
             "actions/profile:get",
-            args: ["userId": userId]
+            args: args
         )
         return result.profile
     }
