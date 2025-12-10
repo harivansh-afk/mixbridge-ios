@@ -40,6 +40,7 @@ struct RefreshableScrollView<Content: View>: View {
     }
 
     private var scaleFactor: CGFloat {
+        if isRefreshing { return 1.0 }
         guard displayIndicatorThreshold < 1 else { return 1.0 }
         let factor = 1 / (1 - displayIndicatorThreshold) * pullProgress + (1 - 1 / (1 - displayIndicatorThreshold))
         return min(max(factor, 0), 1.0)
@@ -70,6 +71,7 @@ struct RefreshableScrollView<Content: View>: View {
 
             if offset < -refreshThreshold {
                 isRefreshing = true
+                HapticManager.light()
             }
         }
         .onChange(of: isRefreshing) { _, newValue in
@@ -87,8 +89,9 @@ struct RefreshableScrollView<Content: View>: View {
     private var refreshIndicator: some View {
         ProgressView()
             .progressViewStyle(.circular)
-            .controlSize(.large)
+            .controlSize(.regular)
             .tint(.secondary)
+            .scaleEffect(scaleFactor)
     }
 }
 
