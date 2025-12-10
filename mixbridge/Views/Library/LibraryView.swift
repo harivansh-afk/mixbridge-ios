@@ -48,6 +48,9 @@ struct LibraryView: View {
                 }
             }
             .task {
+                if let userId = authManager.currentUserId {
+                    await profileManager.loadProfile(userId: userId)
+                }
                 await loadPlaylists()
             }
             .sheet(isPresented: $showingAccount) {

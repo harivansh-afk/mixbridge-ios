@@ -130,37 +130,32 @@ struct HomeView: View {
     }
 
     private var homeList: some View {
-        RefreshableScrollView(isRefreshing: $isRefreshing) {
-            await loadHomeData(forceRefresh: true)
-        } content: {
+        List {
             if !trackItems.isEmpty {
-                VStack(alignment: .leading, spacing: 0) {
+                Section {
+                    ForEach(Array(trackItems.prefix(100).enumerated()), id: \.element.id) { index, item in
+                        TrackRow(
+                            item.track,
+                            number: index + 1,
+                            showCover: true,
+                            soundCloudTrack: item.soundCloudTrack
+                        )
+                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                    }
+                } header: {
                     Text("Recents")
                         .font(.title2)
                         .fontWeight(.bold)
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal)
-                        .padding(.top, 24)
-                        .padding(.bottom, 8)
-
-                    Divider()
-
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(trackItems.prefix(100).enumerated()), id: \.element.id) { index, item in
-                            TrackRow(
-                                item.track,
-                                number: index + 1,
-                                showCover: true,
-                                soundCloudTrack: item.soundCloudTrack
-                            )
-                            .padding(.horizontal)
-
-                            Divider()
-                                .padding(.leading, 78)
-                        }
-                    }
+                        .foregroundColor(Color.primary)
+                        .textCase(nil)
                 }
             }
+        }
+        .listStyle(.plain)
+        .refreshable {
+            isRefreshing = true
+            await loadHomeData(forceRefresh: true)
+            isRefreshing = false
         }
     }
 

@@ -12,7 +12,7 @@ struct ContentView: View {
     @State private var expandMiniPlayer: Bool = false
     @Namespace private var animation
     @State private var playerState = PlayerState.shared
-    @State private var selectedTab = 0
+    @State private var selectedTab = 1
     @Environment(\.colorScheme) private var colorScheme
 
     @ViewBuilder
