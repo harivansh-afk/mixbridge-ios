@@ -1,6 +1,7 @@
 import Foundation
 
-/// Backend API client for SoundCloud operations
+/// Backend API client for streaming operations only
+/// All data fetching is handled by ConvexService
 final class BackendAPI {
     static let shared = BackendAPI()
 
@@ -9,67 +10,38 @@ final class BackendAPI {
 
     private init() {}
 
-    // MARK: - Request Helper
+    // MARK: - Streaming
 
-    private func makeRequest<T: Decodable>(
-        path: String,
-        method: String = "GET",
-        body: [String: Any]? = nil
-    ) async throws -> T {
+    /// Get stream URL for a track (required for playback)
+    func getStreamURL(trackId: String) async throws -> StreamResponse {
         guard let sessionToken = keychain.getAccessToken() else {
-            throw APIError.notAuthenticated
+            throw StreamError.notAuthenticated
         }
 
-        guard let url = URL(string: "\(baseURL)\(path)") else {
-            throw APIError.invalidURL
+        guard let url = URL(string: "\(baseURL)/api/mobile/stream/\(trackId)") else {
+            throw StreamError.invalidURL
         }
 
         var request = URLRequest(url: url)
-        request.httpMethod = method
+        request.httpMethod = "GET"
         request.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let body = body {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        }
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
+            throw StreamError.invalidResponse
+        }
+
+        if httpResponse.statusCode == 401 {
+            throw StreamError.notAuthenticated
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.notAuthenticated
-            }
-            throw APIError.serverError(httpResponse.statusCode)
+            throw StreamError.serverError(httpResponse.statusCode)
         }
 
-        return try JSONDecoder().decode(T.self, from: data)
-    }
-
-    // MARK: - SoundCloud Operations
-
-    /// Get stream URL for a track (requires SoundCloud auth)
-    func getStreamURL(trackId: String) async throws -> StreamResponse {
-        return try await makeRequest(path: "/api/mobile/stream/\(trackId)")
-    }
-
-    /// Get playlist with tracks from backend
-    func getPlaylist(playlistId: String) async throws -> PlaylistResponse {
-        return try await makeRequest(path: "/api/mobile/playlist/\(playlistId)")
-    }
-
-    /// Get liked tracks from backend (fresh from SoundCloud)
-    func getLikedTracks(limit: Int = 50, offset: Int = 0) async throws -> LikedTracksResponse {
-        return try await makeRequest(path: "/api/mobile/tracks/liked?limit=\(limit)&offset=\(offset)")
-    }
-
-    /// Search SoundCloud
-    func search(query: String, limit: Int = 20) async throws -> SearchResponse {
-        let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        return try await makeRequest(path: "/api/mobile/search?q=\(encodedQuery)&limit=\(limit)")
+        return try JSONDecoder().decode(StreamResponse.self, from: data)
     }
 }
 
@@ -81,24 +53,9 @@ struct StreamResponse: Codable {
     let track_id: String
 }
 
-struct PlaylistResponse: Codable {
-    let playlist: SoundCloudPlaylist
-}
-
-struct LikedTracksResponse: Codable {
-    let tracks: [SoundCloudTrack]
-    let next_href: String?
-}
-
-struct SearchResponse: Codable {
-    let tracks: [SoundCloudTrack]
-    let playlists: [SoundCloudPlaylist]
-    let users: [SoundCloudUser]
-}
-
 // MARK: - Errors
 
-enum APIError: LocalizedError {
+enum StreamError: LocalizedError {
     case notAuthenticated
     case invalidURL
     case invalidResponse
@@ -107,13 +64,13 @@ enum APIError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notAuthenticated:
-            return "Not authenticated"
+            return "Please sign in to play music"
         case .invalidURL:
-            return "Invalid URL"
+            return "Invalid stream URL"
         case .invalidResponse:
-            return "Invalid response from server"
+            return "Unable to load stream"
         case .serverError(let code):
-            return "Server error: \(code)"
+            return "Stream error (\(code))"
         }
     }
 }

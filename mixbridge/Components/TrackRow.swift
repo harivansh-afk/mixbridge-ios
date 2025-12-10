@@ -17,8 +17,7 @@ struct TrackRow: View {
     var onRemoveFromQueue: (() -> Void)?
     var onLike: (() -> Void)?
     var onDelete: (() -> Void)?
-    var onTrackAddedToQueue: ((Track, String) -> Void)? // Callback with track + queue track ID
-    var trackData: [String: Any]?
+    var soundCloudTrack: SoundCloudTrack?
     var onPlay: (() -> Void)?
     @State private var playerState = PlayerState.shared
 
@@ -33,8 +32,7 @@ struct TrackRow: View {
         onRemoveFromQueue: (() -> Void)? = nil,
         onLike: (() -> Void)? = nil,
         onDelete: (() -> Void)? = nil,
-        onTrackAddedToQueue: ((Track, String) -> Void)? = nil,
-        trackData: [String: Any]? = nil,
+        soundCloudTrack: SoundCloudTrack? = nil,
         onPlay: (() -> Void)? = nil
     ) {
         self.track = track
@@ -45,8 +43,7 @@ struct TrackRow: View {
         self.onRemoveFromQueue = onRemoveFromQueue
         self.onLike = onLike
         self.onDelete = onDelete
-        self.onTrackAddedToQueue = onTrackAddedToQueue
-        self.trackData = trackData
+        self.soundCloudTrack = soundCloudTrack
         self.onPlay = onPlay
     }
 
@@ -58,15 +55,9 @@ struct TrackRow: View {
         let isCurrentTrack = playerState.currentTrack.id == track.id
 
         HStack(spacing: 12) {
-            // Left side: Track number or album artwork
             leadingContent
-
-            // Middle: Track info
             trackInfo
-
             Spacer()
-
-            // Right side: Actions
             trailingActions
         }
         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -106,7 +97,7 @@ struct TrackRow: View {
         .alert("Error", isPresented: $showError) {
             Button("OK", role: .cancel) {}
         } message: {
-            if let errorMessage = errorMessage {
+            if let errorMessage {
                 Text(errorMessage)
             }
         }
@@ -131,7 +122,6 @@ struct TrackRow: View {
     private var albumArtwork: some View {
         Group {
             if track.artwork.starts(with: "http") {
-                // Real URL - use CachedAsyncImage
                 CachedAsyncImagePhase(url: URL(string: track.artwork)) { phase in
                     switch phase {
                     case .empty:
@@ -156,7 +146,6 @@ struct TrackRow: View {
                     }
                 }
             } else {
-                // Gradient placeholder
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color(.systemGray6))
                     .frame(width: coverSize, height: coverSize)
@@ -173,12 +162,12 @@ struct TrackRow: View {
         ZStack {
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color(.systemGray6))
-                    .frame(width: coverSize, height: coverSize)
-                    .overlay(
-                        Image(systemName: "music.note")
-                            .font(.system(size: coverSize * 0.45))
-                            .foregroundColor(.gray.opacity(0.7))
-                    )
+                .frame(width: coverSize, height: coverSize)
+                .overlay(
+                    Image(systemName: "music.note")
+                        .font(.system(size: coverSize * 0.45))
+                        .foregroundColor(.gray.opacity(0.7))
+                )
 
             ProgressView()
                 .progressViewStyle(.circular)
@@ -221,18 +210,16 @@ struct TrackRow: View {
             return
         }
 
-        PlayerState.shared.play(track: track, trackData: trackData)
+        PlayerState.shared.play(track: track, soundCloudTrack: soundCloudTrack)
     }
 
     private func handleAddToQueue() {
-        // Use custom callback if provided (for backward compatibility)
-        if let onAddToQueue = onAddToQueue {
+        if let onAddToQueue {
             onAddToQueue()
             return
         }
 
-        // Standard behavior: use QueueManager
-        guard let trackData = trackData else {
+        guard let soundCloudTrack else {
             errorMessage = "Unable to add track to queue"
             showError = true
             return
@@ -241,15 +228,9 @@ struct TrackRow: View {
         Task {
             isLoading = true
             do {
-                try await QueueManager.shared.addTrack(track, rawData: trackData)
-
-                // Notify parent if callback provided
-                if let onTrackAddedToQueue = onTrackAddedToQueue,
-                   let queueTrackId = QueueManager.shared.queueTracks.first(where: { $0.id == track.id })?.id {
-                    onTrackAddedToQueue(track, queueTrackId)
-                }
+                try await QueueManager.shared.addTrack(track, soundCloudTrack: soundCloudTrack)
             } catch ConvexError.alreadyInQueue {
-                // Don't show error for duplicates - this is expected
+                // Don't show error for duplicates
             } catch {
                 errorMessage = error.localizedDescription
                 showError = true
@@ -259,11 +240,10 @@ struct TrackRow: View {
     }
 
     private func handleLike() {
-        if let onLike = onLike {
+        if let onLike {
             HapticManager.medium()
             onLike()
         } else {
-            // Default behavior: call API directly
             Task {
                 isLoading = true
                 do {
@@ -273,7 +253,7 @@ struct TrackRow: View {
                     HapticManager.success()
                 } catch {
                     HapticManager.error()
-                    errorMessage = "Failed to like track: \(error.localizedDescription)"
+                    errorMessage = error.localizedDescription
                     showError = true
                 }
                 isLoading = false
@@ -282,7 +262,7 @@ struct TrackRow: View {
     }
 
     private func handleDelete() {
-        if let onDelete = onDelete {
+        if let onDelete {
             HapticManager.warning()
             onDelete()
         } else {

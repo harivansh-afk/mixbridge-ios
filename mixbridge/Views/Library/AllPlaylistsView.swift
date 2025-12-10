@@ -2,17 +2,21 @@ import SwiftUI
 
 struct AllPlaylistsView: View {
     @Environment(AuthManager.self) private var authManager
+
     @State private var playlists: [Playlist] = []
     @State private var isLoading = false
     @State private var hasLoaded = false
+    @State private var error: Error?
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
     @State private var selectedPlaylist: Playlist?
     @Namespace private var namespace
 
     var body: some View {
         Group {
-            if isLoading {
-                ProgressView("")
+            if isLoading && !hasLoaded {
+                ProgressView()
+            } else if let error {
+                errorView(error)
             } else if playlists.isEmpty {
                 ContentUnavailableView(
                     "No Playlists",
@@ -23,7 +27,6 @@ struct AllPlaylistsView: View {
                 List {
                     ForEach(playlists) { playlist in
                         HStack(spacing: 12) {
-                            // Playlist artwork
                             if playlist.artwork.starts(with: "http"),
                                let url = URL(string: playlist.artwork) {
                                 CachedAsyncImage(url: url) { image in
@@ -79,10 +82,24 @@ struct AllPlaylistsView: View {
         }
         .onAppear {
             if !hasLoaded {
-                Task {
-                    await loadPlaylists()
-                }
+                Task { await loadPlaylists() }
             }
+        }
+        .refreshable {
+            await loadPlaylists()
+        }
+    }
+
+    private func errorView(_ error: Error) -> some View {
+        ContentUnavailableView {
+            Label("Unable to Load", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(error.localizedDescription)
+        } actions: {
+            Button("Try Again") {
+                Task { await loadPlaylists() }
+            }
+            .buttonStyle(.bordered)
         }
     }
 
@@ -91,28 +108,28 @@ struct AllPlaylistsView: View {
         guard !isLoading else { return }
 
         isLoading = true
+        error = nil
 
         do {
-            let cached = try await BackgroundExecutor.run {
+            let scPlaylists = try await BackgroundExecutor.run {
                 try await ConvexService.shared.getPlaylists(userId: userId)
             }
 
-            if let cached = cached {
-                self.playlists = cached.playlists.map { soundcloudPlaylist in
-                    let artworkUrl = soundcloudPlaylist.artwork_url ?? soundcloudPlaylist.user.avatar_url ?? ""
-                    let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
+            self.playlists = scPlaylists.map { scPlaylist in
+                let artworkUrl = scPlaylist.artwork_url ?? scPlaylist.user.avatar_url ?? ""
+                let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
 
-                    return Playlist(
-                        id: String(soundcloudPlaylist.id),
-                        name: soundcloudPlaylist.title,
-                        creator: soundcloudPlaylist.user.username,
-                        artwork: highQualityArtwork,
-                        tracks: [],
-                        lastUpdated: Date()
-                    )
-                }
+                return Playlist(
+                    id: String(scPlaylist.id),
+                    name: scPlaylist.title,
+                    creator: scPlaylist.user.username,
+                    artwork: highQualityArtwork,
+                    tracks: [],
+                    lastUpdated: Date()
+                )
             }
         } catch {
+            self.error = error
         }
 
         hasLoaded = true

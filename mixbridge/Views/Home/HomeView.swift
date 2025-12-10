@@ -8,17 +8,16 @@
 import SwiftUI
 
 struct HomeView: View {
-    // MARK: - State
     @State private var showingAccount = false
     @Environment(AuthManager.self) private var authManager
     @Environment(UserProfileManager.self) private var profileManager
     @Environment(QueueManager.self) private var queueManager
-    @State private var recentlyPlayed: [Track] = []
-    @State private var recentlyPlayedData: [String: [String: Any]] = [:] // Track ID -> raw data
+
+    @State private var trackItems: [TrackItem] = []
     @State private var isLoading = false
     @State private var hasLoaded = false
+    @State private var error: Error?
 
-    // MARK: - Body
     var body: some View {
         NavigationStack {
             content
@@ -58,14 +57,13 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Content
-
     @ViewBuilder
     private var content: some View {
         if isLoading && !hasLoaded {
-            // Skeleton loading state
             skeletonLoadingView
-        } else if queueManager.queueTracks.isEmpty && recentlyPlayed.isEmpty {
+        } else if let error {
+            errorView(error)
+        } else if queueManager.queueTracks.isEmpty && trackItems.isEmpty {
             emptyState
         } else {
             homeList
@@ -80,6 +78,19 @@ struct HomeView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func errorView(_ error: Error) -> some View {
+        ContentUnavailableView {
+            Label("Unable to Load", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(error.localizedDescription)
+        } actions: {
+            Button("Try Again") {
+                Task { await loadHomeData() }
+            }
+            .buttonStyle(.bordered)
+        }
     }
 
     private var profileAvatar: some View {
@@ -102,7 +113,7 @@ struct HomeView: View {
             } else {
                 ProfileCircleView(
                     profileImage: nil,
-                    userName: profileManager.displayName,
+                    userName: profileManager.displayName
                 )
                 .onTapGesture {
                     HapticManager.light()
@@ -122,10 +133,8 @@ struct HomeView: View {
 
     private var homeList: some View {
         List {
-            // Recently Played Section
-            if !recentlyPlayed.isEmpty {
+            if !trackItems.isEmpty {
                 Section {
-                    // Subheading row
                     Text("Recents")
                         .font(.title2)
                         .fontWeight(.bold)
@@ -133,13 +142,12 @@ struct HomeView: View {
                         .listRowInsets(EdgeInsets(top: 24, leading: 16, bottom: 4, trailing: 16))
                         .listRowSeparator(.hidden)
 
-                    // Track rows
-                    ForEach(Array(recentlyPlayed.prefix(100).enumerated()), id: \.element.id) { index, track in
+                    ForEach(Array(trackItems.prefix(100).enumerated()), id: \.element.id) { index, item in
                         TrackRow(
-                            track,
+                            item.track,
                             number: index + 1,
                             showCover: true,
-                            trackData: recentlyPlayedData[track.id]
+                            soundCloudTrack: item.soundCloudTrack
                         )
                     }
                 }
@@ -149,73 +157,39 @@ struct HomeView: View {
         .listSectionSpacing(0)
     }
 
-    // MARK: - Data Loading
-
     private func loadHomeData() async {
-        guard let userId = authManager.currentUserId else {
-            return
-        }
-
-        // Prevent concurrent loads (fixes -999 cancelled error)
-        if isLoading {
-            return
-        }
+        guard let userId = authManager.currentUserId else { return }
+        if isLoading { return }
 
         isLoading = true
+        error = nil
 
-        // Load queue via QueueManager
+        // Load queue
         do {
             try await queueManager.loadQueue(userId: userId)
         } catch {
-            // Silently handle queue errors
+            // Queue errors are non-fatal
         }
 
-        // Load recently played
+        // Load play history
         do {
             let history = try await BackgroundExecutor.run {
                 try await ConvexService.shared.getPlayHistory(userId: userId, limit: 20)
             }
 
-            // Store both Track objects and raw data
-            var allTracks: [Track] = []
-            var rawDataMap: [String: [String: Any]] = [:]
+            var items: [TrackItem] = []
+            var seen = Set<String>()
 
             for playItem in history {
-                let track = playItem.trackData
-                let artworkUrl = track.artwork_url ?? track.user.avatar_url ?? ""
-                let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
-
-                let trackId = String(track.id)
-                let trackObj = Track(
-                    id: trackId,
-                    title: track.title,
-                    artist: track.user.username,
-                    album: track.genre ?? "",
-                    artwork: highQualityArtwork,
-                    duration: Double(track.duration) / 1000.0 // Convert ms to seconds
-                )
-
-                // Convert the SoundCloud track data to dictionary
-                if let trackDict = try? JSONSerialization.jsonObject(
-                    with: JSONEncoder().encode(track),
-                    options: []
-                ) as? [String: Any] {
-                    rawDataMap[trackId] = trackDict
+                let key = "\(playItem.trackData.title.lowercased())|\(playItem.trackData.user.username.lowercased())"
+                if seen.insert(key).inserted {
+                    items.append(TrackItem(soundCloudTrack: playItem.trackData))
                 }
-
-                allTracks.append(trackObj)
             }
 
-            // Deduplicate tracks based on title and artist
-            var seen = Set<String>()
-            self.recentlyPlayed = allTracks.filter { track in
-                let key = "\(track.title.lowercased())|\(track.artist.lowercased())"
-                return seen.insert(key).inserted
-            }
-
-            self.recentlyPlayedData = rawDataMap
+            self.trackItems = items
         } catch {
-            // Silently handle errors
+            self.error = error
         }
 
         hasLoaded = true

@@ -3,17 +3,20 @@ import SwiftUI
 struct AllSongsView: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(QueueManager.self) private var queueManager
-    @State private var tracks: [Track] = []
-    @State private var tracksData: [String: [String: Any]] = [:] // Track ID -> raw data
+
+    @State private var trackItems: [TrackItem] = []
     @State private var isLoading = false
     @State private var hasLoaded = false
+    @State private var error: Error?
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
     var body: some View {
         Group {
-            if isLoading {
-                ProgressView("")
-            } else if tracks.isEmpty {
+            if isLoading && !hasLoaded {
+                ProgressView()
+            } else if let error {
+                errorView(error)
+            } else if trackItems.isEmpty {
                 ContentUnavailableView(
                     "No Songs",
                     systemImage: "music.note",
@@ -22,12 +25,12 @@ struct AllSongsView: View {
             } else {
                 List {
                     Section {
-                        ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                        ForEach(Array(trackItems.enumerated()), id: \.element.id) { index, item in
                             TrackRow(
-                                track,
+                                item.track,
                                 number: index + 1,
                                 showCover: true,
-                                trackData: tracksData[track.id]
+                                soundCloudTrack: item.soundCloudTrack
                             )
                         }
                     }
@@ -43,10 +46,24 @@ struct AllSongsView: View {
         }
         .onAppear {
             if !hasLoaded {
-                Task {
-                    await loadSongs()
-                }
+                Task { await loadSongs() }
             }
+        }
+        .refreshable {
+            await loadSongs()
+        }
+    }
+
+    private func errorView(_ error: Error) -> some View {
+        ContentUnavailableView {
+            Label("Unable to Load", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(error.localizedDescription)
+        } actions: {
+            Button("Try Again") {
+                Task { await loadSongs() }
+            }
+            .buttonStyle(.bordered)
         }
     }
 
@@ -55,45 +72,15 @@ struct AllSongsView: View {
         guard !isLoading else { return }
 
         isLoading = true
+        error = nil
 
         do {
-            let cached = try await BackgroundExecutor.run {
+            let tracks = try await BackgroundExecutor.run {
                 try await ConvexService.shared.getLikedTracks(userId: userId)
             }
-
-            if let cached = cached {
-                var tracksList: [Track] = []
-                var rawData: [String: [String: Any]] = [:]
-
-                for soundcloudTrack in cached.tracks {
-                    let artworkUrl = soundcloudTrack.artwork_url ?? soundcloudTrack.user.avatar_url ?? ""
-                    let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
-                    let trackId = String(soundcloudTrack.id)
-
-                    let track = Track(
-                        id: trackId,
-                        title: soundcloudTrack.title,
-                        artist: soundcloudTrack.user.username,
-                        album: soundcloudTrack.genre ?? "",
-                        artwork: highQualityArtwork,
-                        duration: Double(soundcloudTrack.duration) / 1000.0 // Convert ms to seconds
-                    )
-
-                    tracksList.append(track)
-
-                    // Store raw data for queue operations
-                    if let rawDict = try? JSONSerialization.jsonObject(
-                        with: JSONEncoder().encode(soundcloudTrack),
-                        options: []
-                    ) as? [String: Any] {
-                        rawData[trackId] = rawDict
-                    }
-                }
-
-                self.tracks = tracksList
-                self.tracksData = rawData
-            }
+            self.trackItems = tracks.toTrackItems()
         } catch {
+            self.error = error
         }
 
         hasLoaded = true

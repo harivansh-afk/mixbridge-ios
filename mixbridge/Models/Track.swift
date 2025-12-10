@@ -7,6 +7,7 @@
 
 import Foundation
 
+/// Display model for tracks in the UI
 struct Track: Identifiable, Codable, Equatable, Hashable {
     let id: String
     let title: String
@@ -29,6 +30,30 @@ struct Track: Identifiable, Codable, Equatable, Hashable {
         self.album = album
         self.artwork = artwork
         self.duration = duration
+    }
+}
+
+/// A track with its underlying SoundCloud data for API operations
+struct TrackItem: Identifiable, Equatable {
+    let track: Track
+    let soundCloudTrack: SoundCloudTrack
+
+    var id: String { track.id }
+
+    init(soundCloudTrack: SoundCloudTrack) {
+        self.track = soundCloudTrack.toTrack()
+        self.soundCloudTrack = soundCloudTrack
+    }
+
+    static func == (lhs: TrackItem, rhs: TrackItem) -> Bool {
+        lhs.track.id == rhs.track.id
+    }
+}
+
+extension Array where Element == SoundCloudTrack {
+    /// Convert to TrackItems (tracks with their SoundCloud data)
+    func toTrackItems() -> [TrackItem] {
+        map { TrackItem(soundCloudTrack: $0) }
     }
 }
 

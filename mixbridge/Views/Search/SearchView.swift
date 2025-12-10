@@ -11,9 +11,10 @@ struct SearchView: View {
     @State private var searchText = ""
     @Environment(AuthManager.self) private var authManager
     @Environment(QueueManager.self) private var queueManager
-    @State private var searchResults: SearchResponse?
-    @State private var searchTracksData: [String: [String: Any]] = [:] // Track ID -> raw data
+
+    @State private var searchResult: SearchResult?
     @State private var isSearching = false
+    @State private var error: Error?
     @State private var searchTask: Task<Void, Never>?
     @State private var lastSearchedQuery = ""
     @State private var recentSearchManager = RecentSearchManager.shared
@@ -24,22 +25,18 @@ struct SearchView: View {
                 .navigationTitle("Search")
                 .searchable(text: $searchText, prompt: "Search")
                 .onChange(of: searchText) { oldValue, newValue in
-                    // Cancel previous search
                     searchTask?.cancel()
 
                     if newValue.isEmpty {
-                        searchResults = nil
+                        searchResult = nil
                         lastSearchedQuery = ""
+                        error = nil
                         return
                     }
 
-                    // Debounce: Wait 500ms before searching
                     searchTask = Task {
-                        try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
-
-                        // Check if still the current query after delay
+                        try? await Task.sleep(nanoseconds: 500_000_000)
                         guard !Task.isCancelled else { return }
-
                         await performSearch(query: newValue)
                     }
                 }
@@ -51,9 +48,11 @@ struct SearchView: View {
         if searchText.isEmpty {
             emptyState
         } else if isSearching {
-            ProgressView("")
+            ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let results = searchResults {
+        } else if let error {
+            errorView(error)
+        } else if let results = searchResult {
             resultsView(results: results)
         }
     }
@@ -63,11 +62,24 @@ struct SearchView: View {
             if recentSearchManager.recentSearches.isEmpty {
                 ContentUnavailableView(
                     "Search for music",
-                    systemImage: "magnifyingglass",
+                    systemImage: "magnifyingglass"
                 )
             } else {
                 recentSearchesView
             }
+        }
+    }
+
+    private func errorView(_ error: Error) -> some View {
+        ContentUnavailableView {
+            Label("Search Failed", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(error.localizedDescription)
+        } actions: {
+            Button("Try Again") {
+                Task { await performSearch(query: searchText) }
+            }
+            .buttonStyle(.bordered)
         }
     }
 
@@ -113,54 +125,32 @@ struct SearchView: View {
         .listStyle(.plain)
     }
 
-    private func resultsView(results: SearchResponse) -> some View {
+    private func resultsView(results: SearchResult) -> some View {
         List {
             if !results.tracks.isEmpty {
                 Section("Tracks") {
-                    ForEach(Array(results.tracks.prefix(10).enumerated()), id: \.element.id) { index, soundcloudTrack in
-                        let artworkUrl = soundcloudTrack.artwork_url ?? soundcloudTrack.user.avatar_url ?? ""
-                        let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
-                        let trackId = String(soundcloudTrack.id)
-
-                        let track = Track(
-                            id: trackId,
-                            title: soundcloudTrack.title,
-                            artist: soundcloudTrack.user.username,
-                            album: soundcloudTrack.genre ?? "",
-                            artwork: highQualityArtwork,
-                            duration: Double(soundcloudTrack.duration) / 1000.0 // Convert ms to seconds
-                        )
-
+                    ForEach(Array(results.tracks.prefix(10).enumerated()), id: \.element.id) { index, scTrack in
+                        let item = TrackItem(soundCloudTrack: scTrack)
                         TrackRow(
-                            track,
+                            item.track,
                             number: index + 1,
                             showCover: true,
-                            trackData: searchTracksData[trackId]
+                            soundCloudTrack: item.soundCloudTrack
                         )
-                        .onAppear {
-                            // Store raw data when row appears
-                            if searchTracksData[trackId] == nil,
-                               let rawDict = try? JSONSerialization.jsonObject(
-                                with: JSONEncoder().encode(soundcloudTrack),
-                                options: []
-                               ) as? [String: Any] {
-                                searchTracksData[trackId] = rawDict
-                            }
-                        }
                     }
                 }
             }
 
             if !results.playlists.isEmpty {
                 Section("Playlists") {
-                    ForEach(results.playlists.prefix(5), id: \.id) { soundcloudPlaylist in
-                        let artworkUrl = soundcloudPlaylist.artwork_url ?? soundcloudPlaylist.user.avatar_url ?? ""
+                    ForEach(results.playlists.prefix(5), id: \.id) { scPlaylist in
+                        let artworkUrl = scPlaylist.artwork_url ?? scPlaylist.user.avatar_url ?? ""
                         let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
 
                         let playlist = Playlist(
-                            id: String(soundcloudPlaylist.id),
-                            name: soundcloudPlaylist.title,
-                            creator: soundcloudPlaylist.user.username,
+                            id: String(scPlaylist.id),
+                            name: scPlaylist.title,
+                            creator: scPlaylist.user.username,
                             artwork: highQualityArtwork,
                             tracks: [],
                             lastUpdated: Date()
@@ -188,7 +178,7 @@ struct SearchView: View {
                                         .font(.body)
                                         .lineLimit(2)
 
-                                    Text("\(soundcloudPlaylist.track_count ?? 0) tracks • \(playlist.creator)")
+                                    Text("\(scPlaylist.track_count ?? 0) tracks • \(playlist.creator)")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
@@ -206,29 +196,26 @@ struct SearchView: View {
 
     private func performSearch(query: String) async {
         guard !query.isEmpty else { return }
-
-        // Skip if we already searched for this exact query
-        guard query != lastSearchedQuery else {
-            return
-        }
+        guard query != lastSearchedQuery else { return }
+        guard let userId = authManager.currentUserId else { return }
 
         isSearching = true
+        error = nil
 
         do {
             let results = try await BackgroundExecutor.run {
-                try await BackendAPI.shared.search(query: query, limit: 20)
+                try await ConvexService.shared.search(userId: userId, query: query, limit: 20)
             }
 
-            // Only update if this is still the current search query
             if query == searchText {
-                self.searchResults = results
+                self.searchResult = results
                 self.lastSearchedQuery = query
-
-                // Save to recent searches
                 recentSearchManager.addSearch(query)
             }
         } catch {
-            // Silently handle errors
+            if query == searchText {
+                self.error = error
+            }
         }
 
         isSearching = false
