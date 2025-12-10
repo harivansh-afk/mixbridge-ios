@@ -14,6 +14,7 @@ struct LibraryView: View {
     @State private var playlists: [Playlist] = []
     @State private var isLoading = true
     @State private var isRefreshing = false
+    @State private var hasLoaded = false
     @Namespace private var namespace
 
     var body: some View {
@@ -48,6 +49,7 @@ struct LibraryView: View {
                 }
             }
             .task {
+                guard !hasLoaded else { return }
                 if let userId = authManager.currentUserId {
                     await profileManager.loadProfile(userId: userId)
                 }
@@ -103,11 +105,15 @@ struct LibraryView: View {
             return
         }
 
-        isLoading = true
+        // Only show loading spinner on first load, not when returning to view
+        if !hasLoaded {
+            isLoading = true
+        }
 
         do {
             let scPlaylists = try await ConvexService.shared.getPlaylists(userId: userId, forceRefresh: forceRefresh)
             self.playlists = convertToPlaylists(scPlaylists)
+            hasLoaded = true
         } catch {
             // Handle error silently
         }
