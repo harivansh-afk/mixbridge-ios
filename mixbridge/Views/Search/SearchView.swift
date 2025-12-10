@@ -144,14 +144,11 @@ struct SearchView: View {
             if !results.playlists.isEmpty {
                 Section("Playlists") {
                     ForEach(results.playlists.prefix(5), id: \.id) { scPlaylist in
-                        let artworkUrl = scPlaylist.artwork_url ?? scPlaylist.user.avatar_url ?? ""
-                        let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
-
                         let playlist = Playlist(
                             id: String(scPlaylist.id),
                             name: scPlaylist.title,
                             creator: scPlaylist.user.username,
-                            artwork: highQualityArtwork,
+                            artwork: scPlaylist.primaryArtworkUrl,
                             tracks: [],
                             lastUpdated: Date()
                         )

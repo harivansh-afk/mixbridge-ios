@@ -13,13 +13,16 @@ struct LibraryView: View {
     @Environment(AuthManager.self) private var authManager
     @State private var playlists: [Playlist] = []
     @State private var isLoading = true
+    @State private var isRefreshing = false
     @Namespace private var namespace
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            RefreshableScrollView(isRefreshing: $isRefreshing) {
+                await loadPlaylists(forceRefresh: true)
+            } content: {
                 VStack(alignment: .leading, spacing: 24) {
-                    if isLoading {
+                    if isLoading && !isRefreshing {
                         VStack {
                             Spacer()
                             ProgressView()
@@ -91,7 +94,7 @@ struct LibraryView: View {
         }
     }
 
-    private func loadPlaylists() async {
+    private func loadPlaylists(forceRefresh: Bool = false) async {
         guard let userId = authManager.currentUserId else {
             isLoading = false
             return
@@ -100,7 +103,7 @@ struct LibraryView: View {
         isLoading = true
 
         do {
-            let scPlaylists = try await ConvexService.shared.getPlaylists(userId: userId)
+            let scPlaylists = try await ConvexService.shared.getPlaylists(userId: userId, forceRefresh: forceRefresh)
             self.playlists = convertToPlaylists(scPlaylists)
         } catch {
             // Handle error silently
@@ -117,14 +120,11 @@ struct LibraryView: View {
 
     private func convertToPlaylists(_ soundcloudPlaylists: [SoundCloudPlaylist]) -> [Playlist] {
         return soundcloudPlaylists.map { soundcloudPlaylist in
-            let artworkUrl = soundcloudPlaylist.artwork_url ?? soundcloudPlaylist.user.avatar_url ?? ""
-            let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
-
             return Playlist(
                 id: String(soundcloudPlaylist.id),
                 name: soundcloudPlaylist.title,
                 creator: soundcloudPlaylist.user.username,
-                artwork: highQualityArtwork,
+                artwork: soundcloudPlaylist.primaryArtworkUrl,
                 tracks: [],
                 lastUpdated: Date()
             )

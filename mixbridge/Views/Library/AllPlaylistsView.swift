@@ -86,7 +86,7 @@ struct AllPlaylistsView: View {
             }
         }
         .refreshable {
-            await loadPlaylists()
+            await loadPlaylists(forceRefresh: true)
         }
     }
 
@@ -103,7 +103,7 @@ struct AllPlaylistsView: View {
         }
     }
 
-    private func loadPlaylists() async {
+    private func loadPlaylists(forceRefresh: Bool = false) async {
         guard let userId = authManager.currentUserId else { return }
         guard !isLoading else { return }
 
@@ -112,18 +112,15 @@ struct AllPlaylistsView: View {
 
         do {
             let scPlaylists = try await BackgroundExecutor.run {
-                try await ConvexService.shared.getPlaylists(userId: userId)
+                try await ConvexService.shared.getPlaylists(userId: userId, forceRefresh: forceRefresh)
             }
 
             self.playlists = scPlaylists.map { scPlaylist in
-                let artworkUrl = scPlaylist.artwork_url ?? scPlaylist.user.avatar_url ?? ""
-                let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
-
                 return Playlist(
                     id: String(scPlaylist.id),
                     name: scPlaylist.title,
                     creator: scPlaylist.user.username,
-                    artwork: highQualityArtwork,
+                    artwork: scPlaylist.primaryArtworkUrl,
                     tracks: [],
                     lastUpdated: Date()
                 )
