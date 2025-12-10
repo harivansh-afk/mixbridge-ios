@@ -15,7 +15,7 @@ struct AccountBottomSheet: View {
     @AppStorage("themeMode") private var themeMode: AppearanceMode = .system
     @State private var Notifications: Bool = false
     @State private var Personalization: Bool = true
-    @State private var convexProfile: ConvexUserProfile?
+    @State private var profile: SoundCloudProfile?
     @State private var isLoadingProfile = false
     @State private var showDeleteConfirmation = false
     @State private var showFinalDeleteConfirmation = false
@@ -51,14 +51,14 @@ struct AccountBottomSheet: View {
                             Spacer()
                         }
                         .padding()
-                    } else if let profile = convexProfile {
+                    } else if let profile {
                         ZStack {
-                            NavigationLink(destination: ProfileStatsView(profile: profile.profile)) {
+                            NavigationLink(destination: ProfileStatsView(profile: profile)) {
                                 EmptyView()
                             }
                             .opacity(0)
 
-                            convexProfileHeader(profile: profile.profile)
+                            convexProfileHeader(profile: profile)
                         }
                     } else {
                         ZStack {
@@ -247,13 +247,10 @@ struct AccountBottomSheet: View {
         isLoadingProfile = true
 
         do {
-            let profile = try await BackgroundExecutor.run {
+            let fetchedProfile = try await BackgroundExecutor.run {
                 try await ConvexService.shared.getUserProfile(userId: userId)
             }
-
-            if let profile = profile {
-                self.convexProfile = profile
-            }
+            self.profile = fetchedProfile
         } catch {
             // Silently handle errors
         }

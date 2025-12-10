@@ -117,7 +117,7 @@ final class ConvexService {
     /// Convex action will check cache and fetch from SoundCloud if needed
     func getLikedTracks(userId: String) async throws -> [SoundCloudTrack] {
         let result: ConvexTracksResponse = try await action(
-            "data:getLikedTracks",
+            "actions/likedTracks:get",
             args: ["userId": userId]
         )
         return result.tracks
@@ -127,7 +127,7 @@ final class ConvexService {
     /// Convex action will check cache and fetch from SoundCloud if needed
     func getPlaylists(userId: String) async throws -> [SoundCloudPlaylist] {
         let result: ConvexPlaylistsResponse = try await action(
-            "data:getPlaylists",
+            "actions/playlists:getAll",
             args: ["userId": userId]
         )
         return result.playlists
@@ -136,18 +136,19 @@ final class ConvexService {
     /// Get tracks for a specific playlist
     /// Convex action will check cache and fetch from SoundCloud if needed
     func getPlaylistTracks(userId: String, playlistId: String) async throws -> [SoundCloudTrack] {
-        let result: ConvexTracksResponse = try await action(
-            "data:getPlaylistTracks",
+        let result: ConvexPlaylistResponse = try await action(
+            "actions/playlists:getTracks",
             args: ["userId": userId, "playlistId": playlistId]
         )
-        return result.tracks
+        // The action returns the full playlist object with tracks
+        return result.playlist.tracks ?? []
     }
 
     /// Search for tracks, playlists, and users
     /// Convex action handles search with caching
     func search(userId: String, query: String, limit: Int = 20) async throws -> SearchResult {
         return try await action(
-            "data:search",
+            "actions/search:search",
             args: ["userId": userId, "query": query, "limit": limit]
         )
     }
@@ -155,7 +156,7 @@ final class ConvexService {
     /// Get user profile
     func getUserProfile(userId: String) async throws -> SoundCloudProfile {
         let result: ConvexProfileResponse = try await action(
-            "data:getUserProfile",
+            "actions/profile:get",
             args: ["userId": userId]
         )
         return result.profile
@@ -360,6 +361,11 @@ struct ConvexTracksResponse: Codable {
 
 struct ConvexPlaylistsResponse: Codable {
     let playlists: [SoundCloudPlaylist]
+    let source: String?
+}
+
+struct ConvexPlaylistResponse: Codable {
+    let playlist: SoundCloudPlaylist
     let source: String?
 }
 
