@@ -166,13 +166,6 @@ struct HomeView: View {
         isLoading = true
         error = nil
 
-        // Load queue
-        do {
-            try await queueManager.loadQueue(userId: userId)
-        } catch {
-            // Queue errors are non-fatal
-        }
-
         // Load play history
         do {
             let history = try await BackgroundExecutor.run {

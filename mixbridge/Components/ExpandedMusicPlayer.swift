@@ -17,6 +17,7 @@ struct ExpandedMusicPlayer: View {
 
     @State private var playerState = PlayerState.shared
     @State private var queueManager = QueueManager.shared
+    @State private var authManager = AuthManager.shared
     @State private var isDraggingProgress = false
     @State private var isDraggingVolume = false
 
@@ -137,6 +138,12 @@ struct ExpandedMusicPlayer: View {
             }
         )
         .onAppear {
+            // Load queue when expanded player opens
+            if let userId = authManager.currentUserId {
+                Task {
+                    try? await queueManager.loadQueue(userId: userId)
+                }
+            }
             // Prefetch surrounding tracks when player opens
             prefetchSurroundingTracks()
         }
