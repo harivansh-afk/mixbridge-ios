@@ -21,6 +21,9 @@ class QueueManager {
         didSet {
             Task {
                 await TrackPrefetcher.shared.prefetchForQueue(queueTracks, currentIndex: 0)
+
+                // ⚡ AGGRESSIVE: Trigger stream URL prefetching immediately when queue changes
+                PlaybackCoordinator.shared.prefetchQueue()
             }
         }
     }
@@ -118,6 +121,9 @@ class QueueManager {
             self.queueTracks = tracks
             self.queueTrackIds = trackIdMap
             self.soundCloudTracks = scTracks
+
+            // ⚡ AGGRESSIVE: Trigger prefetching after queue loads
+            PlaybackCoordinator.shared.prefetchQueue()
 
         } catch {
             throw error
