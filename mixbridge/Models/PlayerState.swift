@@ -201,15 +201,11 @@ final class PlayerState: NSObject {
     // MARK: - Public API
 
     func play(track: Track, soundCloudTrack: SoundCloudTrack? = nil, queueIndex: Int? = nil, startTime: Double? = nil) {
+        // ⚡ CRITICAL FIX: Don't update currentTrack yet - wait for successful playback
+        // Only update status to loading to show the user something is happening
         playbackStatus = .loading
-        currentTrack = track
-        refreshArtwork(for: track)
-        playbackPosition = startTime ?? 0
-        duration = track.duration
 
-        // Save state immediately when track changes
-        savePlaybackState()
-
+        // Store queue index
         if let explicitIndex = queueIndex {
             currentQueueIndex = explicitIndex
         } else if let inferredIndex = queueManager.indexOfTrack(withId: track.id) {
@@ -217,6 +213,7 @@ final class PlayerState: NSObject {
         } else {
             currentQueueIndex = -1
         }
+
         try? activateAudioSession()
         playbackCoordinator.play(
             track: track,
@@ -224,7 +221,9 @@ final class PlayerState: NSObject {
             queueIndex: queueIndex,
             startTime: startTime
         )
-        updateNowPlayingInfo(playbackRate: 0)
+
+        // NOTE: currentTrack will be updated when we receive successful snapshot from PlaybackCoordinator
+        // This ensures tight coupling between UI and actual playback state
     }
 
     func playFromQueue(index: Int) {
@@ -262,8 +261,25 @@ final class PlayerState: NSObject {
     ///
     /// - Parameter time: The target playback position in seconds
     func seek(to time: Double) {
-        // Seek immediately - no debouncing needed since we only seek when drag ends
+        // ⚡ CRITICAL: Set seeking flag to prevent time observer jitter
+        isSeeking = true
+
+        // Update position locally immediately for responsive UI
+        playbackPosition = time
+
+        // Perform actual seek
         playbackCoordinator.seek(to: time)
+
+        // ⚡ CRITICAL: Clear seeking flag after a brief delay
+        // This allows the seek to complete before time observer resumes
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            self.isSeeking = false
+
+            #if DEBUG
+            print("✅ Seeking flag cleared, time observer resumed")
+            #endif
+        }
 
         // Update Now Playing info with new position
         updateNowPlayingInfo()
@@ -498,7 +514,9 @@ final class PlayerState: NSObject {
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         #if DEBUG
-        print("🎨 Now Playing updated: \(currentTrack.title)")
+        // Only log meaningful updates, not elapsed time changes
+        // Uncomment below for verbose logging:
+        // print("🎨 Now Playing updated: \(currentTrack.title)")
         #endif
     }
 
@@ -619,6 +637,10 @@ extension PlayerState: PlaybackCoordinatorDelegate {
         // Only update Now Playing when something meaningful changed
         if needsNowPlayingUpdate {
             updateNowPlayingInfo()
+
+            #if DEBUG
+            print("🎨 Now Playing updated: \(currentTrack.title) [\(playbackStatus)]")
+            #endif
         } else {
             // Just update the elapsed time (lightweight operation)
             var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]

@@ -122,13 +122,14 @@ struct ExpandedMusicPlayer: View {
             onPrevious: { playerState.playPreviousFromQueue() },
             onSeek: { editing in
                 if editing {
-                    // User started dragging - block time observer updates
+                    // ⚡ User started dragging - block time observer updates
                     playerState.isSeeking = true
                     localSliderPosition = playerState.playbackPosition
                 } else {
-                    // User stopped dragging - seek immediately and resume time observer
+                    // ⚡ User stopped dragging - seek immediately
+                    // NOTE: PlayerState.seek() will handle clearing isSeeking flag with proper delay
+                    // Don't set isSeeking = false here, it causes race condition!
                     playerState.seek(to: localSliderPosition)
-                    playerState.isSeeking = false
                 }
             },
             onDismiss: {
