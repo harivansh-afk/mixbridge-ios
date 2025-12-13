@@ -145,7 +145,10 @@ final class PlaybackCoordinator: NSObject {
             }
         }
 
-        let context = PlaybackContext(track: track, soundCloudTrack: soundCloudTrack, queueIndex: queueIndex)
+        // Infer queue index if not provided - enables navigation even when played from outside queue
+        let effectiveQueueIndex = queueIndex ?? queueManager.indexOfTrack(withId: track.id)
+
+        let context = PlaybackContext(track: track, soundCloudTrack: soundCloudTrack, queueIndex: effectiveQueueIndex)
         Task {
             await startPlayback(with: context, startTime: startTime)
         }
@@ -258,21 +261,12 @@ final class PlaybackCoordinator: NSObject {
         #endif
 
         do {
-            // ⚡ STEP 1: Try to get preloaded AVPlayerItem (instant if cached)
-            var playerItem: AVPlayerItem?
-            var usedPreloadedItem = false
+            // Always fetch fresh stream URL to avoid expired URL errors (-12642)
+            // Preloaded items and cached URLs can become stale and cause playback failures
+            logDebug("Preparing playback with fresh stream URL...")
+            let playerItem = try await prepareItemOptimized(for: pendingContext)
 
-            if let (preloadedItem, _) = itemCache.getPreloadedItem(for: pendingContext.track.id) {
-                logDebug("INSTANT PLAYBACK: Using preloaded AVPlayerItem")
-                playerItem = preloadedItem
-                usedPreloadedItem = true
-            } else {
-                // ⚡ STEP 2: Fallback - fetch stream URL (try cache first)
-                logDebug("No preloaded item, fetching stream URL...")
-                playerItem = try await prepareItemOptimized(for: pendingContext)
-            }
-
-            guard let item = playerItem else {
+            guard let item = playerItem as AVPlayerItem? else {
                 throw PlayerState.PlaybackError.invalidStreamURL
             }
 
@@ -324,11 +318,6 @@ final class PlaybackCoordinator: NSObject {
             // This ensures UI is tightly coupled with actual playback state
             currentContext = pendingContext
 
-            // Consume preloaded item only after successful use
-            if usedPreloadedItem {
-                itemCache.consumePreloadedItem(for: pendingContext.track.id)
-            }
-
             #if DEBUG
             let elapsed = (CFAbsoluteTimeGetCurrent() - startTime_debug) * 1000
             logInfo("Playback started in \(String(format: "%.0f", elapsed))ms for: \(pendingContext.track.title)")
@@ -370,23 +359,15 @@ final class PlaybackCoordinator: NSObject {
         }
     }
 
-    /// ⚡ OPTIMIZED: Prepare AVPlayerItem with cache-first strategy
+    /// ⚡ OPTIMIZED: Prepare AVPlayerItem with fresh stream URL
+    /// Always fetches fresh URL to avoid expired URL errors (-12642)
     private func prepareItemOptimized(for context: PlaybackContext) async throws -> AVPlayerItem {
         var streamURL: String?
 
-        // Try cache first (instant if cached)
-        if let cached = streamCache.getCachedStreamURL(for: context.track.id) {
-            streamURL = cached.stream_url
-            logDebug("Using cached stream URL")
-        } else {
-            // Fallback: fetch from backend
-            logDebug("Fetching stream URL from backend...")
-            let response = try await backendAPI.getStreamURL(trackId: context.track.id)
-            streamURL = response.stream_url
-
-            // Cache for next time
-            await streamCache.prefetchStreamURL(for: context.track.id)
-        }
+        // Always fetch fresh stream URL to avoid expiration issues
+        logDebug("Fetching fresh stream URL...")
+        let response = try await backendAPI.getStreamURL(trackId: context.track.id)
+        streamURL = response.stream_url
 
         guard let urlString = streamURL, let url = URL(string: urlString) else {
             throw PlayerState.PlaybackError.invalidStreamURL

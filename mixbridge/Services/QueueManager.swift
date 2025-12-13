@@ -68,6 +68,42 @@ class QueueManager {
         }
     }
 
+    /// Insert track as "next up" (right after currently playing track)
+    func insertTrackNext(_ track: Track, soundCloudTrack: SoundCloudTrack) async throws {
+        if isInQueue(track.id) {
+            throw ConvexError.alreadyInQueue
+        }
+
+        // Add track to queue first (appends to end)
+        let queueTrackId = try await BackgroundExecutor.run {
+            try await ConvexService.shared.addTrackToQueue(track: soundCloudTrack)
+        }
+
+        // Calculate the target position (after current track)
+        let currentIndex = PlayerState.shared.currentQueueIndex
+        let targetIndex = max(0, currentIndex) + 1
+        let fromIndex = queueTracks.count // It was appended at the end
+
+        // Update local state first (optimistic)
+        queueTracks.append(track)
+        queueTrackIds[track.id] = queueTrackId
+        soundCloudTracks[track.id] = soundCloudTrack
+
+        // Move to target position if needed
+        if fromIndex != targetIndex && targetIndex < queueTracks.count {
+            // Move in local array
+            let movedTrack = queueTracks.remove(at: fromIndex)
+            queueTracks.insert(movedTrack, at: targetIndex)
+
+            // Sync reorder to backend
+            try await BackgroundExecutor.run {
+                try await ConvexService.shared.reorderQueue(fromIndex: fromIndex, toIndex: targetIndex)
+            }
+        }
+
+        HapticManager.success()
+    }
+
     /// Remove track from queue with optimistic update
     func removeTrack(_ track: Track) async throws {
         guard let convexQueueTrackId = queueTrackIds[track.id] else {
@@ -132,11 +168,26 @@ class QueueManager {
         PlaybackCoordinator.shared.prefetchQueue()
     }
 
-    /// Clear entire queue (local only - use clearQueueWithSync for backend sync)
+    /// Clear entire queue (local only)
     func clearQueue() {
         queueTracks.removeAll()
         queueTrackIds.removeAll()
         soundCloudTracks.removeAll()
+    }
+
+    /// Clear entire queue with backend sync
+    func clearQueueWithSync() async throws {
+        // Clear backend first
+        try await BackgroundExecutor.run {
+            try await ConvexService.shared.clearQueue()
+        }
+
+        // Clear local state
+        queueTracks.removeAll()
+        queueTrackIds.removeAll()
+        soundCloudTracks.removeAll()
+
+        HapticManager.warning()
     }
 
     /// Replace entire queue with new tracks (synced to backend)
@@ -222,5 +273,28 @@ class QueueManager {
         let previousIndex = index - 1
         guard queueTracks.indices.contains(previousIndex) else { return nil }
         return (queueTracks[previousIndex], previousIndex)
+    }
+
+    /// Check if track is in queue and return its position info
+    /// Used to sync player state with queue when playing from external sources
+    func queuePosition(for trackId: String) -> (index: Int, hasNext: Bool, hasPrevious: Bool)? {
+        guard let index = queueTracks.firstIndex(where: { $0.id == trackId }) else {
+            return nil
+        }
+        return (
+            index: index,
+            hasNext: index < queueTracks.count - 1,
+            hasPrevious: index > 0
+        )
+    }
+
+    /// Returns true if the track at the given index can navigate forward
+    func canPlayNext(from index: Int) -> Bool {
+        return queueTracks.indices.contains(index + 1)
+    }
+
+    /// Returns true if the track at the given index can navigate backward
+    func canPlayPrevious(from index: Int) -> Bool {
+        return queueTracks.indices.contains(index - 1)
     }
 }

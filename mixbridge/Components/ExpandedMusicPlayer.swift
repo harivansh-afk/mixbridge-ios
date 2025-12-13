@@ -148,6 +148,9 @@ struct ExpandedMusicPlayer: View {
             if let userId = authManager.currentUserId {
                 Task {
                     try? await queueManager.loadQueue(userId: userId)
+                    // Sync player's queue index after queue loads
+                    // This ensures navigation works even if track was played from outside the queue
+                    playerState.syncQueueIndex()
                 }
             }
             // Prefetch surrounding tracks when player opens
@@ -507,9 +510,25 @@ struct ExpandedPlayerView: View {
                     } else {
                         Spacer()
 
-                        // Queue button
+                        // Clear queue button (left) and Queue button (right)
                         HStack {
+                            // Clear queue button (only show if queue has items)
+                            if queueManager.hasQueue {
+                                Button {
+                                    Task {
+                                        try? await queueManager.clearQueueWithSync()
+                                    }
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(.red)
+                                }
+                                .buttonStyle(GlassToolbarButtonStyle())
+                            }
+
                             Spacer()
+
+                            // Queue button
                             Button {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                     showQueueSheet = true

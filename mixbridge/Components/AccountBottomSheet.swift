@@ -121,7 +121,7 @@ struct AccountBottomSheet: View {
                                     .foregroundStyle(.purple)
                                 Text("Dev Logs")
                                     .font(.system(size: 18))
-                                    .foregroundStyle(.primary)
+                                    .foregroundStyle(.purple)
                                 Spacer()
                                 Text("\(LogManager.shared.logs.count)")
                                     .font(.caption)

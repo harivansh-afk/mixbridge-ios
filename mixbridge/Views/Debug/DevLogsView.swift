@@ -22,7 +22,8 @@ struct DevLogsView: View {
             logs = logs.filter { $0.message.localizedCaseInsensitiveContains(searchText) }
         }
 
-        return logs
+        // Show latest logs first
+        return logs.reversed()
     }
 
     var body: some View {
@@ -119,9 +120,9 @@ struct DevLogsView: View {
             }
             .listStyle(.plain)
             .onChange(of: filteredLogs.count) { _, _ in
-                if autoScroll, let lastLog = filteredLogs.last {
+                if autoScroll, let firstLog = filteredLogs.first {
                     withAnimation {
-                        proxy.scrollTo(lastLog.id, anchor: .bottom)
+                        proxy.scrollTo(firstLog.id, anchor: .top)
                     }
                 }
             }
