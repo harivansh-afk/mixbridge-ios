@@ -17,12 +17,15 @@ class QueueManager {
 
     // MARK: - State
 
+    private var prefetchTask: Task<Void, Never>?
+
     var queueTracks: [Track] = [] {
         didSet {
-            Task {
+            prefetchTask?.cancel()
+            prefetchTask = Task {
+                try? await Task.sleep(for: .milliseconds(100))  // Debounce rapid changes
+                guard !Task.isCancelled else { return }
                 await TrackPrefetcher.shared.prefetchForQueue(queueTracks, currentIndex: 0)
-
-                // ⚡ AGGRESSIVE: Trigger stream URL prefetching immediately when queue changes
                 PlaybackCoordinator.shared.prefetchQueue()
             }
         }
@@ -99,37 +102,31 @@ class QueueManager {
     /// Load queue from server
     func loadQueue(userId: String) async throws {
         isLoading = true
+        defer { isLoading = false }  // Always reset, even on error
 
-        do {
-            let queueData = try await BackgroundExecutor.run {
-                try await ConvexService.shared.getQueueTracks(userId: userId)
-            }
-
-            var tracks: [Track] = []
-            var trackIdMap: [String: String] = [:]
-            var scTracks: [String: SoundCloudTrack] = [:]
-
-            let orderedTracks = queueData.sorted { $0.position < $1.position }
-
-            for queueTrack in orderedTracks {
-                let track = queueTrack.trackData.toTrack()
-                tracks.append(track)
-                trackIdMap[queueTrack.trackId] = queueTrack._id
-                scTracks[queueTrack.trackId] = queueTrack.trackData
-            }
-
-            self.queueTracks = tracks
-            self.queueTrackIds = trackIdMap
-            self.soundCloudTracks = scTracks
-
-            // ⚡ AGGRESSIVE: Trigger prefetching after queue loads
-            PlaybackCoordinator.shared.prefetchQueue()
-
-        } catch {
-            throw error
+        let queueData = try await BackgroundExecutor.run {
+            try await ConvexService.shared.getQueueTracks(userId: userId)
         }
 
-        isLoading = false
+        var tracks: [Track] = []
+        var trackIdMap: [String: String] = [:]
+        var scTracks: [String: SoundCloudTrack] = [:]
+
+        let orderedTracks = queueData.sorted { $0.position < $1.position }
+
+        for queueTrack in orderedTracks {
+            let track = queueTrack.trackData.toTrack()
+            tracks.append(track)
+            trackIdMap[queueTrack.trackId] = queueTrack._id
+            scTracks[queueTrack.trackId] = queueTrack.trackData
+        }
+
+        self.queueTracks = tracks
+        self.queueTrackIds = trackIdMap
+        self.soundCloudTracks = scTracks
+
+        // Trigger prefetching after queue loads
+        PlaybackCoordinator.shared.prefetchQueue()
     }
 
     /// Clear entire queue

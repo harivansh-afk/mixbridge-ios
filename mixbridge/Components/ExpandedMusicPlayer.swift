@@ -15,9 +15,9 @@ struct ExpandedMusicPlayer: View {
     @Binding var isPresented: Bool
     let namespace: Namespace.ID
 
-    @State private var playerState = PlayerState.shared
-    @State private var queueManager = QueueManager.shared
-    @State private var authManager = AuthManager.shared
+    private var playerState = PlayerState.shared
+    @Environment(QueueManager.self) private var queueManager
+    @Environment(AuthManager.self) private var authManager
     @State private var isDraggingProgress = false
     @State private var isDraggingVolume = false
 
@@ -167,7 +167,7 @@ struct ExpandedPlayerView: View {
     let namespace: Namespace.ID
 
     // Queue access for proper track mapping
-    @State private var queueManager = QueueManager.shared
+    private var queueManager = QueueManager.shared
 
     // Bindings
     @Binding var playbackPosition: Double
