@@ -476,7 +476,13 @@ final class PlaybackHealthMonitor {
     }
 
     deinit {
-        stopMonitoring()
+        // Inline cleanup since deinit is nonisolated
+        stallDetectionTask?.cancel()
+        bufferRecoveryTask?.cancel()
+        itemStatusObservation?.invalidate()
+        bufferEmptyObservation?.invalidate()
+        bufferFullObservation?.invalidate()
+        bufferKeepUpObservation?.invalidate()
         timeControlObservation?.invalidate()
         reasonForWaitingObservation?.invalidate()
     }

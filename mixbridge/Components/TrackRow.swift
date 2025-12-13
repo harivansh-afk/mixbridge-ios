@@ -85,12 +85,14 @@ struct TrackRow: View {
                 }
                 .tint(.red)
             } else {
-                Button(role: .destructive) {
-                    handleDelete()
-                } label: {
-                    Label("", systemImage: "trash")
+                if QueueManager.shared.hasQueue {
+                    Button {
+                        handlePlayNext()
+                    } label: {
+                        Label("", systemImage: "text.line.first.and.arrowtriangle.forward")
+                    }
+                    .tint(Color(red: 117/255, green: 114/255, blue: 255/255))
                 }
-                .tint(.red)
             }
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
@@ -100,7 +102,7 @@ struct TrackRow: View {
                 } label: {
                     Label("", systemImage: "text.line.last.and.arrowtriangle.forward")
                 }
-                .tint(Color(red: 117/255, green: 114/255, blue: 255/255))
+                .tint(.orange)
             }
         }
         .alert("Error", isPresented: $showError) {
@@ -247,6 +249,27 @@ struct TrackRow: View {
             isLoading = true
             do {
                 try await QueueManager.shared.addTrack(track, soundCloudTrack: soundCloudTrack)
+            } catch ConvexError.alreadyInQueue {
+                // Don't show error for duplicates
+            } catch {
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+            isLoading = false
+        }
+    }
+
+    private func handlePlayNext() {
+        guard let soundCloudTrack else {
+            errorMessage = "Unable to add track to queue"
+            showError = true
+            return
+        }
+
+        Task {
+            isLoading = true
+            do {
+                try await QueueManager.shared.insertTrackNext(track, soundCloudTrack: soundCloudTrack)
             } catch ConvexError.alreadyInQueue {
                 // Don't show error for duplicates
             } catch {

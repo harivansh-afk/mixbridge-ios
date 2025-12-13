@@ -82,7 +82,7 @@ struct PlaylistDetailView: View {
     private var artwork: some View {
         Group {
             if playlist.artwork.starts(with: "http") {
-                AsyncImage(url: URL(string: playlist.artwork)) { phase in
+                CachedAsyncImagePhase(url: URL(string: playlist.artwork)) { phase in
                     switch phase {
                     case .empty:
                         artworkPlaceholder
@@ -96,22 +96,23 @@ struct PlaylistDetailView: View {
                             .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
                     case .failure:
                         artworkPlaceholder
-                    @unknown default:
-                        artworkPlaceholder
                     }
                 }
             } else {
-                Color.clear
-                    .aspectRatio(1, contentMode: .fit)
-                    .frame(width: artworkSize, height: artworkSize)
+                artworkPlaceholder
             }
         }
     }
 
     private var artworkPlaceholder: some View {
-        Color.clear
-            .aspectRatio(1, contentMode: .fit)
+        RoundedRectangle(cornerRadius: 20)
+            .fill(Color(.systemGray5))
             .frame(width: artworkSize, height: artworkSize)
+            .overlay {
+                Image(systemName: "music.note.list")
+                    .font(.system(size: 60))
+                    .foregroundStyle(.secondary)
+            }
     }
 
     private var playlistInfo: some View {
