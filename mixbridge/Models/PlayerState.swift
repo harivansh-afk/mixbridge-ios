@@ -62,7 +62,10 @@ final class PlayerState: NSObject {
     private let audioSession = AVAudioSession.sharedInstance()
     private let commandCenter = MPRemoteCommandCenter.shared()
 
-    private var currentQueueIndex: Int = -1
+    private var _currentQueueIndex: Int = -1
+
+    /// Public getter for the current queue index (-1 if not playing from queue)
+    var currentQueueIndex: Int { _currentQueueIndex }
     private var nowPlayingArtwork: MPMediaItemArtwork?
     private var artworkTask: Task<Void, Never>?
     private var lastPublishedStatus: PlaybackStatus = .idle
@@ -218,11 +221,11 @@ final class PlayerState: NSObject {
 
         // Store queue index
         if let explicitIndex = queueIndex {
-            currentQueueIndex = explicitIndex
+            _currentQueueIndex = explicitIndex
         } else if let inferredIndex = queueManager.indexOfTrack(withId: track.id) {
-            currentQueueIndex = inferredIndex
+            _currentQueueIndex = inferredIndex
         } else {
-            currentQueueIndex = -1
+            _currentQueueIndex = -1
         }
 
         try? activateAudioSession()
@@ -699,12 +702,12 @@ extension PlayerState: PlaybackCoordinatorDelegate {
                 needsNowPlayingUpdate = true
             }
             if let index = snapshot.queueIndex {
-                currentQueueIndex = index
+                _currentQueueIndex = index
             } else if trackChanged {
-                currentQueueIndex = -1
+                _currentQueueIndex = -1
             }
         } else if snapshot.queueIndex == nil {
-            currentQueueIndex = -1
+            _currentQueueIndex = -1
         }
 
         // Playing state changes

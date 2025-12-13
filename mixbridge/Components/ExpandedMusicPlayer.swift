@@ -507,9 +507,25 @@ struct ExpandedPlayerView: View {
                     } else {
                         Spacer()
 
-                        // Queue button
+                        // Clear queue button (left) and Queue button (right)
                         HStack {
+                            // Clear queue button (only show if queue has items)
+                            if queueManager.hasQueue {
+                                Button {
+                                    Task {
+                                        try? await queueManager.clearQueueWithSync()
+                                    }
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(.red)
+                                }
+                                .buttonStyle(GlassToolbarButtonStyle())
+                            }
+
                             Spacer()
+
+                            // Queue button
                             Button {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                     showQueueSheet = true
