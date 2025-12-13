@@ -138,7 +138,9 @@ struct HomeView: View {
                             item.track,
                             number: index + 1,
                             showCover: true,
-                            soundCloudTrack: item.soundCloudTrack
+                            soundCloudTrack: item.soundCloudTrack,
+                            listContext: Array(trackItems.prefix(100)),
+                            indexInList: index
                         )
                         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                     }

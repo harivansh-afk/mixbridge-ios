@@ -98,7 +98,9 @@ struct LikedView: View {
                         item.track,
                         number: index + 1,
                         showCover: true,
-                        soundCloudTrack: item.soundCloudTrack
+                        soundCloudTrack: item.soundCloudTrack,
+                        listContext: trackItems,
+                        indexInList: index
                     )
                 }
             }

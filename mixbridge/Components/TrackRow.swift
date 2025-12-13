@@ -19,7 +19,12 @@ struct TrackRow: View {
     var onDelete: (() -> Void)?
     var soundCloudTrack: SoundCloudTrack?
     var onPlay: (() -> Void)?
-    @State private var playerState = PlayerState.shared
+
+    /// List context for smart queue management
+    var listContext: [TrackItem]?
+    var indexInList: Int?
+
+    private var playerState = PlayerState.shared
 
     private let coverSize: CGFloat = 44
 
@@ -33,7 +38,9 @@ struct TrackRow: View {
         onLike: (() -> Void)? = nil,
         onDelete: (() -> Void)? = nil,
         soundCloudTrack: SoundCloudTrack? = nil,
-        onPlay: (() -> Void)? = nil
+        onPlay: (() -> Void)? = nil,
+        listContext: [TrackItem]? = nil,
+        indexInList: Int? = nil
     ) {
         self.track = track
         self.number = number
@@ -45,6 +52,8 @@ struct TrackRow: View {
         self.onDelete = onDelete
         self.soundCloudTrack = soundCloudTrack
         self.onPlay = onPlay
+        self.listContext = listContext
+        self.indexInList = indexInList
     }
 
     @State private var isLoading = false
@@ -210,6 +219,15 @@ struct TrackRow: View {
             return
         }
 
+        // If list context is provided, use smart queue management
+        if let context = listContext, let index = indexInList {
+            Task {
+                await PlayerState.shared.playFromList(items: context, startIndex: index)
+            }
+            return
+        }
+
+        // Fallback: single track play (no queue context)
         PlayerState.shared.play(track: track, soundCloudTrack: soundCloudTrack)
     }
 

@@ -150,47 +150,58 @@ final class PlayerState: NSObject {
     private func fetchRemoteHistoryIfNeeded() async {
         // Double check we still need it
         if hasActiveTrack { return }
-        
+
         // We need authentication to fetch history
-        // AuthManager is an Observable, but we can access shared instance or keychain
         guard let userId = KeychainManager.shared.getUserId() else { return }
-        
+
+        // Try 1: Get last played song from play history
         do {
             let history = try await ConvexService.shared.getPlayHistory(userId: userId, limit: 1)
             if let lastPlayed = history.first {
-                let trackData = lastPlayed.trackData
-                let artworkUrl = trackData.artwork_url ?? trackData.user.avatar_url ?? ""
-                let highQualityArtwork = artworkUrl.upgradeArtworkQuality() // Need to make sure this string extension is available or handle it
-                
-                // String+SoundCloud extension might not be imported here implicitly if it's in extensions
-                // But 'artwork' is a string. 
-                
-                // Actually, let's just use the artwork URL as is, assuming upgradeArtworkQuality is available on String
-                // Wait, String extensions are usually global.
-                
-                let track = Track(
-                    id: String(trackData.id),
-                    title: trackData.title,
-                    artist: trackData.user.username,
-                    album: trackData.genre ?? "",
-                    artwork: highQualityArtwork, // Hope this works
-                    duration: Double(trackData.duration) / 1000.0 // Convert ms to seconds
-                )
-                
-                await MainActor.run {
-                    // Only update if we still don't have an active track
-                    if !self.hasActiveTrack {
-                        self.currentTrack = track
-                        self.duration = track.duration
-                        self.playbackPosition = 0
-                        self.playbackStatus = .paused // Ready to play
-                        self.updateNowPlayingInfo(playbackRate: 0)
-                        self.savePlaybackState() // Save so we don't fetch next time
-                    }
-                }
+                await setDefaultTrack(from: lastPlayed.trackData)
+                return
             }
         } catch {
-            print("Failed to fetch remote history: \(error)")
+            print("Failed to fetch play history: \(error)")
+        }
+
+        // Fallback: Get most recently liked song
+        if !hasActiveTrack {
+            do {
+                let likedTracks = try await ConvexService.shared.getLikedTracks(userId: userId, forceRefresh: false)
+                if let firstLiked = likedTracks.first {
+                    await setDefaultTrack(from: firstLiked)
+                    return
+                }
+            } catch {
+                print("Failed to fetch liked tracks: \(error)")
+            }
+        }
+    }
+
+    private func setDefaultTrack(from soundCloudTrack: SoundCloudTrack) async {
+        let artworkUrl = soundCloudTrack.artwork_url ?? soundCloudTrack.user.avatar_url ?? ""
+        let highQualityArtwork = artworkUrl.upgradeArtworkQuality()
+
+        let track = Track(
+            id: String(soundCloudTrack.id),
+            title: soundCloudTrack.title,
+            artist: soundCloudTrack.user.username,
+            album: soundCloudTrack.genre ?? "",
+            artwork: highQualityArtwork,
+            duration: Double(soundCloudTrack.duration) / 1000.0 // Convert ms to seconds
+        )
+
+        await MainActor.run {
+            // Only update if we still don't have an active track
+            if !self.hasActiveTrack {
+                self.currentTrack = track
+                self.duration = track.duration
+                self.playbackPosition = 0
+                self.playbackStatus = .paused // Ready to play
+                self.updateNowPlayingInfo(playbackRate: 0)
+                self.savePlaybackState() // Save so we don't fetch next time
+            }
         }
     }
     
@@ -224,6 +235,51 @@ final class PlayerState: NSObject {
 
         // NOTE: currentTrack will be updated when we receive successful snapshot from PlaybackCoordinator
         // This ensures tight coupling between UI and actual playback state
+    }
+
+    /// Play from a list context - handles queue setup/append automatically
+    /// - Parameters:
+    ///   - items: Full list of TrackItems
+    ///   - startIndex: Which track was clicked (0-based index)
+    ///   - shuffle: If true, shuffles the list before setting queue
+    func playFromList(items: [TrackItem], startIndex: Int, shuffle: Bool = false) async {
+        guard !items.isEmpty else { return }
+        guard startIndex >= 0 && startIndex < items.count else { return }
+
+        var itemsToQueue = items
+        var playIndex = startIndex
+
+        // Shuffle if requested
+        if shuffle {
+            itemsToQueue = items.shuffled()
+            playIndex = 0  // Start from beginning of shuffled list
+        }
+
+        // Get the track to play
+        let trackToPlay = itemsToQueue[playIndex]
+
+        // Get items from playIndex onwards for the queue
+        let queueItems = Array(itemsToQueue.suffix(from: playIndex))
+
+        do {
+            if queueManager.hasQueue {
+                // Append to existing queue
+                try await queueManager.appendTracks(queueItems)
+            } else {
+                // Set as new queue
+                try await queueManager.setQueue(items: queueItems, startIndex: 0)
+            }
+        } catch {
+            print("Failed to update queue: \(error)")
+            // Continue to play even if queue update fails
+        }
+
+        // Play the track (queue index is 0 since we're starting from playIndex)
+        play(
+            track: trackToPlay.track,
+            soundCloudTrack: trackToPlay.soundCloudTrack,
+            queueIndex: 0
+        )
     }
 
     func playFromQueue(index: Int) {

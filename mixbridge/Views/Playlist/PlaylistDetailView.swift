@@ -131,19 +131,15 @@ struct PlaylistDetailView: View {
     private var actionButtons: some View {
         PlaylistActionButtons(
             onPlay: {
-                if let firstItem = trackItems.first {
-                    PlayerState.shared.play(
-                        track: firstItem.track,
-                        soundCloudTrack: firstItem.soundCloudTrack
-                    )
+                guard !trackItems.isEmpty else { return }
+                Task {
+                    await PlayerState.shared.playFromList(items: trackItems, startIndex: 0)
                 }
             },
             onShuffle: {
-                if let randomItem = trackItems.randomElement() {
-                    PlayerState.shared.play(
-                        track: randomItem.track,
-                        soundCloudTrack: randomItem.soundCloudTrack
-                    )
+                guard !trackItems.isEmpty else { return }
+                Task {
+                    await PlayerState.shared.playFromList(items: trackItems, startIndex: 0, shuffle: true)
                 }
             }
         )
@@ -176,7 +172,9 @@ struct PlaylistDetailView: View {
                         item.track,
                         number: index + 1,
                         showCover: true,
-                        soundCloudTrack: item.soundCloudTrack
+                        soundCloudTrack: item.soundCloudTrack,
+                        listContext: trackItems,
+                        indexInList: index
                     )
                 }
             } else if !playlist.tracks.isEmpty {

@@ -34,6 +34,9 @@ class QueueManager {
     private var queueTrackIds: [String: String] = [:]  // Track.id -> Convex queue track ID
     private var soundCloudTracks: [String: SoundCloudTrack] = [:]  // Track.id -> SoundCloud data
 
+    /// Check if queue has any tracks
+    var hasQueue: Bool { !queueTracks.isEmpty }
+
     private init() {}
 
     // MARK: - Queue Operations
@@ -75,7 +78,7 @@ class QueueManager {
         let originalIndex = queueTracks.firstIndex { $0.id == track.id }
         let removedSoundCloudTrack = soundCloudTracks[track.id]
 
-        // Optimistically remove from UI
+        // Optimistically remove from UI (SwiftUI List handles animation)
         queueTracks.removeAll { $0.id == track.id }
         queueTrackIds.removeValue(forKey: track.id)
         soundCloudTracks.removeValue(forKey: track.id)
@@ -129,11 +132,74 @@ class QueueManager {
         PlaybackCoordinator.shared.prefetchQueue()
     }
 
-    /// Clear entire queue
+    /// Clear entire queue (local only - use clearQueueWithSync for backend sync)
     func clearQueue() {
         queueTracks.removeAll()
         queueTrackIds.removeAll()
         soundCloudTracks.removeAll()
+    }
+
+    /// Replace entire queue with new tracks (synced to backend)
+    /// - Parameters:
+    ///   - items: Array of TrackItems to set as the new queue
+    ///   - startIndex: Index in items array to start from (default 0)
+    func setQueue(items: [TrackItem], startIndex: Int = 0) async throws {
+        guard !items.isEmpty else { return }
+
+        // Get tracks from startIndex onwards
+        let tracksToSet = Array(items.suffix(from: min(startIndex, items.count)))
+        guard !tracksToSet.isEmpty else { return }
+
+        // Extract SoundCloud tracks (filter out items without soundCloudTrack)
+        let soundCloudTracksToSet = tracksToSet.compactMap { $0.soundCloudTrack }
+        guard !soundCloudTracksToSet.isEmpty else { return }
+
+        // Sync to backend
+        try await BackgroundExecutor.run {
+            try await ConvexService.shared.setQueue(tracks: soundCloudTracksToSet)
+        }
+
+        // Update local state
+        var tracks: [Track] = []
+        var scTracks: [String: SoundCloudTrack] = [:]
+
+        for item in tracksToSet {
+            tracks.append(item.track)
+            scTracks[item.track.id] = item.soundCloudTrack
+        }
+
+        self.queueTracks = tracks
+        self.queueTrackIds = [:] // Will be populated on next loadQueue
+        self.soundCloudTracks = scTracks
+
+        HapticManager.success()
+    }
+
+    /// Append multiple tracks to end of queue (synced to backend)
+    /// - Parameter items: Array of TrackItems to append
+    func appendTracks(_ items: [TrackItem]) async throws {
+        guard !items.isEmpty else { return }
+
+        // Filter out tracks already in queue
+        let newItems = items.filter { !isInQueue($0.track.id) }
+        guard !newItems.isEmpty else { return }
+
+        // Extract SoundCloud tracks
+        let soundCloudTracksToAdd = newItems.compactMap { $0.soundCloudTrack }
+        guard !soundCloudTracksToAdd.isEmpty else { return }
+
+        // Sync to backend
+        try await BackgroundExecutor.run {
+            try await ConvexService.shared.addTracksToQueueBatch(tracks: soundCloudTracksToAdd)
+        }
+
+        // Update local state
+        for item in newItems {
+            queueTracks.append(item.track)
+            soundCloudTracks[item.track.id] = item.soundCloudTrack
+        }
+
+        HapticManager.success()
     }
 
     // MARK: - Helpers

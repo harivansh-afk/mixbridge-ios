@@ -301,6 +301,114 @@ final class ConvexService {
         }
     }
 
+    /// Replace entire queue with new tracks (clears existing and sets new)
+    /// Uses direct Convex mutations - no REST API intermediary
+    func setQueue(tracks: [SoundCloudTrack]) async throws {
+        guard let userId = KeychainManager.shared.getUserId() else {
+            throw ConvexError.unauthorized
+        }
+
+        // Get or create queue
+        let queueId = try await getOrCreateQueueId(userId: userId)
+
+        // Clear existing tracks
+        try await mutation("queues:clearTracks", args: ["queueId": queueId])
+
+        // Add new tracks in batch
+        if !tracks.isEmpty {
+            let trackData = try tracks.map { track -> [String: Any] in
+                let data = try JSONEncoder().encode(track)
+                let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+                return [
+                    "trackId": String(track.id),
+                    "source": "soundcloud",
+                    "title": track.title,
+                    "artist": track.user.username,
+                    "duration": track.duration,
+                    "artworkUrl": track.artwork_url as Any,
+                    "trackData": dict
+                ]
+            }
+
+            try await mutation("queues:addTracksBatch", args: [
+                "queueId": queueId,
+                "tracks": trackData,
+                "startPosition": 0
+            ])
+        }
+    }
+
+    /// Add multiple tracks to queue at once (appends to end)
+    /// Uses direct Convex mutations - no REST API intermediary
+    func addTracksToQueueBatch(tracks: [SoundCloudTrack]) async throws {
+        guard let userId = KeychainManager.shared.getUserId() else {
+            throw ConvexError.unauthorized
+        }
+
+        // Get or create queue
+        let queueId = try await getOrCreateQueueId(userId: userId)
+
+        // Get current queue to find start position and filter duplicates
+        let currentQueue = try await getQueueTracks(userId: userId)
+        let existingTrackIds = Set(currentQueue.map { $0.trackId })
+        let newTracks = tracks.filter { !existingTrackIds.contains(String($0.id)) }
+
+        guard !newTracks.isEmpty else { return }
+
+        let startPosition = currentQueue.count
+
+        let trackData = try newTracks.map { track -> [String: Any] in
+            let data = try JSONEncoder().encode(track)
+            let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+            return [
+                "trackId": String(track.id),
+                "source": "soundcloud",
+                "title": track.title,
+                "artist": track.user.username,
+                "duration": track.duration,
+                "artworkUrl": track.artwork_url as Any,
+                "trackData": dict
+            ]
+        }
+
+        try await mutation("queues:addTracksBatch", args: [
+            "queueId": queueId,
+            "tracks": trackData,
+            "startPosition": startPosition
+        ])
+    }
+
+    /// Clear entire queue
+    /// Uses direct Convex mutation - no REST API intermediary
+    func clearQueue() async throws {
+        guard let userId = KeychainManager.shared.getUserId() else {
+            throw ConvexError.unauthorized
+        }
+
+        let queueId = try await getOrCreateQueueId(userId: userId)
+        try await mutation("queues:clearTracks", args: ["queueId": queueId])
+    }
+
+    /// Helper: Get or create queue for user, returns queue ID
+    private func getOrCreateQueueId(userId: String) async throws -> String {
+        // Try to get existing queue
+        let existingQueue: QueueWithTracksResponse? = try await query(
+            "queues:getByUserId",
+            args: ["userId": userId]
+        )
+
+        if let queue = existingQueue, let queueId = queue._id {
+            return queueId
+        }
+
+        // Create new queue
+        let newQueueId: String? = try await mutation("queues:create", args: ["userId": userId])
+        guard let queueId = newQueueId else {
+            throw ConvexError.noData
+        }
+        return queueId
+    }
+
     // MARK: - Mutations
 
     /// Log a track play to history

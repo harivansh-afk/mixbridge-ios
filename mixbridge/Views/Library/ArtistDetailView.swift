@@ -139,19 +139,15 @@ struct ArtistDetailView: View {
     private var actionButtons: some View {
         PlaylistActionButtons(
             onPlay: {
-                if let firstItem = combinedTrackItems.first {
-                    PlayerState.shared.play(
-                        track: firstItem.track,
-                        soundCloudTrack: firstItem.soundCloudTrack
-                    )
+                guard !combinedTrackItems.isEmpty else { return }
+                Task {
+                    await PlayerState.shared.playFromList(items: combinedTrackItems, startIndex: 0)
                 }
             },
             onShuffle: {
-                if let randomItem = combinedTrackItems.randomElement() {
-                    PlayerState.shared.play(
-                        track: randomItem.track,
-                        soundCloudTrack: randomItem.soundCloudTrack
-                    )
+                guard !combinedTrackItems.isEmpty else { return }
+                Task {
+                    await PlayerState.shared.playFromList(items: combinedTrackItems, startIndex: 0, shuffle: true)
                 }
             }
         )
@@ -186,7 +182,9 @@ struct ArtistDetailView: View {
                     item.track,
                     number: index + 1,
                     showCover: true,
-                    soundCloudTrack: item.soundCloudTrack
+                    soundCloudTrack: item.soundCloudTrack,
+                    listContext: combinedTrackItems,
+                    indexInList: index
                 )
             }
         }
@@ -333,7 +331,9 @@ struct ArtistAllSongsView: View {
                     item.track,
                     number: index + 1,
                     showCover: true,
-                    soundCloudTrack: item.soundCloudTrack
+                    soundCloudTrack: item.soundCloudTrack,
+                    listContext: trackItems,
+                    indexInList: index
                 )
             }
         }

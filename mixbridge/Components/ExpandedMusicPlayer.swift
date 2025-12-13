@@ -15,7 +15,12 @@ struct ExpandedMusicPlayer: View {
     @Binding var isPresented: Bool
     let namespace: Namespace.ID
 
-    private var playerState = PlayerState.shared
+    @Bindable private var playerState = PlayerState.shared
+
+    init(isPresented: Binding<Bool>, namespace: Namespace.ID) {
+        self._isPresented = isPresented
+        self.namespace = namespace
+    }
     @Environment(QueueManager.self) private var queueManager
     @Environment(AuthManager.self) private var authManager
     @State private var isDraggingProgress = false
@@ -675,13 +680,24 @@ struct ExpandedPlayerView: View {
 
     // Delete queue item (for swipe to delete)
     private func deleteQueueItem(at offsets: IndexSet) {
-        queueManager.queueTracks.remove(atOffsets: offsets)
+        for index in offsets {
+            removeFromQueue(at: index)
+        }
     }
 
-    // Remove single item from queue
+    // Remove single item from queue with backend sync
     private func removeFromQueue(at index: Int) {
         guard index >= 0 && index < queueManager.queueTracks.count else { return }
-        queueManager.queueTracks.remove(at: index)
+        let track = queueManager.queueTracks[index]
+
+        Task {
+            do {
+                try await queueManager.removeTrack(track)
+            } catch {
+                // Removal failed - QueueManager handles rollback
+                HapticManager.error()
+            }
+        }
     }
 
     private enum Direction {

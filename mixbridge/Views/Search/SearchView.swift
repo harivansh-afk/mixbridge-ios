@@ -126,16 +126,19 @@ struct SearchView: View {
     }
 
     private func resultsView(results: SearchResult) -> some View {
-        List {
+        let trackItems = results.tracks.prefix(10).map { TrackItem(soundCloudTrack: $0) }
+
+        return List {
             if !results.tracks.isEmpty {
                 Section("Tracks") {
-                    ForEach(Array(results.tracks.prefix(10).enumerated()), id: \.element.id) { index, scTrack in
-                        let item = TrackItem(soundCloudTrack: scTrack)
+                    ForEach(Array(trackItems.enumerated()), id: \.element.id) { index, item in
                         TrackRow(
                             item.track,
                             number: index + 1,
                             showCover: true,
-                            soundCloudTrack: item.soundCloudTrack
+                            soundCloudTrack: item.soundCloudTrack,
+                            listContext: Array(trackItems),
+                            indexInList: index
                         )
                     }
                 }
