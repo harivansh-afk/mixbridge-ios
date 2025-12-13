@@ -210,6 +210,7 @@ struct ExpandedPlayerView: View {
     @State private var mediumHaptic = UIImpactFeedbackGenerator(style: .medium)
     @State private var heavyHaptic = UIImpactFeedbackGenerator(style: .heavy)
     @State private var lastHapticThreshold: Int = 0
+    @State private var confirmDeleteQueue: Bool = false
 
     init(currentTrack: Track, nextTrack: Track?, previousTrack: Track?, isPlaying: Bool, namespace: Namespace.ID, playbackPosition: Binding<Double>, duration: Double, volume: Binding<Double>, isDraggingProgress: Binding<Bool>, isDraggingVolume: Binding<Bool>, onPlayPause: @escaping () -> Void, onNext: @escaping () -> Void, onPrevious: @escaping () -> Void, onSeek: @escaping (Bool) -> Void, onDismiss: @escaping () -> Void, previewQueueTracks: [Track]? = nil, initialShowQueue: Bool = false) {
         self.currentTrack = currentTrack
@@ -515,21 +516,29 @@ struct ExpandedPlayerView: View {
                             // Clear queue button (only show if queue has items)
                             if queueManager.hasQueue {
                                 Button {
-                                    Task {
-                                        try? await queueManager.clearQueueWithSync()
+                                    if confirmDeleteQueue {
+                                        // Second click - actually delete
+                                        Task {
+                                            try? await queueManager.clearQueueWithSync()
+                                        }
+                                        confirmDeleteQueue = false
+                                    } else {
+                                        // First click - show confirmation tick
+                                        confirmDeleteQueue = true
                                     }
                                 } label: {
-                                    Image(systemName: "trash")
+                                    Image(systemName: confirmDeleteQueue ? "checkmark" : "trash")
                                         .font(.system(size: 16, weight: .semibold))
-                                        .foregroundStyle(.red)
+                                        .foregroundStyle(confirmDeleteQueue ? .white : .red)
                                 }
-                                .buttonStyle(GlassToolbarButtonStyle())
+                                .buttonStyle(confirmDeleteQueue ? .glassProminent : .glass)
                             }
 
                             Spacer()
 
                             // Queue button
                             Button {
+                                confirmDeleteQueue = false // Reset confirmation state
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                     showQueueSheet = true
                                     queueExpansion = 200 // Start expanded
@@ -550,6 +559,12 @@ struct ExpandedPlayerView: View {
 
         // Setup the hero transition
         .navigationTransition(.zoom(sourceID: "MINIPLAYER", in: namespace))
+        .onChange(of: showQueueSheet) { _, newValue in
+            // Reset delete confirmation when queue sheet state changes
+            if newValue {
+                confirmDeleteQueue = false
+            }
+        }
     }
 
     // MARK: - Gesture Handlers
