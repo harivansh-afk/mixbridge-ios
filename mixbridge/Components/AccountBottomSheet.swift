@@ -109,6 +109,28 @@ struct AccountBottomSheet: View {
                     .tint(.blue)
                 }
 
+                // Dev Logs Section (Debug + TestFlight only, hidden in App Store)
+                if BuildEnvironment.isDevMode {
+                    Section {
+                        NavigationLink {
+                            DevLogsView()
+                        } label: {
+                            HStack {
+                                Image(systemName: "ladybug")
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(.purple)
+                                Text("Dev Logs")
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Text("\(LogManager.shared.logs.count)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
                 // Logout Section
                 Section {
                     Button(action: {

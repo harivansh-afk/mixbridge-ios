@@ -116,14 +116,7 @@ final class PlaybackCoordinator: NSObject {
             object: nil
         )
 
-        #if DEBUG
-        print("🚀 PlaybackCoordinator initialized with SOTA optimizations")
-        print("   ✅ automaticallyWaitsToMinimizeStalling = false")
-        print("   ✅ Preload trigger = 50%")
-        print("   ✅ Stream URL caching enabled")
-        print("   ✅ AVPlayerItem preloading enabled")
-        print("   ✅ PlaybackHealthMonitor enabled")
-        #endif
+        logInfo("PlaybackCoordinator initialized with SOTA optimizations")
     }
 
     // MARK: - Public Controls
@@ -135,9 +128,7 @@ final class PlaybackCoordinator: NSObject {
     func play(track: Track, soundCloudTrack: SoundCloudTrack?, queueIndex: Int?, startTime: Double? = nil) {
         // ⚡ CRITICAL: Prevent spam clicking
         guard !isPreparingPlayback else {
-            #if DEBUG
-            print("⚠️ Playback already in progress, ignoring duplicate request")
-            #endif
+            logWarning("Playback already in progress, ignoring duplicate request")
             return
         }
 
@@ -145,9 +136,7 @@ final class PlaybackCoordinator: NSObject {
         if let failedDate = recentlyFailedTracks[track.id] {
             let timeSinceFailure = Date().timeIntervalSince(failedDate)
             if timeSinceFailure < 5.0 {
-                #if DEBUG
-                print("⚠️ Track \(track.title) recently failed (\(String(format: "%.1f", timeSinceFailure))s ago), skipping retry")
-                #endif
+                logWarning("Track \(track.title) recently failed (\(String(format: "%.1f", timeSinceFailure))s ago), skipping retry")
                 // Still allow retry after 5 seconds
                 return
             } else {
@@ -274,16 +263,12 @@ final class PlaybackCoordinator: NSObject {
             var usedPreloadedItem = false
 
             if let (preloadedItem, _) = itemCache.getPreloadedItem(for: pendingContext.track.id) {
-                #if DEBUG
-                print("⚡ INSTANT PLAYBACK: Using preloaded AVPlayerItem")
-                #endif
+                logDebug("INSTANT PLAYBACK: Using preloaded AVPlayerItem")
                 playerItem = preloadedItem
                 usedPreloadedItem = true
             } else {
                 // ⚡ STEP 2: Fallback - fetch stream URL (try cache first)
-                #if DEBUG
-                print("⚠️ No preloaded item, fetching stream URL...")
-                #endif
+                logDebug("No preloaded item, fetching stream URL...")
                 playerItem = try await prepareItemOptimized(for: pendingContext)
             }
 
@@ -311,9 +296,7 @@ final class PlaybackCoordinator: NSObject {
             // ⚡ CRITICAL FIX: Wait for item status to be ready before playing
             // This prevents HLS parsing errors (err=-12642) when using automaticallyWaitsToMinimizeStalling = false
             if item.status != .readyToPlay {
-                #if DEBUG
-                print("⏳ Waiting for item to be ready...")
-                #endif
+                logDebug("Waiting for item to be ready...")
 
                 // Wait up to 3 seconds for item to become ready
                 let timeoutDate = Date().addingTimeInterval(3)
@@ -348,16 +331,14 @@ final class PlaybackCoordinator: NSObject {
 
             #if DEBUG
             let elapsed = (CFAbsoluteTimeGetCurrent() - startTime_debug) * 1000
-            print("⚡ Playback started in \(String(format: "%.0f", elapsed))ms")
+            logInfo("Playback started in \(String(format: "%.0f", elapsed))ms for: \(pendingContext.track.title)")
             #endif
 
             // ⚡ OPTIMIZATION: Increase buffer after playback starts for smooth playback
             Task {
                 try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
                 item.preferredForwardBufferDuration = 8
-                #if DEBUG
-                print("✅ Increased buffer to 8s for smooth playback")
-                #endif
+                logDebug("Increased buffer to 8s for smooth playback")
             }
 
             // Log play to history
@@ -368,7 +349,7 @@ final class PlaybackCoordinator: NSObject {
                     do {
                         try await convexService.addPlay(userId: userId, track: scTrack)
                     } catch {
-                        print("Failed to log play history: \(error)")
+                        logError("Failed to log play history: \(error)")
                     }
                 }
             }
@@ -385,10 +366,7 @@ final class PlaybackCoordinator: NSObject {
             delegate?.playbackCoordinator(self, didEncounter: error)
             status = .failed(error.localizedDescription)
 
-            #if DEBUG
-            print("❌ Playback failed for track \(pendingContext.track.title): \(error)")
-            print("⏱️ Track marked as failed, retry blocked for 5 seconds")
-            #endif
+            logError("Playback failed for track \(pendingContext.track.title): \(error)")
         }
     }
 
@@ -399,14 +377,10 @@ final class PlaybackCoordinator: NSObject {
         // Try cache first (instant if cached)
         if let cached = streamCache.getCachedStreamURL(for: context.track.id) {
             streamURL = cached.stream_url
-            #if DEBUG
-            print("✅ Using cached stream URL")
-            #endif
+            logDebug("Using cached stream URL")
         } else {
             // Fallback: fetch from backend
-            #if DEBUG
-            print("⬇️ Fetching stream URL from backend...")
-            #endif
+            logDebug("Fetching stream URL from backend...")
             let response = try await backendAPI.getStreamURL(trackId: context.track.id)
             streamURL = response.stream_url
 
@@ -905,7 +879,7 @@ final class PlaybackCoordinator: NSObject {
 
     deinit {
         readinessObservation?.invalidate()
-        healthMonitor?.stopMonitoring()
+        // healthMonitor cleans itself up in its own deinit
         NotificationCenter.default.removeObserver(self)
     }
 }

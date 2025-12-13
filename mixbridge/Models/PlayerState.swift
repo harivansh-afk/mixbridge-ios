@@ -162,7 +162,7 @@ final class PlayerState: NSObject {
                 return
             }
         } catch {
-            print("Failed to fetch play history: \(error)")
+            logError("Failed to fetch play history: \(error)")
         }
 
         // Fallback: Get most recently liked song
@@ -174,7 +174,7 @@ final class PlayerState: NSObject {
                     return
                 }
             } catch {
-                print("Failed to fetch liked tracks: \(error)")
+                logError("Failed to fetch liked tracks: \(error)")
             }
         }
     }
@@ -270,7 +270,7 @@ final class PlayerState: NSObject {
                 try await queueManager.setQueue(items: queueItems, startIndex: 0)
             }
         } catch {
-            print("Failed to update queue: \(error)")
+            logError("Failed to update queue: \(error)")
             // Continue to play even if queue update fails
         }
 
@@ -332,9 +332,7 @@ final class PlayerState: NSObject {
             try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
             self.isSeeking = false
 
-            #if DEBUG
-            print("✅ Seeking flag cleared, time observer resumed")
-            #endif
+            logDebug("Seeking flag cleared, time observer resumed")
         }
 
         // Update Now Playing info with new position
@@ -371,13 +369,13 @@ final class PlayerState: NSObject {
                 try audioSession.setActive(true)
             }
 
-            print("✅ Audio session configured successfully")
+            logInfo("Audio session configured successfully")
         } catch let error as NSError {
             // OSStatus -50 means invalid parameter, but often non-fatal
             if error.code == -50 {
-                print("⚠️ Audio session configuration warning (non-fatal): \(error.localizedDescription)")
+                logWarning("Audio session configuration warning (non-fatal): \(error.localizedDescription)")
             } else {
-                print("❌ Failed to configure audio session: \(error.localizedDescription)")
+                logError("Failed to configure audio session: \(error.localizedDescription)")
             }
         }
     }
@@ -532,15 +530,10 @@ final class PlayerState: NSObject {
             // Remember if we were playing before interruption
             wasPlayingBeforeInterruption = isPlaying
             pause()
-
-            #if DEBUG
-            print("🔇 Audio interruption began (was playing: \(wasPlayingBeforeInterruption))")
-            #endif
+            logInfo("Audio interruption began (was playing: \(wasPlayingBeforeInterruption))")
 
         case .ended:
-            #if DEBUG
-            print("🔊 Audio interruption ended")
-            #endif
+            logInfo("Audio interruption ended")
 
             let optionsRaw = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsRaw)
@@ -557,17 +550,13 @@ final class PlayerState: NSObject {
                     do {
                         try self.activateAudioSession()
                     } catch {
-                        #if DEBUG
-                        print("⚠️ Failed to reactivate audio session: \(error)")
-                        #endif
+                        logWarning("Failed to reactivate audio session: \(error)")
                     }
 
                     // Resume playback
                     if self.wasPlayingBeforeInterruption {
                         self.resume()
-                        #if DEBUG
-                        print("▶️ Resumed playback after interruption")
-                        #endif
+                        logInfo("Resumed playback after interruption")
                     }
                 }
             }
@@ -587,9 +576,7 @@ final class PlayerState: NSObject {
             let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
         else { return }
 
-        #if DEBUG
-        print("🔌 Audio route changed: \(reason.rawValue)")
-        #endif
+        logInfo("Audio route changed: \(reason.rawValue)")
 
         switch reason {
         case .oldDeviceUnavailable:
@@ -599,9 +586,7 @@ final class PlayerState: NSObject {
         case .newDeviceAvailable:
             // New device connected - could auto-resume if we were interrupted
             // But generally safer to let user manually resume
-            #if DEBUG
-            print("🎧 New audio device available")
-            #endif
+            logInfo("New audio device available")
 
         case .categoryChange:
             // Audio category changed by another app
@@ -664,14 +649,10 @@ final class PlayerState: NSObject {
                     await MainActor.run {
                         self.nowPlayingArtwork = artwork
                         self.updateNowPlayingInfo()
-                        #if DEBUG
-                        print("✅ Artwork loaded: \(track.title)")
-                        #endif
+                        logDebug("Artwork loaded: \(track.title)")
                     }
                 } else {
-                    #if DEBUG
-                    print("⚠️ Artwork load failed: \(track.title)")
-                    #endif
+                    logWarning("Artwork load failed: \(track.title)")
                 }
             }
         } else if let image = UIImage(named: track.artwork) {
@@ -757,10 +738,7 @@ extension PlayerState: PlaybackCoordinatorDelegate {
         // Only update Now Playing when something meaningful changed
         if needsNowPlayingUpdate {
             updateNowPlayingInfo()
-
-            #if DEBUG
-            print("🎨 Now Playing updated: \(currentTrack.title) [\(playbackStatus)]")
-            #endif
+            logDebug("Now Playing updated: \(currentTrack.title) [\(playbackStatus)]")
         } else {
             // Just update the elapsed time (lightweight operation)
             var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
