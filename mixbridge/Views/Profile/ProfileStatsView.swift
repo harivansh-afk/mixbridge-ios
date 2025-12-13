@@ -18,7 +18,6 @@ struct ProfileStatsView: View {
                 .resizable()
                 .scaledToFill()
                 .ignoresSafeArea()
-                .grayscale(1)
                 .blur(radius: 5, opaque: true)
              
 
