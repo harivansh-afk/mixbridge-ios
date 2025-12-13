@@ -49,7 +49,7 @@ final class PlaybackCoordinator: NSObject {
     private let keychain = KeychainManager.shared
     private let convexService = ConvexService.shared
 
-    // ⚡ NEW: State-of-the-art caching services
+    // ⚡ State-of-the-art caching services
     private let streamCache = StreamURLCache.shared
     private let itemCache = PreloadedItemCache.shared
 
@@ -72,6 +72,12 @@ final class PlaybackCoordinator: NSObject {
     /// Track playback readiness for status updates
     private var readinessObservation: NSKeyValueObservation?
 
+    /// 🏥 Health monitor for detecting and recovering from playback issues
+    private var healthMonitor: PlaybackHealthMonitor?
+
+    /// Last known playback position (for recovery)
+    private var lastKnownPlaybackTime: Double = 0
+
     private var status: PlayerState.PlaybackStatus = .idle {
         didSet {
             Task { @MainActor in
@@ -82,6 +88,9 @@ final class PlaybackCoordinator: NSObject {
 
     /// Prevent spam clicking on play button
     private var isPreparingPlayback = false
+
+    /// Flag to indicate recovery is in progress
+    private var isRecoveringPlayback = false
 
     /// Track recently failed tracks to prevent infinite retry loops
     private var recentlyFailedTracks: [String: Date] = [:]
@@ -96,6 +105,10 @@ final class PlaybackCoordinator: NSObject {
         player.actionAtItemEnd = .advance
         addTimeObserver()
 
+        // 🏥 Initialize health monitor for playback resilience
+        healthMonitor = PlaybackHealthMonitor(player: player)
+        healthMonitor?.delegate = self
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleItemDidFinish(_:)),
@@ -103,13 +116,7 @@ final class PlaybackCoordinator: NSObject {
             object: nil
         )
 
-        #if DEBUG
-        print("🚀 PlaybackCoordinator initialized with SOTA optimizations")
-        print("   ✅ automaticallyWaitsToMinimizeStalling = false")
-        print("   ✅ Preload trigger = 50%")
-        print("   ✅ Stream URL caching enabled")
-        print("   ✅ AVPlayerItem preloading enabled")
-        #endif
+        logInfo("PlaybackCoordinator initialized with SOTA optimizations")
     }
 
     // MARK: - Public Controls
@@ -121,9 +128,7 @@ final class PlaybackCoordinator: NSObject {
     func play(track: Track, soundCloudTrack: SoundCloudTrack?, queueIndex: Int?, startTime: Double? = nil) {
         // ⚡ CRITICAL: Prevent spam clicking
         guard !isPreparingPlayback else {
-            #if DEBUG
-            print("⚠️ Playback already in progress, ignoring duplicate request")
-            #endif
+            logWarning("Playback already in progress, ignoring duplicate request")
             return
         }
 
@@ -131,9 +136,7 @@ final class PlaybackCoordinator: NSObject {
         if let failedDate = recentlyFailedTracks[track.id] {
             let timeSinceFailure = Date().timeIntervalSince(failedDate)
             if timeSinceFailure < 5.0 {
-                #if DEBUG
-                print("⚠️ Track \(track.title) recently failed (\(String(format: "%.1f", timeSinceFailure))s ago), skipping retry")
-                #endif
+                logWarning("Track \(track.title) recently failed (\(String(format: "%.1f", timeSinceFailure))s ago), skipping retry")
                 // Still allow retry after 5 seconds
                 return
             } else {
@@ -142,7 +145,10 @@ final class PlaybackCoordinator: NSObject {
             }
         }
 
-        let context = PlaybackContext(track: track, soundCloudTrack: soundCloudTrack, queueIndex: queueIndex)
+        // Infer queue index if not provided - enables navigation even when played from outside queue
+        let effectiveQueueIndex = queueIndex ?? queueManager.indexOfTrack(withId: track.id)
+
+        let context = PlaybackContext(track: track, soundCloudTrack: soundCloudTrack, queueIndex: effectiveQueueIndex)
         Task {
             await startPlayback(with: context, startTime: startTime)
         }
@@ -255,25 +261,12 @@ final class PlaybackCoordinator: NSObject {
         #endif
 
         do {
-            // ⚡ STEP 1: Try to get preloaded AVPlayerItem (instant if cached)
-            var playerItem: AVPlayerItem?
-            var usedPreloadedItem = false
+            // Always fetch fresh stream URL to avoid expired URL errors (-12642)
+            // Preloaded items and cached URLs can become stale and cause playback failures
+            logDebug("Preparing playback with fresh stream URL...")
+            let playerItem = try await prepareItemOptimized(for: pendingContext)
 
-            if let (preloadedItem, _) = itemCache.getPreloadedItem(for: pendingContext.track.id) {
-                #if DEBUG
-                print("⚡ INSTANT PLAYBACK: Using preloaded AVPlayerItem")
-                #endif
-                playerItem = preloadedItem
-                usedPreloadedItem = true
-            } else {
-                // ⚡ STEP 2: Fallback - fetch stream URL (try cache first)
-                #if DEBUG
-                print("⚠️ No preloaded item, fetching stream URL...")
-                #endif
-                playerItem = try await prepareItemOptimized(for: pendingContext)
-            }
-
-            guard let item = playerItem else {
+            guard let item = playerItem as AVPlayerItem? else {
                 throw PlayerState.PlaybackError.invalidStreamURL
             }
 
@@ -291,12 +284,13 @@ final class PlaybackCoordinator: NSObject {
             // Monitor playback readiness for smooth status transitions
             observePlaybackReadiness(for: item)
 
+            // 🏥 Start health monitoring for this item
+            healthMonitor?.startMonitoring(item: item, trackId: pendingContext.track.id)
+
             // ⚡ CRITICAL FIX: Wait for item status to be ready before playing
             // This prevents HLS parsing errors (err=-12642) when using automaticallyWaitsToMinimizeStalling = false
             if item.status != .readyToPlay {
-                #if DEBUG
-                print("⏳ Waiting for item to be ready...")
-                #endif
+                logDebug("Waiting for item to be ready...")
 
                 // Wait up to 3 seconds for item to become ready
                 let timeoutDate = Date().addingTimeInterval(3)
@@ -324,23 +318,16 @@ final class PlaybackCoordinator: NSObject {
             // This ensures UI is tightly coupled with actual playback state
             currentContext = pendingContext
 
-            // Consume preloaded item only after successful use
-            if usedPreloadedItem {
-                itemCache.consumePreloadedItem(for: pendingContext.track.id)
-            }
-
             #if DEBUG
             let elapsed = (CFAbsoluteTimeGetCurrent() - startTime_debug) * 1000
-            print("⚡ Playback started in \(String(format: "%.0f", elapsed))ms")
+            logInfo("Playback started in \(String(format: "%.0f", elapsed))ms for: \(pendingContext.track.title)")
             #endif
 
             // ⚡ OPTIMIZATION: Increase buffer after playback starts for smooth playback
             Task {
                 try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
                 item.preferredForwardBufferDuration = 8
-                #if DEBUG
-                print("✅ Increased buffer to 8s for smooth playback")
-                #endif
+                logDebug("Increased buffer to 8s for smooth playback")
             }
 
             // Log play to history
@@ -351,7 +338,7 @@ final class PlaybackCoordinator: NSObject {
                     do {
                         try await convexService.addPlay(userId: userId, track: scTrack)
                     } catch {
-                        print("Failed to log play history: \(error)")
+                        logError("Failed to log play history: \(error)")
                     }
                 }
             }
@@ -368,34 +355,19 @@ final class PlaybackCoordinator: NSObject {
             delegate?.playbackCoordinator(self, didEncounter: error)
             status = .failed(error.localizedDescription)
 
-            #if DEBUG
-            print("❌ Playback failed for track \(pendingContext.track.title): \(error)")
-            print("⏱️ Track marked as failed, retry blocked for 5 seconds")
-            #endif
+            logError("Playback failed for track \(pendingContext.track.title): \(error)")
         }
     }
 
-    /// ⚡ OPTIMIZED: Prepare AVPlayerItem with cache-first strategy
+    /// ⚡ OPTIMIZED: Prepare AVPlayerItem with fresh stream URL
+    /// Always fetches fresh URL to avoid expired URL errors (-12642)
     private func prepareItemOptimized(for context: PlaybackContext) async throws -> AVPlayerItem {
         var streamURL: String?
 
-        // Try cache first (instant if cached)
-        if let cached = streamCache.getCachedStreamURL(for: context.track.id) {
-            streamURL = cached.stream_url
-            #if DEBUG
-            print("✅ Using cached stream URL")
-            #endif
-        } else {
-            // Fallback: fetch from backend
-            #if DEBUG
-            print("⬇️ Fetching stream URL from backend...")
-            #endif
-            let response = try await backendAPI.getStreamURL(trackId: context.track.id)
-            streamURL = response.stream_url
-
-            // Cache for next time
-            await streamCache.prefetchStreamURL(for: context.track.id)
-        }
+        // Always fetch fresh stream URL to avoid expiration issues
+        logDebug("Fetching fresh stream URL...")
+        let response = try await backendAPI.getStreamURL(trackId: context.track.id)
+        streamURL = response.stream_url
 
         guard let urlString = streamURL, let url = URL(string: urlString) else {
             throw PlayerState.PlaybackError.invalidStreamURL
@@ -527,6 +499,11 @@ final class PlaybackCoordinator: NSObject {
                 let currentTime = CMTimeGetSeconds(self.player.currentTime())
                 let duration = CMTimeGetSeconds(self.player.currentItem?.duration ?? .invalid)
 
+                // 🏥 Track playback position for recovery
+                if currentTime.isFinite && currentTime > 0 {
+                    self.lastKnownPlaybackTime = currentTime
+                }
+
                 // ⚡ OPTIMIZED: Trigger at 50% instead of 75% for better UX
                 if !self.hasPreloadedForCurrentTrack,
                    currentTime.isFinite,
@@ -562,34 +539,114 @@ final class PlaybackCoordinator: NSObject {
 
         itemContextMap.removeValue(forKey: finishedItem)
 
+        // 🏥 Stop monitoring finished item
+        healthMonitor?.stopMonitoring()
+
+        // Reset recovery state for next track
+        lastKnownPlaybackTime = 0
+
         if autoplayEnabled,
            let preloadedContext = nextPreloadedContext,
+           let preloadedItem = nextPreloadedItem,
            preloadedContext == nextContext(after: finishedContext) {
-            currentContext = preloadedContext
-            nextPreloadedContext = nil
-            nextPreloadedItem = nil
-            hasPreloadedForCurrentTrack = false
-            Task { @MainActor in
-                publishSnapshot()
-            }
 
-            // Log auto-advanced track to play history
-            if let userId = AuthManager.shared.currentUserId,
-               let scTrack = preloadedContext.soundCloudTrack {
-                Task { [convexService] in
-                    do {
-                        try await convexService.addPlay(userId: userId, track: scTrack)
-                    } catch {
-                        print("Failed to log play history: \(error)")
+            // ⚡ CRITICAL FIX: Verify preloaded item is actually ready before advancing
+            if preloadedItem.status == .readyToPlay {
+                currentContext = preloadedContext
+                nextPreloadedContext = nil
+                nextPreloadedItem = nil
+                hasPreloadedForCurrentTrack = false
+
+                // 🏥 Start monitoring the new item
+                healthMonitor?.startMonitoring(item: preloadedItem, trackId: preloadedContext.track.id)
+
+                Task { @MainActor in
+                    publishSnapshot()
+                }
+
+                // Log auto-advanced track to play history
+                if let userId = AuthManager.shared.currentUserId,
+                   let scTrack = preloadedContext.soundCloudTrack {
+                    Task { [convexService] in
+                        do {
+                            try await convexService.addPlay(userId: userId, track: scTrack)
+                        } catch {
+                            print("Failed to log play history: \(error)")
+                        }
                     }
                 }
-            }
 
-            Task { [weak self] in
-                guard let self, let current = self.currentContext else { return }
-                await self.preloadNextItem(from: current)
+                Task { [weak self] in
+                    guard let self, let current = self.currentContext else { return }
+                    await self.preloadNextItem(from: current)
+                }
+                return
+
+            } else if preloadedItem.status == .failed {
+                // Preloaded item failed, clear it and try fresh playback
+                #if DEBUG
+                print("⚠️ Preloaded item failed, clearing and trying fresh")
+                #endif
+                player.remove(preloadedItem)
+                nextPreloadedContext = nil
+                nextPreloadedItem = nil
+                itemContextMap.removeValue(forKey: preloadedItem)
+
+                // Play next track fresh
+                Task {
+                    await startPlayback(with: preloadedContext)
+                }
+                return
+
+            } else {
+                // Item still loading - wait briefly then check again
+                #if DEBUG
+                print("⏳ Preloaded item not ready (status: \(preloadedItem.status.rawValue)), waiting...")
+                #endif
+
+                Task { [weak self] in
+                    // Wait up to 2 seconds for item to become ready
+                    let timeoutDate = Date().addingTimeInterval(2)
+                    while preloadedItem.status == .unknown && Date() < timeoutDate {
+                        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                    }
+
+                    guard let self = self else { return }
+
+                    if preloadedItem.status == .readyToPlay {
+                        self.currentContext = preloadedContext
+                        self.nextPreloadedContext = nil
+                        self.nextPreloadedItem = nil
+                        self.hasPreloadedForCurrentTrack = false
+                        self.healthMonitor?.startMonitoring(item: preloadedItem, trackId: preloadedContext.track.id)
+                        self.publishSnapshot()
+
+                        // Log to history
+                        if let userId = AuthManager.shared.currentUserId,
+                           let scTrack = preloadedContext.soundCloudTrack {
+                            do {
+                                try await self.convexService.addPlay(userId: userId, track: scTrack)
+                            } catch {
+                                print("Failed to log play history: \(error)")
+                            }
+                        }
+
+                        // Preload next
+                        await self.preloadNextItem(from: preloadedContext)
+                    } else {
+                        // Still not ready or failed, play fresh
+                        #if DEBUG
+                        print("⚠️ Preloaded item timed out, playing fresh")
+                        #endif
+                        self.player.remove(preloadedItem)
+                        self.nextPreloadedContext = nil
+                        self.nextPreloadedItem = nil
+                        self.itemContextMap.removeValue(forKey: preloadedItem)
+                        await self.startPlayback(with: preloadedContext)
+                    }
+                }
+                return
             }
-            return
         }
 
         adoptCurrentItemContext()
@@ -693,8 +750,184 @@ final class PlaybackCoordinator: NSObject {
         }
     }
 
+    // MARK: - Recovery
+
+    /// Attempt to recover playback with fresh stream URL
+    private func recoverPlayback(for trackId: String) async {
+        guard !isRecoveringPlayback else {
+            #if DEBUG
+            print("🏥 Recovery already in progress, skipping")
+            #endif
+            return
+        }
+
+        guard let context = currentContext, context.track.id == trackId else {
+            #if DEBUG
+            print("🏥 Context mismatch, skipping recovery")
+            #endif
+            return
+        }
+
+        isRecoveringPlayback = true
+        let recoveryPosition = lastKnownPlaybackTime
+
+        #if DEBUG
+        print("🏥 Starting playback recovery for track: \(trackId) at position: \(recoveryPosition)")
+        #endif
+
+        // Invalidate cached URL and get fresh one
+        streamCache.invalidate(trackId: trackId)
+
+        do {
+            // Get fresh stream URL
+            guard let freshStream = await streamCache.forceRefresh(for: trackId) else {
+                throw PlayerState.PlaybackError.invalidStreamURL
+            }
+
+            // Create new player item
+            guard let url = URL(string: freshStream.stream_url) else {
+                throw PlayerState.PlaybackError.invalidStreamURL
+            }
+
+            var options: [String: Any] = [:]
+            if let token = keychain.getAccessToken() {
+                options["AVURLAssetHTTPHeaderFieldsKey"] = ["Authorization": "Bearer \(token)"]
+            }
+
+            let asset = AVURLAsset(url: url, options: options)
+            let item = AVPlayerItem(asset: asset)
+            item.preferredForwardBufferDuration = 1
+            item.canUseNetworkResourcesForLiveStreamingWhilePaused = true
+
+            // Clear old items and insert new
+            player.removeAllItems()
+            itemContextMap.removeAll()
+            nextPreloadedContext = nil
+            nextPreloadedItem = nil
+
+            player.insert(item, after: nil)
+            itemContextMap[item] = context
+
+            // Wait for item to be ready
+            let timeoutDate = Date().addingTimeInterval(5)
+            while item.status == .unknown && Date() < timeoutDate {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+
+            guard item.status == .readyToPlay else {
+                throw item.error ?? PlayerState.PlaybackError.invalidStreamURL
+            }
+
+            // Seek to recovery position if valid
+            if recoveryPosition > 0 {
+                await player.seek(
+                    to: CMTime(seconds: recoveryPosition, preferredTimescale: CMTimeScale(NSEC_PER_SEC)),
+                    toleranceBefore: .zero,
+                    toleranceAfter: .zero
+                )
+            }
+
+            // Start monitoring and play
+            healthMonitor?.startMonitoring(item: item, trackId: trackId)
+            observePlaybackReadiness(for: item)
+            player.play()
+            status = .playing
+
+            #if DEBUG
+            print("🏥 ✅ Playback recovery successful!")
+            #endif
+
+            // Reset recovery state
+            isRecoveringPlayback = false
+            healthMonitor?.resetRecoveryState()
+
+            // Increase buffer after recovery
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                item.preferredForwardBufferDuration = 8
+            }
+
+        } catch {
+            #if DEBUG
+            print("🏥 ❌ Playback recovery failed: \(error)")
+            #endif
+
+            isRecoveringPlayback = false
+            status = .failed(error.localizedDescription)
+            delegate?.playbackCoordinator(self, didEncounter: error)
+        }
+    }
+
     deinit {
         readinessObservation?.invalidate()
+        // healthMonitor cleans itself up in its own deinit
         NotificationCenter.default.removeObserver(self)
+    }
+}
+
+// MARK: - PlaybackHealthMonitorDelegate
+
+extension PlaybackCoordinator: PlaybackHealthMonitorDelegate {
+    func healthMonitor(_ monitor: PlaybackHealthMonitor, itemDidFail item: AVPlayerItem, error: Error?) {
+        #if DEBUG
+        print("🏥 Delegate: Item failed - \(error?.localizedDescription ?? "Unknown")")
+        #endif
+
+        // Report error to UI
+        if let error = error {
+            delegate?.playbackCoordinator(self, didEncounter: error)
+        }
+    }
+
+    func healthMonitor(_ monitor: PlaybackHealthMonitor, playbackDidStall item: AVPlayerItem) {
+        #if DEBUG
+        print("🏥 Delegate: Playback stalled")
+        #endif
+
+        // Update status to show loading indicator
+        status = .loading
+    }
+
+    func healthMonitor(_ monitor: PlaybackHealthMonitor, playbackDidRecover item: AVPlayerItem) {
+        #if DEBUG
+        print("🏥 Delegate: Playback recovered!")
+        #endif
+
+        // Update status back to playing
+        if player.timeControlStatus == .playing {
+            status = .playing
+        }
+    }
+
+    func healthMonitorNeedsStreamRefresh(_ monitor: PlaybackHealthMonitor, for trackId: String) {
+        #if DEBUG
+        print("🏥 Delegate: Stream refresh needed for \(trackId)")
+        #endif
+
+        // Trigger recovery with fresh stream URL
+        Task {
+            await recoverPlayback(for: trackId)
+        }
+    }
+
+    func healthMonitor(_ monitor: PlaybackHealthMonitor, recoveryFailedFor item: AVPlayerItem, attempts: Int) {
+        #if DEBUG
+        print("🏥 Delegate: Recovery failed after \(attempts) attempts")
+        #endif
+
+        // Mark track as failed and notify UI
+        if let context = currentContext {
+            recentlyFailedTracks[context.track.id] = Date()
+        }
+
+        status = .failed("Playback failed after \(attempts) recovery attempts")
+        delegate?.playbackCoordinator(
+            self,
+            didEncounter: NSError(
+                domain: "PlaybackCoordinator",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Playback failed after multiple recovery attempts"]
+            )
+        )
     }
 }

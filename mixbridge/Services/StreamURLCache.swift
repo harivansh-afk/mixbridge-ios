@@ -200,6 +200,52 @@ final class StreamURLCache {
         #endif
     }
 
+    /// Force refresh stream URL for a track (bypasses cache)
+    /// Use when stream fails during playback and needs fresh URL
+    @discardableResult
+    func forceRefresh(for trackId: String) async -> StreamResponse? {
+        // Remove from cache first
+        cache.removeValue(forKey: trackId)
+        prefetchingTracks.remove(trackId)
+
+        #if DEBUG
+        print("🔄 Force refreshing stream URL for track: \(trackId)")
+        #endif
+
+        do {
+            let response = try await backendAPI.getStreamURL(trackId: trackId)
+
+            let cached = CachedStream(
+                url: response.stream_url,
+                streamType: response.stream_type,
+                cachedAt: Date(),
+                expiresAt: Date().addingTimeInterval(defaultExpiryInterval)
+            )
+
+            cache[trackId] = cached
+
+            #if DEBUG
+            print("✅ Force refresh successful for track: \(trackId)")
+            #endif
+
+            return response
+        } catch {
+            #if DEBUG
+            print("❌ Force refresh failed for track \(trackId): \(error)")
+            #endif
+            return nil
+        }
+    }
+
+    /// Invalidate cache entry for a track (without fetching new)
+    func invalidate(trackId: String) {
+        cache.removeValue(forKey: trackId)
+
+        #if DEBUG
+        print("🗑️ Invalidated cache for track: \(trackId)")
+        #endif
+    }
+
     /// Get cache statistics for debugging
     func getCacheStats() -> (total: Int, valid: Int, expiring: Int, expired: Int) {
         let valid = cache.values.filter { !$0.isExpired && !$0.isExpiringSoon }.count

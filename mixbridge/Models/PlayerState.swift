@@ -62,7 +62,45 @@ final class PlayerState: NSObject {
     private let audioSession = AVAudioSession.sharedInstance()
     private let commandCenter = MPRemoteCommandCenter.shared()
 
-    private var currentQueueIndex: Int = -1
+    private var _currentQueueIndex: Int = -1
+
+    /// Public getter for the current queue index (-1 if not playing from queue)
+    var currentQueueIndex: Int { _currentQueueIndex }
+
+    /// Returns true if there's a next track available in the queue
+    /// This considers the current track's position even if played from outside the queue
+    var canPlayNext: Bool {
+        // First check explicit queue index
+        if _currentQueueIndex >= 0 {
+            return queueManager.canPlayNext(from: _currentQueueIndex)
+        }
+        // Fallback: check if current track is in queue
+        if let position = queueManager.queuePosition(for: currentTrack.id) {
+            return position.hasNext
+        }
+        // Last resort: check if queue has any tracks
+        return queueManager.hasQueue
+    }
+
+    /// Returns true if there's a previous track available in the queue
+    /// This considers the current track's position even if played from outside the queue
+    var canPlayPrevious: Bool {
+        // First check explicit queue index
+        if _currentQueueIndex >= 0 {
+            return queueManager.canPlayPrevious(from: _currentQueueIndex)
+        }
+        // Fallback: check if current track is in queue
+        if let position = queueManager.queuePosition(for: currentTrack.id) {
+            return position.hasPrevious
+        }
+        return false
+    }
+
+    /// Returns true if the current track is in the queue (regardless of entry point)
+    var isCurrentTrackInQueue: Bool {
+        queueManager.isInQueue(currentTrack.id)
+    }
+
     private var nowPlayingArtwork: MPMediaItemArtwork?
     private var artworkTask: Task<Void, Never>?
     private var lastPublishedStatus: PlaybackStatus = .idle
@@ -162,7 +200,7 @@ final class PlayerState: NSObject {
                 return
             }
         } catch {
-            print("Failed to fetch play history: \(error)")
+            logError("Failed to fetch play history: \(error)")
         }
 
         // Fallback: Get most recently liked song
@@ -174,7 +212,7 @@ final class PlayerState: NSObject {
                     return
                 }
             } catch {
-                print("Failed to fetch liked tracks: \(error)")
+                logError("Failed to fetch liked tracks: \(error)")
             }
         }
     }
@@ -218,11 +256,11 @@ final class PlayerState: NSObject {
 
         // Store queue index
         if let explicitIndex = queueIndex {
-            currentQueueIndex = explicitIndex
+            _currentQueueIndex = explicitIndex
         } else if let inferredIndex = queueManager.indexOfTrack(withId: track.id) {
-            currentQueueIndex = inferredIndex
+            _currentQueueIndex = inferredIndex
         } else {
-            currentQueueIndex = -1
+            _currentQueueIndex = -1
         }
 
         try? activateAudioSession()
@@ -270,7 +308,7 @@ final class PlayerState: NSObject {
                 try await queueManager.setQueue(items: queueItems, startIndex: 0)
             }
         } catch {
-            print("Failed to update queue: \(error)")
+            logError("Failed to update queue: \(error)")
             // Continue to play even if queue update fails
         }
 
@@ -332,9 +370,7 @@ final class PlayerState: NSObject {
             try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
             self.isSeeking = false
 
-            #if DEBUG
-            print("✅ Seeking flag cleared, time observer resumed")
-            #endif
+            logDebug("Seeking flag cleared, time observer resumed")
         }
 
         // Update Now Playing info with new position
@@ -347,6 +383,27 @@ final class PlayerState: NSObject {
 
     func playPreviousFromQueue() {
         playbackCoordinator.playPrevious()
+    }
+
+    /// Synchronize the queue index with the current track's position in the queue
+    /// Call this after the queue loads to ensure navigation works correctly
+    func syncQueueIndex() {
+        // If we already have a valid index, verify it's still correct
+        if _currentQueueIndex >= 0 && _currentQueueIndex < queueManager.queueTracks.count {
+            // Check if the track at our index still matches
+            let trackAtIndex = queueManager.queueTracks[_currentQueueIndex]
+            if trackAtIndex.id == currentTrack.id {
+                return // Index is still valid
+            }
+        }
+
+        // Try to find current track in queue
+        if let inferredIndex = queueManager.indexOfTrack(withId: currentTrack.id) {
+            _currentQueueIndex = inferredIndex
+            logDebug("Synced queue index to \(inferredIndex) for track: \(currentTrack.title)")
+        } else {
+            _currentQueueIndex = -1
+        }
     }
 
     // MARK: - Setup
@@ -371,13 +428,13 @@ final class PlayerState: NSObject {
                 try audioSession.setActive(true)
             }
 
-            print("✅ Audio session configured successfully")
+            logInfo("Audio session configured successfully")
         } catch let error as NSError {
             // OSStatus -50 means invalid parameter, but often non-fatal
             if error.code == -50 {
-                print("⚠️ Audio session configuration warning (non-fatal): \(error.localizedDescription)")
+                logWarning("Audio session configuration warning (non-fatal): \(error.localizedDescription)")
             } else {
-                print("❌ Failed to configure audio session: \(error.localizedDescription)")
+                logError("Failed to configure audio session: \(error.localizedDescription)")
             }
         }
     }
@@ -516,6 +573,9 @@ final class PlayerState: NSObject {
 
     // MARK: - Notifications
 
+    /// Track if we were playing before interruption (for reliable recovery)
+    private var wasPlayingBeforeInterruption: Bool = false
+
     @MainActor
     @objc private func handleInterruption(_ notification: Notification) {
         guard
@@ -526,13 +586,42 @@ final class PlayerState: NSObject {
 
         switch type {
         case .began:
+            // Remember if we were playing before interruption
+            wasPlayingBeforeInterruption = isPlaying
             pause()
+            logInfo("Audio interruption began (was playing: \(wasPlayingBeforeInterruption))")
+
         case .ended:
+            logInfo("Audio interruption ended")
+
             let optionsRaw = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsRaw)
-            if options.contains(.shouldResume) {
-                resume()
+
+            // Try to resume if:
+            // 1. iOS says we should resume, OR
+            // 2. We were playing before and have an active track
+            if options.contains(.shouldResume) || (wasPlayingBeforeInterruption && hasActiveTrack) {
+                // Delay resume slightly to ensure audio session is fully restored
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 300_000_000) // 300ms delay
+
+                    // Re-activate audio session
+                    do {
+                        try self.activateAudioSession()
+                    } catch {
+                        logWarning("Failed to reactivate audio session: \(error)")
+                    }
+
+                    // Resume playback
+                    if self.wasPlayingBeforeInterruption {
+                        self.resume()
+                        logInfo("Resumed playback after interruption")
+                    }
+                }
             }
+
+            wasPlayingBeforeInterruption = false
+
         @unknown default:
             break
         }
@@ -546,8 +635,27 @@ final class PlayerState: NSObject {
             let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
         else { return }
 
-        if reason == .oldDeviceUnavailable {
+        logInfo("Audio route changed: \(reason.rawValue)")
+
+        switch reason {
+        case .oldDeviceUnavailable:
+            // Headphones unplugged, Bluetooth disconnected, etc.
             pause()
+
+        case .newDeviceAvailable:
+            // New device connected - could auto-resume if we were interrupted
+            // But generally safer to let user manually resume
+            logInfo("New audio device available")
+
+        case .categoryChange:
+            // Audio category changed by another app
+            // Re-assert our audio session
+            Task { @MainActor in
+                try? self.activateAudioSession()
+            }
+
+        default:
+            break
         }
     }
 
@@ -600,14 +708,10 @@ final class PlayerState: NSObject {
                     await MainActor.run {
                         self.nowPlayingArtwork = artwork
                         self.updateNowPlayingInfo()
-                        #if DEBUG
-                        print("✅ Artwork loaded: \(track.title)")
-                        #endif
+                        logDebug("Artwork loaded: \(track.title)")
                     }
                 } else {
-                    #if DEBUG
-                    print("⚠️ Artwork load failed: \(track.title)")
-                    #endif
+                    logWarning("Artwork load failed: \(track.title)")
                 }
             }
         } else if let image = UIImage(named: track.artwork) {
@@ -653,13 +757,26 @@ extension PlayerState: PlaybackCoordinatorDelegate {
                 refreshArtwork(for: track)
                 needsNowPlayingUpdate = true
             }
+            // Always try to sync queue index when track changes
             if let index = snapshot.queueIndex {
-                currentQueueIndex = index
+                _currentQueueIndex = index
             } else if trackChanged {
-                currentQueueIndex = -1
+                // Try to infer queue index from queue manager
+                // This ensures navigation works even when track was played from outside the queue
+                if let inferredIndex = queueManager.indexOfTrack(withId: track.id) {
+                    _currentQueueIndex = inferredIndex
+                    logDebug("Inferred queue index \(inferredIndex) for track: \(track.title)")
+                } else {
+                    _currentQueueIndex = -1
+                }
             }
         } else if snapshot.queueIndex == nil {
-            currentQueueIndex = -1
+            // No track in snapshot - try to infer from current track
+            if let inferredIndex = queueManager.indexOfTrack(withId: currentTrack.id) {
+                _currentQueueIndex = inferredIndex
+            } else {
+                _currentQueueIndex = -1
+            }
         }
 
         // Playing state changes
@@ -693,10 +810,7 @@ extension PlayerState: PlaybackCoordinatorDelegate {
         // Only update Now Playing when something meaningful changed
         if needsNowPlayingUpdate {
             updateNowPlayingInfo()
-
-            #if DEBUG
-            print("🎨 Now Playing updated: \(currentTrack.title) [\(playbackStatus)]")
-            #endif
+            logDebug("Now Playing updated: \(currentTrack.title) [\(playbackStatus)]")
         } else {
             // Just update the elapsed time (lightweight operation)
             var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
