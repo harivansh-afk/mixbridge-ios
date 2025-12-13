@@ -95,6 +95,10 @@ final class PlaybackCoordinator: NSObject {
     /// Track recently failed tracks to prevent infinite retry loops
     private var recentlyFailedTracks: [String: Date] = [:]
 
+    /// ⚡ CRITICAL: Track user's playback intent (not transient player states)
+    /// This ensures UI shows "playing" during buffering instead of flickering to "paused"
+    private var isIntendedToPlay: Bool = false
+
     private override init() {
         super.init()
 
@@ -163,6 +167,7 @@ final class PlaybackCoordinator: NSObject {
     }
 
     func pause() {
+        isIntendedToPlay = false  // ⚡ User explicitly paused
         player.pause()
         status = .paused
         Task { @MainActor in
@@ -172,6 +177,7 @@ final class PlaybackCoordinator: NSObject {
 
     func resume() {
         guard player.items().isEmpty == false else { return }
+        isIntendedToPlay = true  // ⚡ User explicitly wants to play
         player.play()
         status = .playing
         Task { @MainActor in
@@ -312,6 +318,7 @@ final class PlaybackCoordinator: NSObject {
             }
 
             // ⚡ PLAY IMMEDIATELY - Now that item is ready
+            isIntendedToPlay = true  // ⚡ Mark intent BEFORE playing
             player.play()
 
             // ⚡ CRITICAL FIX: Only NOW set currentContext after playback successfully started
@@ -349,6 +356,9 @@ final class PlaybackCoordinator: NSObject {
         } catch {
             // ⚡ CRITICAL: Track failure to prevent spam retries
             recentlyFailedTracks[pendingContext.track.id] = Date()
+
+            // ⚡ CRITICAL: Clear play intent on failure
+            isIntendedToPlay = false
 
             // ⚡ CRITICAL: Don't update currentContext on failure
             // UI will continue showing the actual playing track (or idle state)
@@ -687,17 +697,32 @@ final class PlaybackCoordinator: NSObject {
             case .playing:
                 return .playing
             case .paused:
-                return .paused
+                // ⚡ CRITICAL: Only show paused if user intended to pause
+                // During buffering/recovery, player may be paused but user wants to play
+                return isIntendedToPlay ? .loading : .paused
             @unknown default:
                 return status
             }
+        }()
+
+        // ⚡ CRITICAL FIX: Use isIntendedToPlay for UI state, not transient player state
+        // This prevents UI from flickering to "paused" during buffering
+        // Only show paused when:
+        // 1. User explicitly paused (isIntendedToPlay = false)
+        // 2. Playback failed
+        let effectiveIsPlaying: Bool = {
+            if case .failed = status {
+                return false
+            }
+            // Use intent for UI state - keeps play button consistent during buffering
+            return isIntendedToPlay
         }()
 
         let snapshot = PlaybackSnapshot(
             track: currentContext?.track,
             queueIndex: currentContext?.queueIndex,
             status: effectiveStatus,
-            isPlaying: player.timeControlStatus == .playing,
+            isPlaying: effectiveIsPlaying,
             currentTime: currentTime,
             duration: duration.isFinite ? duration : (currentContext?.track.duration ?? 0)
         )
@@ -830,6 +855,7 @@ final class PlaybackCoordinator: NSObject {
             // Start monitoring and play
             healthMonitor?.startMonitoring(item: item, trackId: trackId)
             observePlaybackReadiness(for: item)
+            isIntendedToPlay = true  // ⚡ Recovery successful - restore intent
             player.play()
             status = .playing
 
@@ -853,6 +879,7 @@ final class PlaybackCoordinator: NSObject {
             #endif
 
             isRecoveringPlayback = false
+            isIntendedToPlay = false  // ⚡ Recovery failed - clear intent
             status = .failed(error.localizedDescription)
             delegate?.playbackCoordinator(self, didEncounter: error)
         }
@@ -919,6 +946,9 @@ extension PlaybackCoordinator: PlaybackHealthMonitorDelegate {
         if let context = currentContext {
             recentlyFailedTracks[context.track.id] = Date()
         }
+
+        // ⚡ CRITICAL: Clear play intent on recovery failure
+        isIntendedToPlay = false
 
         status = .failed("Playback failed after \(attempts) recovery attempts")
         delegate?.playbackCoordinator(

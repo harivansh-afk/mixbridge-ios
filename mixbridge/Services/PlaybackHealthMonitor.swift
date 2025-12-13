@@ -51,9 +51,9 @@ final class PlaybackHealthMonitor {
 
         static let `default` = Configuration(
             maxRecoveryAttempts: 3,
-            stallDetectionThreshold: 2.0,
-            baseRecoveryDelay: 0.5,
-            bufferRecoveryTimeout: 10.0
+            stallDetectionThreshold: 5.0,  // ⚡ Increased from 2.0 - less aggressive
+            baseRecoveryDelay: 1.0,        // ⚡ Increased from 0.5 - give more time
+            bufferRecoveryTimeout: 15.0    // ⚡ Increased from 10.0 - more patience
         )
     }
 
@@ -81,6 +81,7 @@ final class PlaybackHealthMonitor {
     private var bufferRecoveryTask: Task<Void, Never>?
     private var lastKnownPlaybackTime: Double = 0
     private var wasPlayingBeforeStall: Bool = false
+    private var playbackStartTime: Date?  // ⚡ Track when playback started to avoid false stalls
 
     // MARK: - Initialization
 
@@ -105,6 +106,8 @@ final class PlaybackHealthMonitor {
         currentTrackId = trackId
         recoveryAttempts = 0
         isRecovering = false
+        playbackStartTime = nil  // ⚡ Reset for new track
+        wasPlayingBeforeStall = false  // ⚡ Reset for new track
 
         setupItemObservers(for: item)
 
@@ -133,6 +136,8 @@ final class PlaybackHealthMonitor {
         currentTrackId = nil
         recoveryAttempts = 0
         isRecovering = false
+        playbackStartTime = nil  // ⚡ Reset
+        wasPlayingBeforeStall = false  // ⚡ Reset
 
         #if DEBUG
         print("🏥 Stopped monitoring")
@@ -257,6 +262,11 @@ final class PlaybackHealthMonitor {
             stallDetectionTask = nil
             wasPlayingBeforeStall = true
 
+            // ⚡ Track when playback actually started
+            if playbackStartTime == nil {
+                playbackStartTime = Date()
+            }
+
             if isRecovering, let item = currentItem {
                 isRecovering = false
                 recoveryAttempts = 0
@@ -267,15 +277,25 @@ final class PlaybackHealthMonitor {
             #if DEBUG
             print("🏥 ⏸️ Player is paused")
             #endif
+            // ⚡ Don't reset wasPlayingBeforeStall on pause - user might resume
 
         case .waitingToPlayAtSpecifiedRate:
             #if DEBUG
             print("🏥 ⏳ Player is waiting to play")
             #endif
 
-            // Start stall detection timer
+            // ⚡ CRITICAL: Only start stall detection if:
+            // 1. We were previously playing (not during initial load)
+            // 2. We've been playing for at least 3 seconds (avoid false positives during startup)
             if wasPlayingBeforeStall {
-                startStallDetection()
+                let timeSinceStart = playbackStartTime.map { Date().timeIntervalSince($0) } ?? 0
+                if timeSinceStart > 3.0 {
+                    startStallDetection()
+                } else {
+                    #if DEBUG
+                    print("🏥 Skipping stall detection - playback just started (\(String(format: "%.1f", timeSinceStart))s ago)")
+                    #endif
+                }
             }
 
         @unknown default:
