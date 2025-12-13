@@ -516,6 +516,9 @@ final class PlayerState: NSObject {
 
     // MARK: - Notifications
 
+    /// Track if we were playing before interruption (for reliable recovery)
+    private var wasPlayingBeforeInterruption: Bool = false
+
     @MainActor
     @objc private func handleInterruption(_ notification: Notification) {
         guard
@@ -526,13 +529,51 @@ final class PlayerState: NSObject {
 
         switch type {
         case .began:
+            // Remember if we were playing before interruption
+            wasPlayingBeforeInterruption = isPlaying
             pause()
+
+            #if DEBUG
+            print("🔇 Audio interruption began (was playing: \(wasPlayingBeforeInterruption))")
+            #endif
+
         case .ended:
+            #if DEBUG
+            print("🔊 Audio interruption ended")
+            #endif
+
             let optionsRaw = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsRaw)
-            if options.contains(.shouldResume) {
-                resume()
+
+            // Try to resume if:
+            // 1. iOS says we should resume, OR
+            // 2. We were playing before and have an active track
+            if options.contains(.shouldResume) || (wasPlayingBeforeInterruption && hasActiveTrack) {
+                // Delay resume slightly to ensure audio session is fully restored
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 300_000_000) // 300ms delay
+
+                    // Re-activate audio session
+                    do {
+                        try self.activateAudioSession()
+                    } catch {
+                        #if DEBUG
+                        print("⚠️ Failed to reactivate audio session: \(error)")
+                        #endif
+                    }
+
+                    // Resume playback
+                    if self.wasPlayingBeforeInterruption {
+                        self.resume()
+                        #if DEBUG
+                        print("▶️ Resumed playback after interruption")
+                        #endif
+                    }
+                }
             }
+
+            wasPlayingBeforeInterruption = false
+
         @unknown default:
             break
         }
@@ -546,8 +587,31 @@ final class PlayerState: NSObject {
             let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
         else { return }
 
-        if reason == .oldDeviceUnavailable {
+        #if DEBUG
+        print("🔌 Audio route changed: \(reason.rawValue)")
+        #endif
+
+        switch reason {
+        case .oldDeviceUnavailable:
+            // Headphones unplugged, Bluetooth disconnected, etc.
             pause()
+
+        case .newDeviceAvailable:
+            // New device connected - could auto-resume if we were interrupted
+            // But generally safer to let user manually resume
+            #if DEBUG
+            print("🎧 New audio device available")
+            #endif
+
+        case .categoryChange:
+            // Audio category changed by another app
+            // Re-assert our audio session
+            Task { @MainActor in
+                try? self.activateAudioSession()
+            }
+
+        default:
+            break
         }
     }
 
