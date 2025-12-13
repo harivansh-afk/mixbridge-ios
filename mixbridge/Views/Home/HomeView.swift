@@ -132,24 +132,23 @@ struct HomeView: View {
     private var homeList: some View {
         List {
             if !trackItems.isEmpty {
-                Section {
-                    ForEach(Array(trackItems.prefix(100).enumerated()), id: \.element.id) { index, item in
-                        TrackRow(
-                            item.track,
-                            number: index + 1,
-                            showCover: true,
-                            soundCloudTrack: item.soundCloudTrack,
-                            listContext: Array(trackItems.prefix(100)),
-                            indexInList: index
-                        )
-                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                    }
-                } header: {
-                    Text("Recents")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(Color.primary)
-                        .textCase(nil)
+                Text("Recents")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(Color.primary)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 8, trailing: 16))
+
+                ForEach(Array(trackItems.prefix(100).enumerated()), id: \.element.id) { index, item in
+                    TrackRow(
+                        item.track,
+                        number: index + 1,
+                        showCover: true,
+                        soundCloudTrack: item.soundCloudTrack,
+                        listContext: Array(trackItems.prefix(100)),
+                        indexInList: index
+                    )
+                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                 }
             }
         }

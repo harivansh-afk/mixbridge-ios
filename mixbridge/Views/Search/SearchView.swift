@@ -18,6 +18,8 @@ struct SearchView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var lastSearchedQuery = ""
     @State private var recentSearchManager = RecentSearchManager.shared
+    @State private var selectedPlaylist: Playlist?
+    @Namespace private var namespace
 
     var body: some View {
         NavigationStack {
@@ -85,41 +87,45 @@ struct SearchView: View {
 
     private var recentSearchesView: some View {
         List {
-            Section {
-                ForEach(recentSearchManager.recentSearches, id: \.self) { query in
-                    Button {
-                        searchText = query
-                        HapticManager.selection()
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "clock.arrow.circlepath")
-                                .foregroundStyle(.secondary)
-
-                            Text(query)
-                                .foregroundStyle(.primary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-                .onDelete { indexSet in
-                    for index in indexSet {
-                        recentSearchManager.removeSearch(recentSearchManager.recentSearches[index])
+            HStack {
+                Text("Recent")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(Color.primary)
+                Spacer()
+                Button("Clear") {
+                    withAnimation {
+                        recentSearchManager.clearAll()
                     }
                     HapticManager.light()
                 }
-            } header: {
-                HStack {
-                    Text("Recent")
+                .font(.caption)
+            }
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 8, trailing: 16))
+
+            ForEach(recentSearchManager.recentSearches, id: \.self) { query in
+                HStack(spacing: 12) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .foregroundStyle(.secondary)
+
+                    Text(query)
+                        .foregroundStyle(.primary)
+
                     Spacer()
-                    Button("Clear") {
-                        withAnimation {
-                            recentSearchManager.clearAll()
-                        }
-                        HapticManager.light()
-                    }
-                    .font(.caption)
-                    .textCase(.none)
                 }
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    searchText = query
+                    HapticManager.selection()
+                }
+            }
+            .onDelete { indexSet in
+                for index in indexSet {
+                    recentSearchManager.removeSearch(recentSearchManager.recentSearches[index])
+                }
+                HapticManager.light()
             }
         }
         .listStyle(.plain)
@@ -130,68 +136,90 @@ struct SearchView: View {
 
         return List {
             if !results.tracks.isEmpty {
-                Section("Tracks") {
-                    ForEach(Array(trackItems.enumerated()), id: \.element.id) { index, item in
-                        TrackRow(
-                            item.track,
-                            number: index + 1,
-                            showCover: true,
-                            soundCloudTrack: item.soundCloudTrack,
-                            listContext: Array(trackItems),
-                            indexInList: index
-                        )
-                    }
+                Text("Tracks")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(Color.primary)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 8, trailing: 16))
+
+                ForEach(Array(trackItems.enumerated()), id: \.element.id) { index, item in
+                    TrackRow(
+                        item.track,
+                        number: index + 1,
+                        showCover: true,
+                        soundCloudTrack: item.soundCloudTrack,
+                        listContext: Array(trackItems),
+                        indexInList: index
+                    )
                 }
             }
 
             if !results.playlists.isEmpty {
-                Section("Playlists") {
-                    ForEach(results.playlists.prefix(5), id: \.id) { scPlaylist in
-                        let playlist = Playlist(
-                            id: String(scPlaylist.id),
-                            name: scPlaylist.title,
-                            creator: scPlaylist.user.username,
-                            artwork: scPlaylist.primaryArtworkUrl,
-                            tracks: [],
-                            lastUpdated: Date()
-                        )
+                Text("Playlists")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(Color.primary)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 8, trailing: 16))
 
-                        NavigationLink {
-                            PlaylistDetailView(playlist: playlist)
-                        } label: {
-                            HStack(spacing: 12) {
-                                if playlist.artwork.starts(with: "http"),
-                                   let url = URL(string: playlist.artwork) {
-                                    CachedAsyncImage(url: url) { image in
-                                        image
-                                            .resizable()
-                                            .scaledToFill()
-                                    } placeholder: {
-                                        Color.clear
-                                    }
-                                    .frame(width: 60, height: 60)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                                }
+                ForEach(results.playlists.prefix(5), id: \.id) { scPlaylist in
+                    let playlist = Playlist(
+                        id: String(scPlaylist.id),
+                        name: scPlaylist.title,
+                        creator: scPlaylist.user.username,
+                        artwork: scPlaylist.primaryArtworkUrl,
+                        tracks: [],
+                        lastUpdated: Date()
+                    )
 
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(playlist.name)
-                                        .font(.body)
-                                        .lineLimit(2)
-
-                                    Text("\(scPlaylist.track_count ?? 0) tracks • \(playlist.creator)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                Spacer()
+                    HStack(spacing: 12) {
+                        if playlist.artwork.starts(with: "http"),
+                           let url = URL(string: playlist.artwork) {
+                            CachedAsyncImage(url: url) { image in
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            } placeholder: {
+                                Color.clear
                             }
+                            .frame(width: 60, height: 60)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        } else {
+                            Color.clear
+                                .frame(width: 60, height: 60)
                         }
-                        .haptic(.selection)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(playlist.name)
+                                .font(.body)
+                                .lineLimit(1)
+
+                            Text(playlist.creator)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .matchedTransitionSource(id: "search-\(playlist.id)", in: namespace)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        HapticManager.selection()
+                        selectedPlaylist = playlist
                     }
                 }
             }
         }
         .listStyle(.plain)
+        .navigationDestination(item: $selectedPlaylist) { playlist in
+            PlaylistDetailView(playlist: playlist)
+                .navigationTransition(.zoom(sourceID: "search-\(playlist.id)", in: namespace))
+        }
     }
 
     private func performSearch(query: String) async {
