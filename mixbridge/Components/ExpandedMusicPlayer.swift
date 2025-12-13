@@ -517,21 +517,27 @@ struct ExpandedPlayerView: View {
                             if queueManager.hasQueue {
                                 Button {
                                     if confirmDeleteQueue {
-                                        // Second click - actually delete
                                         Task {
                                             try? await queueManager.clearQueueWithSync()
                                         }
-                                        confirmDeleteQueue = false
+                                        withAnimation(.smooth(duration: 0.3)) {
+                                            confirmDeleteQueue = false
+                                        }
                                     } else {
-                                        // First click - show confirmation tick
-                                        confirmDeleteQueue = true
+                                        withAnimation(.smooth(duration: 0.3)) {
+                                            confirmDeleteQueue = true
+                                        }
                                     }
                                 } label: {
                                     Image(systemName: confirmDeleteQueue ? "checkmark" : "trash")
                                         .font(.system(size: 16, weight: .semibold))
                                         .foregroundStyle(confirmDeleteQueue ? .white : .red)
+                                        .contentTransition(.symbolEffect(.replace))
+                                        .frame(width: 44, height: 44)
+                                        .background(confirmDeleteQueue ? Color.blue : Color.clear)
+                                        .clipShape(Circle())
                                 }
-                                .buttonStyle(confirmDeleteQueue ? .glassProminent : .glass)
+                                .glassEffect(.regular, in: .circle)
                             }
 
                             Spacer()
