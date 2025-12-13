@@ -145,7 +145,10 @@ final class PlaybackCoordinator: NSObject {
             }
         }
 
-        let context = PlaybackContext(track: track, soundCloudTrack: soundCloudTrack, queueIndex: queueIndex)
+        // Infer queue index if not provided - enables navigation even when played from outside queue
+        let effectiveQueueIndex = queueIndex ?? queueManager.indexOfTrack(withId: track.id)
+
+        let context = PlaybackContext(track: track, soundCloudTrack: soundCloudTrack, queueIndex: effectiveQueueIndex)
         Task {
             await startPlayback(with: context, startTime: startTime)
         }

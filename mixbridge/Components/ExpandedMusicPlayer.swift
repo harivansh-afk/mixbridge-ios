@@ -148,6 +148,9 @@ struct ExpandedMusicPlayer: View {
             if let userId = authManager.currentUserId {
                 Task {
                     try? await queueManager.loadQueue(userId: userId)
+                    // Sync player's queue index after queue loads
+                    // This ensures navigation works even if track was played from outside the queue
+                    playerState.syncQueueIndex()
                 }
             }
             // Prefetch surrounding tracks when player opens

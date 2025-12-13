@@ -66,6 +66,41 @@ final class PlayerState: NSObject {
 
     /// Public getter for the current queue index (-1 if not playing from queue)
     var currentQueueIndex: Int { _currentQueueIndex }
+
+    /// Returns true if there's a next track available in the queue
+    /// This considers the current track's position even if played from outside the queue
+    var canPlayNext: Bool {
+        // First check explicit queue index
+        if _currentQueueIndex >= 0 {
+            return queueManager.canPlayNext(from: _currentQueueIndex)
+        }
+        // Fallback: check if current track is in queue
+        if let position = queueManager.queuePosition(for: currentTrack.id) {
+            return position.hasNext
+        }
+        // Last resort: check if queue has any tracks
+        return queueManager.hasQueue
+    }
+
+    /// Returns true if there's a previous track available in the queue
+    /// This considers the current track's position even if played from outside the queue
+    var canPlayPrevious: Bool {
+        // First check explicit queue index
+        if _currentQueueIndex >= 0 {
+            return queueManager.canPlayPrevious(from: _currentQueueIndex)
+        }
+        // Fallback: check if current track is in queue
+        if let position = queueManager.queuePosition(for: currentTrack.id) {
+            return position.hasPrevious
+        }
+        return false
+    }
+
+    /// Returns true if the current track is in the queue (regardless of entry point)
+    var isCurrentTrackInQueue: Bool {
+        queueManager.isInQueue(currentTrack.id)
+    }
+
     private var nowPlayingArtwork: MPMediaItemArtwork?
     private var artworkTask: Task<Void, Never>?
     private var lastPublishedStatus: PlaybackStatus = .idle
@@ -348,6 +383,27 @@ final class PlayerState: NSObject {
 
     func playPreviousFromQueue() {
         playbackCoordinator.playPrevious()
+    }
+
+    /// Synchronize the queue index with the current track's position in the queue
+    /// Call this after the queue loads to ensure navigation works correctly
+    func syncQueueIndex() {
+        // If we already have a valid index, verify it's still correct
+        if _currentQueueIndex >= 0 && _currentQueueIndex < queueManager.queueTracks.count {
+            // Check if the track at our index still matches
+            let trackAtIndex = queueManager.queueTracks[_currentQueueIndex]
+            if trackAtIndex.id == currentTrack.id {
+                return // Index is still valid
+            }
+        }
+
+        // Try to find current track in queue
+        if let inferredIndex = queueManager.indexOfTrack(withId: currentTrack.id) {
+            _currentQueueIndex = inferredIndex
+            logDebug("Synced queue index to \(inferredIndex) for track: \(currentTrack.title)")
+        } else {
+            _currentQueueIndex = -1
+        }
     }
 
     // MARK: - Setup
@@ -701,13 +757,26 @@ extension PlayerState: PlaybackCoordinatorDelegate {
                 refreshArtwork(for: track)
                 needsNowPlayingUpdate = true
             }
+            // Always try to sync queue index when track changes
             if let index = snapshot.queueIndex {
                 _currentQueueIndex = index
             } else if trackChanged {
-                _currentQueueIndex = -1
+                // Try to infer queue index from queue manager
+                // This ensures navigation works even when track was played from outside the queue
+                if let inferredIndex = queueManager.indexOfTrack(withId: track.id) {
+                    _currentQueueIndex = inferredIndex
+                    logDebug("Inferred queue index \(inferredIndex) for track: \(track.title)")
+                } else {
+                    _currentQueueIndex = -1
+                }
             }
         } else if snapshot.queueIndex == nil {
-            _currentQueueIndex = -1
+            // No track in snapshot - try to infer from current track
+            if let inferredIndex = queueManager.indexOfTrack(withId: currentTrack.id) {
+                _currentQueueIndex = inferredIndex
+            } else {
+                _currentQueueIndex = -1
+            }
         }
 
         // Playing state changes

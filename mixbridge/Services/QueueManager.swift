@@ -274,4 +274,27 @@ class QueueManager {
         guard queueTracks.indices.contains(previousIndex) else { return nil }
         return (queueTracks[previousIndex], previousIndex)
     }
+
+    /// Check if track is in queue and return its position info
+    /// Used to sync player state with queue when playing from external sources
+    func queuePosition(for trackId: String) -> (index: Int, hasNext: Bool, hasPrevious: Bool)? {
+        guard let index = queueTracks.firstIndex(where: { $0.id == trackId }) else {
+            return nil
+        }
+        return (
+            index: index,
+            hasNext: index < queueTracks.count - 1,
+            hasPrevious: index > 0
+        )
+    }
+
+    /// Returns true if the track at the given index can navigate forward
+    func canPlayNext(from index: Int) -> Bool {
+        return queueTracks.indices.contains(index + 1)
+    }
+
+    /// Returns true if the track at the given index can navigate backward
+    func canPlayPrevious(from index: Int) -> Bool {
+        return queueTracks.indices.contains(index - 1)
+    }
 }
