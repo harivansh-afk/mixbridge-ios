@@ -178,7 +178,7 @@ struct PlaylistDetailView: View {
                     Text("Unable to load tracks")
                         .foregroundStyle(.secondary)
                     Button("Try Again") {
-                        Task { await loadPlaylistTracks() }
+                        Task { await loadPlaylistTracks(forceRefresh: true) }
                     }
                     .buttonStyle(.bordered)
                 }
@@ -212,8 +212,8 @@ struct PlaylistDetailView: View {
         guard let userId = authManager.currentUserId else { return }
 
         if forceRefresh {
-            // Force refresh from network
-            await AppDataPreloader.shared.preloadPlaylistTracks(userId: userId, playlistId: playlist.id)
+            // Force refresh from network - bypasses cache check
+            await AppDataPreloader.shared.preloadPlaylistTracks(userId: userId, playlistId: playlist.id, forceRefresh: true)
         } else {
             // Just ensure it's loaded
             await AppDataPreloader.shared.refreshIfStale(userId: userId, dataType: .playlistTracks(playlistId: playlist.id))

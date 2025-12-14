@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import UIKit
 
 /// Coordinates all data preloading across the app
 /// Fetches in priority tiers: Critical -> Secondary -> Speculative
@@ -90,23 +89,25 @@ actor AppDataPreloader {
     }
 
     /// Preload a specific playlist's tracks (call when user shows intent)
-    func preloadPlaylistTracks(userId: String, playlistId: String) async {
-        // Skip if already loaded and fresh
-        let shouldSkip = await MainActor.run {
-            store.playlistTracksState[playlistId]?.isLoaded == true &&
-            !store.isPlaylistTracksStale(playlistId)
+    /// - Parameter forceRefresh: If true, bypasses cache and fetches fresh data
+    func preloadPlaylistTracks(userId: String, playlistId: String, forceRefresh: Bool = false) async {
+        // Skip if already loaded and fresh (unless force refresh requested)
+        if !forceRefresh {
+            let shouldSkip = await MainActor.run {
+                store.playlistTracksState[playlistId]?.isLoaded == true &&
+                !store.isPlaylistTracksStale(playlistId)
+            }
+            guard !shouldSkip else { return }
         }
-
-        guard !shouldSkip else { return }
 
         await loadPlaylistTracks(userId: userId, playlistId: playlistId)
     }
 
     /// Reset preloader state (call on logout)
-    func reset() {
+    func reset() async {
         isPreloading = false
         criticalDataReady = false
-        Task { @MainActor in
+        await MainActor.run {
             store.clearAll()
         }
     }

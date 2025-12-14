@@ -35,6 +35,7 @@ enum PreloadState: Equatable {
 
 /// Centralized store for all preloaded data
 /// Views read from this store for instant display
+@MainActor
 @Observable
 final class PreloadedDataStore {
     static let shared = PreloadedDataStore()
