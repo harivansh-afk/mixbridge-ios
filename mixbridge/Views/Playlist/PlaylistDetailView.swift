@@ -12,14 +12,31 @@ struct PlaylistDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
     @Environment(QueueManager.self) private var queueManager
+    @Environment(PreloadedDataStore.self) private var dataStore
 
-    @State private var trackItems: [TrackItem] = []
-    @State private var isLoading = false
-    @State private var hasLoaded = false
-    @State private var error: Error?
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
     private let artworkSize: CGFloat = 300
+
+    // Computed properties from dataStore
+    private var trackItems: [TrackItem] {
+        dataStore.playlistTracks[playlist.id] ?? []
+    }
+
+    private var isLoading: Bool {
+        dataStore.playlistTracksState[playlist.id] == .loading
+    }
+
+    private var loadError: Error? {
+        if case .failed(let error) = dataStore.playlistTracksState[playlist.id] {
+            return error
+        }
+        return nil
+    }
+
+    private var hasLoaded: Bool {
+        dataStore.playlistTracksState[playlist.id]?.isLoaded ?? false
+    }
 
     var body: some View {
         List {
@@ -148,7 +165,7 @@ struct PlaylistDetailView: View {
 
     private var tracksSection: some View {
         Section {
-            if isLoading && !hasLoaded {
+            if isLoading && trackItems.isEmpty {
                 HStack {
                     Spacer()
                     ProgressView()
@@ -156,7 +173,7 @@ struct PlaylistDetailView: View {
                 }
                 .padding()
                 .listRowSeparator(.hidden)
-            } else if let error {
+            } else if let error = loadError, trackItems.isEmpty {
                 VStack(spacing: 12) {
                     Text("Unable to load tracks")
                         .foregroundStyle(.secondary)
@@ -193,26 +210,14 @@ struct PlaylistDetailView: View {
 
     private func loadPlaylistTracks(forceRefresh: Bool = false) async {
         guard let userId = authManager.currentUserId else { return }
-        guard !isLoading else { return }
 
-        isLoading = true
-        error = nil
-
-        do {
-            let tracks = try await BackgroundExecutor.run {
-                try await ConvexService.shared.getPlaylistTracks(
-                    userId: userId,
-                    playlistId: playlist.id,
-                    forceRefresh: forceRefresh
-                )
-            }
-            self.trackItems = tracks.toTrackItems()
-        } catch {
-            self.error = error
+        if forceRefresh {
+            // Force refresh from network
+            await AppDataPreloader.shared.preloadPlaylistTracks(userId: userId, playlistId: playlist.id)
+        } else {
+            // Just ensure it's loaded
+            await AppDataPreloader.shared.refreshIfStale(userId: userId, dataType: .playlistTracks(playlistId: playlist.id))
         }
-
-        hasLoaded = true
-        isLoading = false
     }
 }
 
@@ -224,6 +229,9 @@ struct PlaylistDetailView: View {
             artwork: ""
         ))
     }
+    .environment(AuthManager.shared)
+    .environment(QueueManager.shared)
+    .environment(PreloadedDataStore.shared)
     .preferredColorScheme(.light)
 }
 
@@ -235,5 +243,8 @@ struct PlaylistDetailView: View {
             artwork: ""
         ))
     }
+    .environment(AuthManager.shared)
+    .environment(QueueManager.shared)
+    .environment(PreloadedDataStore.shared)
     .preferredColorScheme(.dark)
 }

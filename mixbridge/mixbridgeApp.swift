@@ -15,6 +15,7 @@ struct mixbridgeApp: App {
     @State private var authManager = AuthManager.shared
     @State private var profileManager = UserProfileManager.shared
     @State private var queueManager = QueueManager.shared
+    @State private var dataStore = PreloadedDataStore.shared
 
     // Splash state management
     @State private var finishedSplash: Bool = false
@@ -44,11 +45,32 @@ struct mixbridgeApp: App {
             .environment(authManager)
             .environment(profileManager)
             .environment(queueManager)
+            .environment(dataStore)
             .onAppear {
-                // Simulate app initialization (adjust timing as needed)
+                // Start preloading in background with high priority (non-blocking)
+                if let userId = authManager.currentUserId {
+                    Task(priority: .userInitiated) {
+                        await AppDataPreloader.shared.startPreloading(userId: userId)
+                    }
+                }
+
+                // Splash timing is independent of data loading
                 Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(500))
                     isAppInitialized = true
+                }
+            }
+            .onChange(of: authManager.isAuthenticated) { wasAuthenticated, isAuthenticated in
+                if isAuthenticated, let userId = authManager.currentUserId {
+                    // User logged in - start preloading with high priority
+                    Task(priority: .userInitiated) {
+                        await AppDataPreloader.shared.startPreloading(userId: userId)
+                    }
+                } else if !isAuthenticated {
+                    // User logged out - clear preloaded data
+                    Task {
+                        await AppDataPreloader.shared.reset()
+                    }
                 }
             }
         }

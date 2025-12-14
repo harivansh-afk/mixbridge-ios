@@ -11,10 +11,8 @@ struct LibraryView: View {
     @State private var showingAccount = false
     @Environment(UserProfileManager.self) private var profileManager
     @Environment(AuthManager.self) private var authManager
-    @State private var playlists: [Playlist] = []
-    @State private var isLoading = true
+    @Environment(PreloadedDataStore.self) private var dataStore
     @State private var isRefreshing = false
-    @State private var hasLoaded = false
     @Namespace private var namespace
 
     var body: some View {
@@ -23,7 +21,7 @@ struct LibraryView: View {
                 await loadPlaylists(forceRefresh: true)
             } content: {
                 VStack(alignment: .leading, spacing: 24) {
-                    if isLoading && !isRefreshing {
+                    if dataStore.playlistsState == .loading && dataStore.playlists.isEmpty && !isRefreshing {
                         VStack {
                             Spacer()
                             ProgressView()
@@ -31,11 +29,11 @@ struct LibraryView: View {
                         }
                         .frame(maxHeight: .infinity)
                     } else {
-                        if !playlists.isEmpty {
+                        if !dataStore.playlists.isEmpty {
                             playlistGridSection
                         }
                         navigationSection
-                        if !playlists.isEmpty && playlists.count > 6 {
+                        if dataStore.playlists.count > 6 {
                             recentlyAddedGridSection
                         }
                     }
@@ -49,11 +47,10 @@ struct LibraryView: View {
                 }
             }
             .task {
-                guard !hasLoaded else { return }
                 if let userId = authManager.currentUserId {
                     await profileManager.loadProfile(userId: userId)
                 }
-                await loadPlaylists()
+                // Data already loaded by AppDataPreloader
             }
             .sheet(isPresented: $showingAccount) {
                 AccountBottomSheet(
@@ -100,44 +97,21 @@ struct LibraryView: View {
     }
 
     private func loadPlaylists(forceRefresh: Bool = false) async {
-        guard let userId = authManager.currentUserId else {
-            isLoading = false
-            return
+        guard let userId = authManager.currentUserId else { return }
+
+        if forceRefresh {
+            isRefreshing = true
         }
 
-        // Only show loading spinner on first load, not when returning to view
-        if !hasLoaded {
-            isLoading = true
-        }
+        await AppDataPreloader.shared.refreshIfStale(userId: userId, dataType: .playlists)
 
-        do {
-            let scPlaylists = try await ConvexService.shared.getPlaylists(userId: userId, forceRefresh: forceRefresh)
-            self.playlists = convertToPlaylists(scPlaylists)
-            hasLoaded = true
-        } catch {
-            // Handle error silently
-        }
-
-        isLoading = false
+        isRefreshing = false
     }
 
     private var recentlyAddedPlaylists: [Playlist] {
-        let remaining = Array(playlists.dropFirst(6))
+        let remaining = Array(dataStore.playlists.dropFirst(6))
         let evenCount = remaining.count - (remaining.count % 2)
         return Array(remaining.prefix(evenCount))
-    }
-
-    private func convertToPlaylists(_ soundcloudPlaylists: [SoundCloudPlaylist]) -> [Playlist] {
-        return soundcloudPlaylists.map { soundcloudPlaylist in
-            return Playlist(
-                id: String(soundcloudPlaylist.id),
-                name: soundcloudPlaylist.title,
-                creator: soundcloudPlaylist.user.username,
-                artwork: soundcloudPlaylist.primaryArtworkUrl,
-                tracks: [],
-                lastUpdated: Date()
-            )
-        }
     }
 
     private var playlistGridSection: some View {
@@ -150,7 +124,7 @@ struct LibraryView: View {
                 ],
                 spacing: 20
             ) {
-                ForEach(Array(playlists.prefix(6).enumerated()), id: \.element.id) { index, playlist in
+                ForEach(Array(dataStore.playlists.prefix(6).enumerated()), id: \.element.id) { index, playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
                             .navigationTransition(.zoom(sourceID: "top-\(playlist.id)", in: namespace))
@@ -195,6 +169,14 @@ struct LibraryView: View {
                     }
                     .buttonStyle(.plain)
                     .haptic(.selection)
+                    .onAppear {
+                        // Preload when card becomes visible
+                        if let userId = authManager.currentUserId {
+                            Task(priority: .background) {
+                                await AppDataPreloader.shared.preloadPlaylistTracks(userId: userId, playlistId: playlist.id)
+                            }
+                        }
+                    }
                 }
             }
             .padding(.horizontal)
@@ -335,6 +317,14 @@ struct LibraryView: View {
                     }
                     .buttonStyle(.plain)
                     .haptic(.selection)
+                    .onAppear {
+                        // Preload when card becomes visible
+                        if let userId = authManager.currentUserId {
+                            Task(priority: .background) {
+                                await AppDataPreloader.shared.preloadPlaylistTracks(userId: userId, playlistId: playlist.id)
+                            }
+                        }
+                    }
                 }
             }
             .padding(.horizontal)
@@ -344,10 +334,16 @@ struct LibraryView: View {
 
 #Preview("Light Mode") {
     LibraryView()
+        .environment(AuthManager.shared)
+        .environment(UserProfileManager.shared)
+        .environment(PreloadedDataStore.shared)
         .preferredColorScheme(.light)
 }
 
 #Preview("Dark Mode") {
     LibraryView()
+        .environment(AuthManager.shared)
+        .environment(UserProfileManager.shared)
+        .environment(PreloadedDataStore.shared)
         .preferredColorScheme(.dark)
 }

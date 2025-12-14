@@ -819,10 +819,6 @@ extension PlayerState: PlaybackCoordinatorDelegate {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         }
 
-        if playbackStatus == .playing && lastPublishedStatus == .loading {
-            HapticManager.success()
-        }
-
         lastPublishedStatus = playbackStatus
     }
 

@@ -145,6 +145,7 @@ struct NativeTabView: View {
         .environment(AuthManager.shared)
         .environment(UserProfileManager.shared)
         .environment(QueueManager.shared)
+        .environment(PreloadedDataStore.shared)
         .preferredColorScheme(.light)
 }
 
@@ -153,5 +154,6 @@ struct NativeTabView: View {
         .environment(AuthManager.shared)
         .environment(UserProfileManager.shared)
         .environment(QueueManager.shared)
+        .environment(PreloadedDataStore.shared)
         .preferredColorScheme(.dark)
 }

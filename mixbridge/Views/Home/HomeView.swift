@@ -12,12 +12,9 @@ struct HomeView: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(UserProfileManager.self) private var profileManager
     @Environment(QueueManager.self) private var queueManager
+    @Environment(PreloadedDataStore.self) private var dataStore
 
-    @State private var trackItems: [TrackItem] = []
-    @State private var isLoading = false
     @State private var isRefreshing = false
-    @State private var hasLoaded = false
-    @State private var error: Error?
 
     var body: some View {
         NavigationStack {
@@ -47,24 +44,18 @@ struct HomeView: View {
                 if let userId = authManager.currentUserId {
                     await profileManager.loadProfile(userId: userId)
                 }
-            }
-            .onAppear {
-                if !hasLoaded {
-                    Task {
-                        await loadHomeData()
-                    }
-                }
+                // Data already loaded by AppDataPreloader
             }
         }
     }
 
     @ViewBuilder
     private var content: some View {
-        if isLoading && !hasLoaded && !isRefreshing {
+        if dataStore.playHistoryState == .loading && dataStore.playHistory.isEmpty {
             skeletonLoadingView
-        } else if let error {
+        } else if case .failed(let error) = dataStore.playHistoryState, dataStore.playHistory.isEmpty {
             errorView(error)
-        } else if queueManager.queueTracks.isEmpty && trackItems.isEmpty && hasLoaded {
+        } else if queueManager.queueTracks.isEmpty && dataStore.playHistory.isEmpty {
             emptyState
         } else {
             homeList
@@ -134,7 +125,7 @@ struct HomeView: View {
 
     private var homeList: some View {
         List {
-            if !trackItems.isEmpty {
+            if !dataStore.playHistory.isEmpty {
                 Text("Recents")
                     .font(.title2)
                     .fontWeight(.bold)
@@ -142,13 +133,13 @@ struct HomeView: View {
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 8, trailing: 16))
 
-                ForEach(Array(trackItems.prefix(100).enumerated()), id: \.element.id) { index, item in
+                ForEach(Array(dataStore.playHistory.prefix(100).enumerated()), id: \.element.id) { index, item in
                     TrackRow(
                         item.track,
                         number: index + 1,
                         showCover: true,
                         soundCloudTrack: item.soundCloudTrack,
-                        listContext: Array(trackItems.prefix(100)),
+                        listContext: Array(dataStore.playHistory.prefix(100)),
                         indexInList: index
                     )
                     .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
@@ -160,46 +151,15 @@ struct HomeView: View {
 
     private func loadHomeData(forceRefresh: Bool = false) async {
         guard let userId = authManager.currentUserId else { return }
-        if isLoading { return }
 
-        isLoading = true
-        error = nil
-
-        // Load play history with position tracking
-        do {
-            let history = try await BackgroundExecutor.run {
-                try await ConvexService.shared.getPlayHistory(userId: userId, limit: 50)
-            }
-
-            var items: [TrackItem] = []
-            var seen: [String: Int] = [:]  // Track key -> index in items
-
-            for playItem in history {
-                let key = "\(playItem.trackData.title.lowercased())|\(playItem.trackData.user.username.lowercased())"
-
-                if let existingIndex = seen[key] {
-                    // Track already exists - increment play count
-                    items[existingIndex].playCount += 1
-                } else {
-                    // New track - add with position info (use defaults for old entries)
-                    let item = TrackItem(
-                        soundCloudTrack: playItem.trackData,
-                        playCount: 1,
-                        lastPlayedPosition: playItem.playbackPosition ?? 0,
-                        listenedPercentage: playItem.listenedPercentage ?? 0
-                    )
-                    seen[key] = items.count
-                    items.append(item)
-                }
-            }
-
-            self.trackItems = items
-        } catch {
-            self.error = error
+        if forceRefresh {
+            isRefreshing = true
         }
 
-        hasLoaded = true
-        isLoading = false
+        // Background refresh - data already shown from dataStore
+        await AppDataPreloader.shared.refreshIfStale(userId: userId, dataType: .playHistory)
+
+        isRefreshing = false
     }
 }
 
@@ -208,6 +168,7 @@ struct HomeView: View {
         .environment(AuthManager.shared)
         .environment(UserProfileManager.shared)
         .environment(QueueManager.shared)
+        .environment(PreloadedDataStore.shared)
         .preferredColorScheme(.light)
 }
 
@@ -216,5 +177,6 @@ struct HomeView: View {
         .environment(AuthManager.shared)
         .environment(UserProfileManager.shared)
         .environment(QueueManager.shared)
+        .environment(PreloadedDataStore.shared)
         .preferredColorScheme(.dark)
 }

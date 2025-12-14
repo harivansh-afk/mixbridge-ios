@@ -3,20 +3,17 @@ import SwiftUI
 struct AllSongsView: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(QueueManager.self) private var queueManager
+    @Environment(PreloadedDataStore.self) private var dataStore
 
-    @State private var trackItems: [TrackItem] = []
-    @State private var isLoading = false
-    @State private var hasLoaded = false
-    @State private var error: Error?
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
     var body: some View {
         Group {
-            if isLoading && !hasLoaded {
+            if dataStore.likedTracksState == .loading && dataStore.likedTracks.isEmpty {
                 ProgressView()
-            } else if let error {
+            } else if case .failed(let error) = dataStore.likedTracksState, dataStore.likedTracks.isEmpty {
                 errorView(error)
-            } else if trackItems.isEmpty {
+            } else if dataStore.likedTracks.isEmpty {
                 ContentUnavailableView(
                     "No Songs",
                     systemImage: "music.note",
@@ -25,13 +22,13 @@ struct AllSongsView: View {
             } else {
                 List {
                     Section {
-                        ForEach(Array(trackItems.enumerated()), id: \.element.id) { index, item in
+                        ForEach(Array(dataStore.likedTracks.enumerated()), id: \.element.id) { index, item in
                             TrackRow(
                                 item.track,
                                 number: index + 1,
                                 showCover: true,
                                 soundCloudTrack: item.soundCloudTrack,
-                                listContext: trackItems,
+                                listContext: dataStore.likedTracks,
                                 indexInList: index
                             )
                         }
@@ -46,11 +43,6 @@ struct AllSongsView: View {
             try? await Task.sleep(for: .seconds(1))
             allowDismissalGesture = .all
         }
-        .onAppear {
-            if !hasLoaded {
-                Task { await loadSongs() }
-            }
-        }
         .refreshable {
             await loadSongs(forceRefresh: true)
         }
@@ -63,7 +55,7 @@ struct AllSongsView: View {
             Text(error.localizedDescription)
         } actions: {
             Button("Try Again") {
-                Task { await loadSongs() }
+                Task { await loadSongs(forceRefresh: true) }
             }
             .buttonStyle(.bordered)
         }
@@ -71,22 +63,7 @@ struct AllSongsView: View {
 
     private func loadSongs(forceRefresh: Bool = false) async {
         guard let userId = authManager.currentUserId else { return }
-        guard !isLoading else { return }
-
-        isLoading = true
-        error = nil
-
-        do {
-            let tracks = try await BackgroundExecutor.run {
-                try await ConvexService.shared.getLikedTracks(userId: userId, forceRefresh: forceRefresh)
-            }
-            self.trackItems = tracks.toTrackItems()
-        } catch {
-            self.error = error
-        }
-
-        hasLoaded = true
-        isLoading = false
+        await AppDataPreloader.shared.refreshIfStale(userId: userId, dataType: .likedTracks)
     }
 }
 
@@ -95,5 +72,6 @@ struct AllSongsView: View {
         AllSongsView()
             .environment(AuthManager.shared)
             .environment(QueueManager.shared)
+            .environment(PreloadedDataStore.shared)
     }
 }

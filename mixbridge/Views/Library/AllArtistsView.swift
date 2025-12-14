@@ -2,19 +2,38 @@ import SwiftUI
 
 struct AllArtistsView: View {
     @Environment(AuthManager.self) private var authManager
-    @State private var artists: [ArtistInfo] = []
-    @State private var isLoading = false
-    @State private var hasLoaded = false
-    @State private var error: Error?
+    @Environment(PreloadedDataStore.self) private var dataStore
+
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
     @State private var selectedArtist: ArtistInfo?
     @Namespace private var namespace
 
+    // Computed artists from dataStore
+    private var artists: [ArtistInfo] {
+        // Convert dataStore.artists (which is [String: [TrackItem]]) to [ArtistInfo]
+        var artistsDict: [String: ArtistInfo] = [:]
+
+        for (artistName, items) in dataStore.artists {
+            guard let firstItem = items.first else { continue }
+            let avatarUrl = firstItem.soundCloudTrack.user.avatar_url?.upgradeArtworkQuality()
+            var artistInfo = ArtistInfo(
+                id: String(firstItem.soundCloudTrack.user.id),
+                name: artistName,
+                avatarUrl: avatarUrl,
+                trackCount: items.count
+            )
+            artistInfo.trackItems = items
+            artistsDict[artistName] = artistInfo
+        }
+
+        return artistsDict.values.sorted { $0.trackCount > $1.trackCount }
+    }
+
     var body: some View {
         Group {
-            if isLoading && !hasLoaded {
+            if dataStore.likedTracksState == .loading && dataStore.likedTracks.isEmpty {
                 ProgressView()
-            } else if let error {
+            } else if case .failed(let error) = dataStore.likedTracksState, dataStore.likedTracks.isEmpty {
                 errorView(error)
             } else if artists.isEmpty {
                 ContentUnavailableView(
@@ -74,11 +93,6 @@ struct AllArtistsView: View {
             try? await Task.sleep(for: .seconds(1))
             allowDismissalGesture = .all
         }
-        .onAppear {
-            if !hasLoaded {
-                Task { await loadArtists() }
-            }
-        }
         .refreshable {
             await loadArtists(forceRefresh: true)
         }
@@ -91,7 +105,7 @@ struct AllArtistsView: View {
             Text(error.localizedDescription)
         } actions: {
             Button("Try Again") {
-                Task { await loadArtists() }
+                Task { await loadArtists(forceRefresh: true) }
             }
             .buttonStyle(.bordered)
         }
@@ -99,46 +113,7 @@ struct AllArtistsView: View {
 
     private func loadArtists(forceRefresh: Bool = false) async {
         guard let userId = authManager.currentUserId else { return }
-        guard !isLoading else { return }
-
-        isLoading = true
-        error = nil
-
-        do {
-            let tracks = try await BackgroundExecutor.run {
-                try await ConvexService.shared.getLikedTracks(userId: userId, forceRefresh: forceRefresh)
-            }
-
-            // Group tracks by artist
-            var artistsDict: [Int: ArtistInfo] = [:]
-
-            for scTrack in tracks {
-                let artistId = scTrack.user.id
-
-                if var existing = artistsDict[artistId] {
-                    existing.trackCount += 1
-                    existing.trackItems.append(TrackItem(soundCloudTrack: scTrack))
-                    artistsDict[artistId] = existing
-                } else {
-                    let avatarUrl = scTrack.user.avatar_url?.upgradeArtworkQuality()
-                    var newArtist = ArtistInfo(
-                        id: String(artistId),
-                        name: scTrack.user.username,
-                        avatarUrl: avatarUrl,
-                        trackCount: 1
-                    )
-                    newArtist.trackItems = [TrackItem(soundCloudTrack: scTrack)]
-                    artistsDict[artistId] = newArtist
-                }
-            }
-
-            self.artists = artistsDict.values.sorted { $0.trackCount > $1.trackCount }
-        } catch {
-            self.error = error
-        }
-
-        hasLoaded = true
-        isLoading = false
+        await AppDataPreloader.shared.refreshIfStale(userId: userId, dataType: .likedTracks)
     }
 }
 
@@ -162,5 +137,6 @@ struct ArtistInfo: Identifiable, Hashable {
     NavigationStack {
         AllArtistsView()
             .environment(AuthManager.shared)
+            .environment(PreloadedDataStore.shared)
     }
 }
