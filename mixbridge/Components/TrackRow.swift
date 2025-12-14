@@ -73,6 +73,7 @@ struct TrackRow: View {
         .listRowBackground(Color.clear)
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isCurrentTrack)
         .contentShape(Rectangle())
+        .prefetchStream(for: track.id)
         .onTapGesture {
             handlePlayTapped()
         }

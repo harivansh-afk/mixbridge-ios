@@ -126,3 +126,14 @@ struct QueueWithTracksResponse: Codable {
     let continueCursor: String?
     let isDone: Bool?
 }
+
+// MARK: - Stream Response
+
+/// Response from Convex stream action with OAuth token for direct CDN access
+struct ConvexStreamResponse: Codable {
+    let stream_url: String
+    let stream_type: String
+    let quality: String
+    let access_token: String
+    let track_id: String
+}

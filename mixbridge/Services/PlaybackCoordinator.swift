@@ -242,16 +242,9 @@ final class PlaybackCoordinator: NSObject {
 
             observePlaybackReadiness(for: item)
 
-            // Wait for item to be ready
-            if item.status != .readyToPlay {
-                let timeoutDate = Date().addingTimeInterval(5)
-                while item.status == .unknown && Date() < timeoutDate {
-                    try? await Task.sleep(nanoseconds: 50_000_000)
-                }
-
-                if item.status == .failed {
-                    throw item.error ?? PlayerState.PlaybackError.invalidStreamURL
-                }
+            // Check for immediate failure (bad URL, etc.)
+            if item.status == .failed {
+                throw item.error ?? PlayerState.PlaybackError.invalidStreamURL
             }
 
             // Seek if needed
@@ -293,18 +286,20 @@ final class PlaybackCoordinator: NSObject {
     }
 
     private func prepareItem(for context: PlaybackContext) async throws -> AVPlayerItem {
-        let response = try await backendAPI.getStreamURL(trackId: context.track.id)
+        // Use Convex action for direct CDN access (faster than Next.js API)
+        let response = try await convexService.getDirectStreamURL(trackId: context.track.id)
 
         guard let url = URL(string: response.stream_url) else {
             throw PlayerState.PlaybackError.invalidStreamURL
         }
 
-        var options: [String: Any] = [:]
-        if let token = keychain.getAccessToken() {
-            options["AVURLAssetHTTPHeaderFieldsKey"] = ["Authorization": "Bearer \(token)"]
-        }
+        // Use SoundCloud OAuth token directly for CDN access
+        // This bypasses the HLS proxy, saving ~200-400ms
+        let headers = ["Authorization": "OAuth \(response.access_token)"]
+        let asset = AVURLAsset(url: url, options: [
+            "AVURLAssetHTTPHeaderFieldsKey": headers
+        ])
 
-        let asset = AVURLAsset(url: url, options: options)
         let item = AVPlayerItem(asset: asset)
 
         // Buffer 10 seconds ahead - prevents micro-stalls from network hiccups

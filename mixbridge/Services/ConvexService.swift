@@ -472,6 +472,21 @@ final class ConvexService {
             args: ["userId": userId]
         )
     }
+
+    // MARK: - Stream URL (Direct CDN Access)
+
+    /// Get stream URL with OAuth token for direct SoundCloud CDN access
+    /// This bypasses the HLS proxy, reducing latency by ~200-400ms
+    func getDirectStreamURL(trackId: String) async throws -> ConvexStreamResponse {
+        guard let userId = AuthManager.shared.currentUserId else {
+            throw ConvexError.notAuthenticated
+        }
+
+        return try await action("actions/stream:getStreamUrl", args: [
+            "userId": userId,
+            "trackId": trackId
+        ])
+    }
 }
 
 // MARK: - Response Types
@@ -518,6 +533,7 @@ enum ConvexError: LocalizedError {
     case noData
     case alreadyInQueue
     case unauthorized
+    case notAuthenticated
     case notFound
 
     var errorDescription: String? {
@@ -536,6 +552,8 @@ enum ConvexError: LocalizedError {
             return "Track is already in your queue"
         case .unauthorized:
             return "Please sign in to continue"
+        case .notAuthenticated:
+            return "Please sign in to play music"
         case .notFound:
             return "Item not found"
         }

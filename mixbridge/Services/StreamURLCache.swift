@@ -12,6 +12,7 @@ import Foundation
 private struct CachedStream {
     let url: String
     let streamType: String
+    let accessToken: String  // OAuth token for direct CDN access
     let cachedAt: Date
     let expiresAt: Date
 
@@ -25,13 +26,20 @@ private struct CachedStream {
     }
 }
 
+/// Cached stream data including OAuth token for direct CDN access
+struct CachedStreamData {
+    let url: String
+    let streamType: String
+    let accessToken: String
+}
+
 /// High-performance stream URL cache with aggressive prefetching
 /// Eliminates 500-1000ms network latency by prefetching stream URLs before user interaction
 @MainActor
 final class StreamURLCache {
     static let shared = StreamURLCache()
 
-    private let backendAPI = BackendAPI.shared
+    private let convexService = ConvexService.shared
     private let keychain = KeychainManager.shared
 
     /// Track ID -> Cached stream mapping
@@ -43,8 +51,8 @@ final class StreamURLCache {
     /// Background queue for prefetch operations
     private let prefetchQueue = DispatchQueue(label: "com.mixbridge.stream-prefetch", qos: .utility)
 
-    /// Default expiry time for cached URLs (assume 1 hour)
-    private let defaultExpiryInterval: TimeInterval = 3600
+    /// 4 hours - SoundCloud HLS URLs remain valid for extended periods
+    private let defaultExpiryInterval: TimeInterval = 14400
 
     private init() {
         #if DEBUG
@@ -54,7 +62,31 @@ final class StreamURLCache {
 
     // MARK: - Public API
 
-    /// Get cached stream URL if available and not expired
+    /// Get cached stream data if available and not expired
+    func getCachedStream(for trackId: String) -> CachedStreamData? {
+        guard let cached = cache[trackId] else {
+            return nil
+        }
+
+        if cached.isExpired {
+            cache.removeValue(forKey: trackId)
+            return nil
+        }
+
+        if cached.isExpiringSoon {
+            Task {
+                await prefetchStreamURL(for: trackId)
+            }
+        }
+
+        return CachedStreamData(
+            url: cached.url,
+            streamType: cached.streamType,
+            accessToken: cached.accessToken
+        )
+    }
+
+    /// Get cached stream URL if available and not expired (legacy compatibility)
     /// Returns nil if not cached or expired
     func getCachedStreamURL(for trackId: String) -> StreamResponse? {
         guard let cached = cache[trackId] else {
@@ -91,30 +123,24 @@ final class StreamURLCache {
         )
     }
 
-    /// Prefetch stream URL for a single track
-    /// Non-blocking, runs in background
+    /// Prefetch stream URL for a track (fire and forget)
+    /// Uses Convex action for direct CDN URLs
     func prefetchStreamURL(for trackId: String) async {
-        // Skip if already prefetching or cached and valid
-        if prefetchingTracks.contains(trackId) {
-            return
-        }
-
-        if let cached = cache[trackId], !cached.isExpired && !cached.isExpiringSoon {
+        // Skip if already cached or in-flight
+        guard cache[trackId] == nil && !prefetchingTracks.contains(trackId) else {
             return
         }
 
         prefetchingTracks.insert(trackId)
-
-        #if DEBUG
-        print("⬇️ Prefetching stream URL for track: \(trackId)")
-        #endif
+        defer { prefetchingTracks.remove(trackId) }
 
         do {
-            let response = try await backendAPI.getStreamURL(trackId: trackId)
+            let response = try await convexService.getDirectStreamURL(trackId: trackId)
 
             let cached = CachedStream(
                 url: response.stream_url,
                 streamType: response.stream_type,
+                accessToken: response.access_token,
                 cachedAt: Date(),
                 expiresAt: Date().addingTimeInterval(defaultExpiryInterval)
             )
@@ -126,12 +152,9 @@ final class StreamURLCache {
             #endif
         } catch {
             #if DEBUG
-            print("❌ Failed to prefetch stream URL for track \(trackId): \(error)")
+            print("❌ Prefetch failed for track \(trackId): \(error)")
             #endif
-            // Silent failure - will retry on actual play
         }
-
-        prefetchingTracks.remove(trackId)
     }
 
     /// Aggressively prefetch stream URLs for multiple tracks
@@ -203,7 +226,7 @@ final class StreamURLCache {
     /// Force refresh stream URL for a track (bypasses cache)
     /// Use when stream fails during playback and needs fresh URL
     @discardableResult
-    func forceRefresh(for trackId: String) async -> StreamResponse? {
+    func forceRefresh(for trackId: String) async -> CachedStreamData? {
         // Remove from cache first
         cache.removeValue(forKey: trackId)
         prefetchingTracks.remove(trackId)
@@ -213,11 +236,12 @@ final class StreamURLCache {
         #endif
 
         do {
-            let response = try await backendAPI.getStreamURL(trackId: trackId)
+            let response = try await convexService.getDirectStreamURL(trackId: trackId)
 
             let cached = CachedStream(
                 url: response.stream_url,
                 streamType: response.stream_type,
+                accessToken: response.access_token,
                 cachedAt: Date(),
                 expiresAt: Date().addingTimeInterval(defaultExpiryInterval)
             )
@@ -228,7 +252,11 @@ final class StreamURLCache {
             print("✅ Force refresh successful for track: \(trackId)")
             #endif
 
-            return response
+            return CachedStreamData(
+                url: response.stream_url,
+                streamType: response.stream_type,
+                accessToken: response.access_token
+            )
         } catch {
             #if DEBUG
             print("❌ Force refresh failed for track \(trackId): \(error)")
