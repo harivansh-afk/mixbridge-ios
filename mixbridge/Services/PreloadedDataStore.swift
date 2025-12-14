@@ -100,6 +100,18 @@ final class PreloadedDataStore {
         self.lastPlayHistoryLoad = Date()
     }
 
+    /// Add a track to the beginning of play history (for real-time updates)
+    func prependToPlayHistory(_ item: TrackItem) {
+        // Remove if already exists (avoid duplicates)
+        playHistory.removeAll { $0.track.id == item.track.id }
+        // Prepend to beginning
+        playHistory.insert(item, at: 0)
+        // Keep list bounded
+        if playHistory.count > 50 {
+            playHistory = Array(playHistory.prefix(50))
+        }
+    }
+
     func updatePlaylists(_ playlists: [Playlist]) {
         self.playlists = playlists
         self.playlistsState = .loaded

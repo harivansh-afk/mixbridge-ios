@@ -449,6 +449,19 @@ final class PlaybackCoordinator: NSObject {
         // End position tracking for finished track
         positionTracker.endSession()
 
+        // Add real-time history update
+        if let scTrack = finishedContext.soundCloudTrack {
+            Task { @MainActor in
+                let item = TrackItem(
+                    soundCloudTrack: scTrack,
+                    playCount: 1,
+                    lastPlayedPosition: 0,
+                    listenedPercentage: 1.0
+                )
+                PreloadedDataStore.shared.prependToPlayHistory(item)
+            }
+        }
+
         itemContextMap.removeValue(forKey: finishedItem)
 
         if autoplayEnabled,

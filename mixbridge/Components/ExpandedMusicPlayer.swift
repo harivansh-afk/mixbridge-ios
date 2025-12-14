@@ -23,6 +23,7 @@ struct ExpandedMusicPlayer: View {
     }
     @Environment(QueueManager.self) private var queueManager
     @Environment(AuthManager.self) private var authManager
+    @Environment(PreloadedDataStore.self) private var dataStore
     @State private var isDraggingProgress = false
     @State private var isDraggingVolume = false
 
@@ -151,6 +152,10 @@ struct ExpandedMusicPlayer: View {
                     // This ensures navigation works even if track was played from outside the queue
                     playerState.syncQueueIndex()
                 }
+                // Refresh play history for up-to-date recently played
+                Task {
+                    await AppDataPreloader.shared.refreshIfStale(userId: userId, dataType: .playHistory)
+                }
             }
             // Prefetch surrounding tracks when player opens
             prefetchSurroundingTracks()
@@ -206,12 +211,21 @@ struct ExpandedPlayerView: View {
     @State private var queueExpansion: CGFloat // How much queue pushes content up
     @State private var queueDragStart: CGFloat = 0 // Starting expansion when drag begins
 
+    // History section state
+    @State private var showHistorySection: Bool = false
+    @State private var historyScrollOffset: CGFloat = 0
+
     // Haptic generators (prepared for instant feedback)
     @State private var lightHaptic = UIImpactFeedbackGenerator(style: .light)
     @State private var mediumHaptic = UIImpactFeedbackGenerator(style: .medium)
     @State private var heavyHaptic = UIImpactFeedbackGenerator(style: .heavy)
     @State private var lastHapticThreshold: Int = 0
     @State private var confirmDeleteQueue: Bool = false
+
+    // Computed property for recently played data
+    private var recentlyPlayed: [TrackItem] {
+        PreloadedDataStore.shared.playHistory
+    }
 
     init(currentTrack: Track, currentQueueIndex: Int = -1, nextTrack: Track?, previousTrack: Track?, isPlaying: Bool, namespace: Namespace.ID, playbackPosition: Binding<Double>, duration: Double, volume: Binding<Double>, isDraggingProgress: Binding<Bool>, isDraggingVolume: Binding<Bool>, onPlayPause: @escaping () -> Void, onNext: @escaping () -> Void, onPrevious: @escaping () -> Void, onSeek: @escaping (Bool) -> Void, onDismiss: @escaping () -> Void, previewQueueTracks: [Track]? = nil, initialShowQueue: Bool = false) {
         self.currentTrack = currentTrack
@@ -495,25 +509,92 @@ struct ExpandedPlayerView: View {
                                     }
                             )
 
-                            List {
-                                ForEach(Array((previewQueueTracks ?? queueManager.queueTracks).enumerated()), id: \.element.id) { index, track in
-                                    TrackRow(
-                                        track,
-                                        number: index + 1,
-                                        showCover: true,
-                                        isQueueContext: true,
-                                        onRemoveFromQueue: {
-                                            removeFromQueue(at: index)
-                                        }
-                                    )
-                                    .listRowSeparator(.hidden)
+                            // Pull indicator hint
+                            if !showHistorySection && !recentlyPlayed.isEmpty {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "chevron.down")
+                                        .font(.caption2)
+                                    Text("Pull for history")
+                                        .font(.caption2)
                                 }
-                                .onMove(perform: moveQueueItem)
-                                .onDelete(perform: deleteQueueItem)
+                                .foregroundStyle(.tertiary)
+                                .padding(.bottom, 4)
+                                .transition(.opacity)
+                            }
+
+                            // Unified List with History + Queue
+                            List {
+                                // Recently Played Section (revealed on pull-down)
+                                if showHistorySection && !recentlyPlayed.isEmpty {
+                                    Section {
+                                        let historyItems = Array(recentlyPlayed.prefix(20).reversed())
+                                        ForEach(Array(historyItems.enumerated()), id: \.element.id) { index, item in
+                                            TrackRow(
+                                                item.track,
+                                                number: historyItems.count - index,
+                                                showCover: true,
+                                                soundCloudTrack: item.soundCloudTrack,
+                                                listContext: historyItems,
+                                                indexInList: index
+                                            )
+                                            .listRowSeparator(.hidden)
+                                        }
+                                    } header: {
+                                        Text("Recently Played")
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.secondary)
+                                            .textCase(nil)
+                                    }
+                                    .listRowBackground(Color.clear)
+                                }
+
+                                // Queue Section
+                                Section {
+                                    ForEach(Array((previewQueueTracks ?? queueManager.queueTracks).enumerated()), id: \.element.id) { index, track in
+                                        TrackRow(
+                                            track,
+                                            number: index + 1,
+                                            showCover: true,
+                                            isQueueContext: true,
+                                            onRemoveFromQueue: {
+                                                removeFromQueue(at: index)
+                                            }
+                                        )
+                                        .listRowSeparator(.hidden)
+                                    }
+                                    .onMove(perform: moveQueueItem)
+                                    .onDelete(perform: deleteQueueItem)
+                                } header: {
+                                    if queueManager.hasQueue {
+                                        Text("Up Next")
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.secondary)
+                                            .textCase(nil)
+                                    }
+                                }
+                                .listRowBackground(Color.clear)
                             }
                             .listStyle(.plain)
                             .scrollContentBackground(.hidden)
                             .contentMargins(.bottom, 60, for: .scrollContent)
+                            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                                geometry.contentOffset.y
+                            } action: { oldValue, newValue in
+                                historyScrollOffset = newValue
+
+                                // Toggle history on pull-down at top (negative offset means pulling down past top)
+                                if newValue < -60 && !recentlyPlayed.isEmpty {
+                                    // Only trigger once per gesture (check we crossed the threshold)
+                                    if oldValue >= -60 {
+                                        mediumHaptic.impactOccurred()
+                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                                            showHistorySection.toggle()
+                                        }
+                                    }
+                                }
+                            }
                             .mask(
                                 VStack(spacing: 0) {
                                     LinearGradient(
@@ -594,6 +675,9 @@ struct ExpandedPlayerView: View {
             // Reset delete confirmation when queue sheet state changes
             if newValue {
                 confirmDeleteQueue = false
+            } else {
+                // Reset history section when queue closes
+                showHistorySection = false
             }
         }
         .onChange(of: queueManager.hasQueue) { _, hasQueue in
