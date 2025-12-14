@@ -25,6 +25,7 @@ struct GlassEffectText: View {
 // MARK: - Marquee Glass Text
 
 /// Infinite scrolling liquid glass text (Apple Music style)
+/// Optimized with TimelineView for 120fps ProMotion support and lower CPU usage
 struct MarqueeGlassText: View {
     let text: String
     let font: UIFont
@@ -32,12 +33,15 @@ struct MarqueeGlassText: View {
     var rightFade: CGFloat = 10
     var startDelay: Double = 5.0
     var spacing: CGFloat = 56
+    var loopsBeforePause: Int = 3
+    var isPlaying: Bool = true
 
-    @State private var offset: CGFloat = 0
     @State private var textWidth: CGFloat = 0
     @State private var containerWidth: CGFloat = 0
-    @State private var isAnimating = false
-    @State private var loopCount = 0
+    @State private var animationStartDate: Date?
+    @State private var lastLoopCount: Int = 0
+    @State private var isStopped = true // Start stopped, only move when playing
+    @State private var pendingStop = false // Stop at next loop end
 
     private var needsScroll: Bool {
         textWidth > 0 && containerWidth > 0 && textWidth > containerWidth + 1
@@ -48,7 +52,8 @@ struct MarqueeGlassText: View {
     }
 
     private var scrollDuration: Double {
-        let duration = Double(segmentWidth) / 45
+        let baseSpeed: CGFloat = 50.0
+        let duration = Double(segmentWidth) / Double(baseSpeed)
         return duration.isFinite && duration > 0 ? duration : 1.0
     }
 
@@ -67,15 +72,13 @@ struct MarqueeGlassText: View {
                     .background(measurementReader(geo: geo))
                     .opacity(0)
 
-                // Visible content
+                // Always use marquee layout (no view switching)
                 if needsScroll {
-                    HStack(spacing: spacing) {
-                        LeftAlignedGlassText(text: text, font: font)
-                        LeftAlignedGlassText(text: text, font: font)
+                    TimelineView(.animation(minimumInterval: 1.0 / 120.0, paused: isStopped)) { context in
+                        marqueeContent(date: context.date)
                     }
-                    .fixedSize(horizontal: true, vertical: false)
-                    .offset(x: offset.isFinite ? offset : 0)
                 } else if textWidth > 0 {
+                    // Only show centered text if it actually fits
                     GlassEffectText(text: text, font: font)
                         .frame(maxWidth: .infinity)
                 }
@@ -88,11 +91,77 @@ struct MarqueeGlassText: View {
         .frame(height: safeHeight)
         .clipped()
         .mask(fadeMask)
-        .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { startAnimationIfNeeded() }
+        .onChange(of: text) { _, _ in resetForNewTrack() }
+        .onChange(of: isPlaying) { _, newValue in
+            if newValue {
+                // Song started/resumed - start scrolling after delay
+                startScrolling()
+            } else {
+                // Song paused - stop at next loop end
+                pendingStop = true
+            }
         }
-        .onDisappear { isAnimating = false }
-        .onChange(of: text) { _, _ in resetAnimation() }
+        .onAppear {
+            if isPlaying {
+                startScrolling()
+            }
+        }
+        .onDisappear {
+            isStopped = true
+            animationStartDate = nil
+        }
+    }
+
+    @ViewBuilder
+    private func marqueeContent(date: Date) -> some View {
+        HStack(spacing: spacing) {
+            LeftAlignedGlassText(text: text, font: font)
+            LeftAlignedGlassText(text: text, font: font)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .offset(x: calculateOffset(for: date))
+    }
+
+    private func calculateOffset(for date: Date) -> CGFloat {
+        guard !isStopped, let startDate = animationStartDate else {
+            return 0
+        }
+
+        let elapsed = date.timeIntervalSince(startDate)
+        guard elapsed > 0 else { return 0 }
+
+        let totalLoops = Int(elapsed / scrollDuration)
+        let loopProgress = fmod(elapsed / scrollDuration, 1.0)
+        let offset = -loopProgress * segmentWidth
+
+        // Detect loop completion
+        if totalLoops > lastLoopCount {
+            DispatchQueue.main.async {
+                lastLoopCount = totalLoops
+
+                // Check if we should stop (song paused)
+                if pendingStop {
+                    isStopped = true
+                    pendingStop = false
+                    animationStartDate = nil
+                    return
+                }
+
+                // Check if we should pause for delay (every N loops)
+                if totalLoops % loopsBeforePause == 0 {
+                    isStopped = true
+                    // Resume after delay if still playing
+                    DispatchQueue.main.asyncAfter(deadline: .now() + startDelay) {
+                        if isPlaying && !pendingStop {
+                            animationStartDate = Date()
+                            isStopped = false
+                        }
+                    }
+                }
+            }
+        }
+
+        return offset.isFinite ? offset : 0
     }
 
     private func measurementReader(geo: GeometryProxy) -> some View {
@@ -101,9 +170,23 @@ struct MarqueeGlassText: View {
                 .onAppear {
                     if textGeo.size.width.isFinite && textGeo.size.width > 0 { textWidth = textGeo.size.width }
                     if geo.size.width.isFinite && geo.size.width > 0 { containerWidth = geo.size.width }
+                    // Start scrolling once measured (if playing) - defer to let state update
+                    DispatchQueue.main.async {
+                        if isPlaying && needsScroll && isStopped {
+                            startScrolling()
+                        }
+                    }
                 }
                 .onChange(of: textGeo.size.width) { _, newWidth in
-                    if newWidth.isFinite && newWidth > 0 { textWidth = newWidth }
+                    if newWidth.isFinite && newWidth > 0 {
+                        textWidth = newWidth
+                        // Start scrolling once measured (if playing) - defer to let state update
+                        DispatchQueue.main.async {
+                            if isPlaying && needsScroll && isStopped {
+                                startScrolling()
+                            }
+                        }
+                    }
                 }
         }
     }
@@ -122,58 +205,27 @@ struct MarqueeGlassText: View {
         }
     }
 
-    private func startAnimationIfNeeded() {
-        guard needsScroll, !isAnimating else { return }
-        isAnimating = true
-        loopCount = 0
-        setOffset(0)
-
+    private func startScrolling() {
+        guard needsScroll else { return }
+        pendingStop = false
+        lastLoopCount = 0
+        // Start after delay
         DispatchQueue.main.asyncAfter(deadline: .now() + startDelay) {
-            guard isAnimating else { return }
-            runContinuousScroll()
+            guard isPlaying, !pendingStop else { return }
+            animationStartDate = Date()
+            isStopped = false
         }
     }
 
-    private func runContinuousScroll() {
-        guard isAnimating, needsScroll, segmentWidth > 0 else {
-            isAnimating = false
-            return
+    private func resetForNewTrack() {
+        isStopped = true
+        animationStartDate = nil
+        lastLoopCount = 0
+        pendingStop = false
+        // Start scrolling if playing
+        if isPlaying {
+            startScrolling()
         }
-
-        let targetOffset = -segmentWidth
-        guard targetOffset.isFinite else { return }
-
-        withAnimation(.linear(duration: scrollDuration)) {
-            offset = targetOffset
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + scrollDuration) {
-            guard isAnimating else { return }
-            loopCount += 1
-            setOffset(5)
-
-            let delay = loopCount >= 3 ? startDelay : 0.016
-            if loopCount >= 3 { loopCount = 0 }
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                guard isAnimating else { return }
-                runContinuousScroll()
-            }
-        }
-    }
-
-    private func resetAnimation() {
-        isAnimating = false
-        setOffset(5)
-        textWidth = 0
-        loopCount = 0
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { startAnimationIfNeeded() }
-    }
-
-    private func setOffset(_ value: CGFloat) {
-        var t = Transaction()
-        t.disablesAnimations = true
-        withTransaction(t) { offset = value }
     }
 }
 

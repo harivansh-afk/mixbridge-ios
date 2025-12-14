@@ -296,7 +296,8 @@ struct ExpandedPlayerView: View {
                                 track: prevTrack,
                                 namespace: nil,
                                 artworkWidth: artworkMaxWidth,
-                                cornerRadius: cornerRadius
+                                cornerRadius: cornerRadius,
+                                isPlaying: false
                             )
                             .frame(width: artworkMaxWidth)
                             .offset(x: -(artworkMaxWidth + cardSpacing) + dragOffset)
@@ -317,7 +318,8 @@ struct ExpandedPlayerView: View {
                             namespace: nil,
                             artworkWidth: artworkMaxWidth,
                             cornerRadius: cornerRadius,
-                            isMatchedGeometrySource: false
+                            isMatchedGeometrySource: false,
+                            isPlaying: isPlaying
                         )
                         .frame(width: artworkMaxWidth)
                         .offset(x: dragOffset)
@@ -336,7 +338,8 @@ struct ExpandedPlayerView: View {
                                 track: nxtTrack,
                                 namespace: nil,
                                 artworkWidth: artworkMaxWidth,
-                                cornerRadius: cornerRadius
+                                cornerRadius: cornerRadius,
+                                isPlaying: false
                             )
                             .frame(width: artworkMaxWidth)
                             .offset(x: (artworkMaxWidth + cardSpacing) + dragOffset)
@@ -884,6 +887,7 @@ struct TrackCard: View {
     let artworkWidth: CGFloat
     let cornerRadius: CGFloat
     var isMatchedGeometrySource: Bool = false
+    var isPlaying: Bool = true
 
     var body: some View {
         VStack(spacing: 20) {
@@ -907,7 +911,8 @@ struct TrackCard: View {
                     font: UIFont.systemFont(ofSize: 30, weight: .bold),
                     leftFade: 10,
                     rightFade: 10,
-                    startDelay: 5.0
+                    startDelay: 5.0,
+                    isPlaying: isPlaying
                 )
                 .frame(maxWidth: artworkWidth - 40) // Padding on sides
 
@@ -916,7 +921,7 @@ struct TrackCard: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-        } 
+        }
     }
 }
 
