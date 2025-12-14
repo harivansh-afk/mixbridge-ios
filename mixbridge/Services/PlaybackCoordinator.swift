@@ -65,11 +65,32 @@ final class PlaybackCoordinator: NSObject {
     }
 
     private var isPreparingPlayback = false
-    private var recentlyFailedTracks: [String: Date] = [:]
+
+    /// Track retry attempts with exponential backoff
+    private var retryAttempts: [String: RetryMetadata] = [:]
+
+    private struct RetryMetadata {
+        var attemptCount: Int = 0
+        var lastAttemptTime: Date = Date()
+        let maxAttempts = 5
+
+        /// Exponential backoff: 1s, 2s, 4s, 8s, 16s
+        var nextRetryDelay: TimeInterval {
+            pow(2, Double(attemptCount))
+        }
+
+        var canRetryNow: Bool {
+            attemptCount < maxAttempts &&
+            Date().timeIntervalSince(lastAttemptTime) >= nextRetryDelay
+        }
+    }
 
     /// Track user's playback intent (not transient player states)
     /// UI shows "playing" during buffering instead of flickering to "paused"
     private var isIntendedToPlay: Bool = false
+
+    /// Observer for player waiting reason
+    private var waitingReasonObservation: NSKeyValueObservation?
 
     private override init() {
         super.init()
@@ -81,6 +102,7 @@ final class PlaybackCoordinator: NSObject {
         player.actionAtItemEnd = .advance
 
         addTimeObserver()
+        observeWaitingReason()
 
         NotificationCenter.default.addObserver(
             self,
@@ -104,14 +126,12 @@ final class PlaybackCoordinator: NSObject {
             return
         }
 
-        // Check if track recently failed
-        if let failedDate = recentlyFailedTracks[track.id] {
-            let timeSinceFailure = Date().timeIntervalSince(failedDate)
-            if timeSinceFailure < 5.0 {
-                logWarning("Track \(track.title) recently failed, skipping retry")
+        // Check if track can be retried (exponential backoff)
+        if let metadata = retryAttempts[track.id] {
+            if !metadata.canRetryNow {
+                let waitTime = metadata.nextRetryDelay - Date().timeIntervalSince(metadata.lastAttemptTime)
+                logWarning("Track \(track.title) in backoff, retry in \(String(format: "%.1f", max(0, waitTime)))s")
                 return
-            } else {
-                recentlyFailedTracks.removeValue(forKey: track.id)
             }
         }
 
@@ -246,6 +266,9 @@ final class PlaybackCoordinator: NSObject {
 
             logInfo("Playback started: \(pendingContext.track.title)")
 
+            // Clear retry metadata on success
+            retryAttempts.removeValue(forKey: pendingContext.track.id)
+
             // Log play to history
             if let userId = AuthManager.shared.currentUserId,
                autoplayEnabled,
@@ -256,11 +279,16 @@ final class PlaybackCoordinator: NSObject {
             }
 
         } catch {
-            recentlyFailedTracks[pendingContext.track.id] = Date()
+            // Update retry metadata with exponential backoff
+            var metadata = retryAttempts[pendingContext.track.id] ?? RetryMetadata()
+            metadata.attemptCount += 1
+            metadata.lastAttemptTime = Date()
+            retryAttempts[pendingContext.track.id] = metadata
+
             isIntendedToPlay = false
             delegate?.playbackCoordinator(self, didEncounter: error)
             status = .failed(error.localizedDescription)
-            logError("Playback failed: \(error)")
+            logError("Playback failed (attempt \(metadata.attemptCount)/\(metadata.maxAttempts)): \(error)")
         }
     }
 
@@ -278,6 +306,9 @@ final class PlaybackCoordinator: NSObject {
 
         let asset = AVURLAsset(url: url, options: options)
         let item = AVPlayerItem(asset: asset)
+
+        // Buffer 10 seconds ahead - prevents micro-stalls from network hiccups
+        item.preferredForwardBufferDuration = 10
         item.canUseNetworkResourcesForLiveStreamingWhilePaused = true
 
         return item
@@ -319,6 +350,43 @@ final class PlaybackCoordinator: NSObject {
     }
 
     // MARK: - Observers
+
+    /// Monitor why player is waiting - shows loading spinner during buffering
+    private func observeWaitingReason() {
+        waitingReasonObservation = player.observe(\.reasonForWaitingToPlay, options: [.new]) { [weak self] player, _ in
+            guard let self = self else { return }
+
+            Task { @MainActor in
+                if let reason = player.reasonForWaitingToPlay {
+                    // Player is waiting - show loading state
+                    switch reason {
+                    case .toMinimizeStalls:
+                        // Buffering to prevent future stalls
+                        if self.isIntendedToPlay {
+                            self.status = .loading
+                        }
+                    case .evaluatingBufferingRate:
+                        // Evaluating network speed
+                        if self.isIntendedToPlay {
+                            self.status = .loading
+                        }
+                    case .noItemToPlay:
+                        // No content loaded
+                        break
+                    default:
+                        break
+                    }
+
+                    #if DEBUG
+                    print("⏳ Player waiting: \(reason.rawValue)")
+                    #endif
+                } else if self.isIntendedToPlay && self.player.timeControlStatus == .playing {
+                    // No longer waiting - update to playing
+                    self.status = .playing
+                }
+            }
+        }
+    }
 
     private func observePlaybackReadiness(for item: AVPlayerItem) {
         readinessObservation?.invalidate()
@@ -489,6 +557,7 @@ final class PlaybackCoordinator: NSObject {
 
     deinit {
         readinessObservation?.invalidate()
+        waitingReasonObservation?.invalidate()
         NotificationCenter.default.removeObserver(self)
     }
 }
