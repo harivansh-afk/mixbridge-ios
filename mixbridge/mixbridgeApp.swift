@@ -12,6 +12,7 @@ import Lottie
 @main
 struct mixbridgeApp: App {
     @AppStorage("themeMode") private var themeMode: AppearanceMode = .system
+    @Environment(\.scenePhase) private var scenePhase
     @State private var authManager = AuthManager.shared
     @State private var profileManager = UserProfileManager.shared
     @State private var queueManager = QueueManager.shared
@@ -72,6 +73,9 @@ struct mixbridgeApp: App {
                         await AppDataPreloader.shared.reset()
                     }
                 }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { authManager.checkAuthStatus() }
             }
         }
     }
