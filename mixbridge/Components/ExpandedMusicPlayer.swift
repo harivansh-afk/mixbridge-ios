@@ -119,9 +119,7 @@ struct ExpandedMusicPlayer: View {
             isDraggingProgress: $isDraggingProgress,
             isDraggingVolume: $isDraggingVolume,
             onPlayPause: {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
-                    playerState.togglePlayback()
-                }
+                playerState.togglePlayback()
             },
             onNext: { playerState.playNextFromQueue() },
             onPrevious: { playerState.playPreviousFromQueue() },

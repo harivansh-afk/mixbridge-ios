@@ -90,6 +90,7 @@ struct MiniPlayerModifier: ViewModifier {
             }   label: {
                 Image(systemName: playerState.isPlaying ? "pause.fill" : "play.fill")
                     .foregroundStyle(colorScheme == .dark ? .white : .black)
+                    .contentTransition(.symbolEffect(.replace))
                     .contentShape(.rect)
             }
             .padding(.trailing, 10)
@@ -107,7 +108,6 @@ struct MiniPlayerModifier: ViewModifier {
         }
         .padding(.horizontal, 15)
         .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.2), value: playerState.isPlaying)
     }
 }
 
