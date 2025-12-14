@@ -44,23 +44,16 @@ struct ConnectSoundCloudScreen: View {
                             startAuthentication()
                         } label: {
                             HStack(spacing: 12) {
-                                if authManager.isLoading {
-                                    ProgressView()
-                                        .tint(.black)
-                                } else {
-                                    Image(systemName: "cloud.fill")
-                                        .foregroundColor(.white)
-                                    Text("Login with SoundCloud")
-                                        .foregroundColor(.white)
-                                        .font(.callout)
-                                }
+                                Image(systemName: "cloud.fill")
+                                Text("Login with SoundCloud")
+                                    .font(.callout)
                             }
+                            .foregroundStyle(.primary)
                             .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .glassEffect(.regular, in: .capsule)
                         }
-                        .buttonStyle(.glass)
-                        
-                        .controlSize(.large)
-                        .disabled(authManager.isLoading)
+                        .buttonStyle(.plain)
                     }
                     .padding(.horizontal, 24)
                     .padding(.bottom, max(geometry.safeAreaInsets.bottom, 20) + 20)
