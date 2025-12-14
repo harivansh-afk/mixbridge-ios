@@ -214,7 +214,7 @@ struct PlayerControlsView: View {
                     .foregroundStyle(.primary)
                     .contentTransition(.symbolEffect(.replace))
             }
-            .buttonStyle(PlayerButtonStyle(hapticStyle: .medium, scaleAmount: 0.85))
+            .buttonStyle(PlayerButtonStyle(hapticStyle: .light, scaleAmount: 0.85))
 
             Button(action: onNext) {
                 Image(systemName: "forward.fill")
@@ -230,6 +230,7 @@ struct PlayerControlsView: View {
 /// Custom button style with haptics and subtle scale animation
 struct PlayerButtonStyle: ButtonStyle {
     var hapticStyle: UIImpactFeedbackGenerator.FeedbackStyle = .light
+    var enableHaptic: Bool = true
     var scaleAmount: CGFloat = 0.9
 
     func makeBody(configuration: Configuration) -> some View {
@@ -237,7 +238,7 @@ struct PlayerButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? scaleAmount : 1.0)
             .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
             .onChange(of: configuration.isPressed) { _, isPressed in
-                if isPressed {
+                if isPressed && enableHaptic {
                     let generator = UIImpactFeedbackGenerator(style: hapticStyle)
                     generator.impactOccurred()
                 }

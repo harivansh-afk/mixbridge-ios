@@ -85,7 +85,7 @@ struct MiniPlayerModifier: ViewModifier {
             }
 
             Button{
-                HapticManager.medium()
+                HapticManager.light()
                 playerState.togglePlayback()
             }   label: {
                 Image(systemName: playerState.isPlaying ? "pause.fill" : "play.fill")
