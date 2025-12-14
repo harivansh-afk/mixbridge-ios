@@ -100,6 +100,7 @@ struct ExpandedMusicPlayer: View {
     var body: some View {
         ExpandedPlayerView(
             currentTrack: playerState.currentTrack,
+            currentQueueIndex: playerState.currentQueueIndex,
             nextTrack: getNextTrack(),
             previousTrack: getPreviousTrack(),
             isPlaying: playerState.isPlaying,
@@ -167,6 +168,7 @@ struct ExpandedMusicPlayer: View {
 struct ExpandedPlayerView: View {
     // Data (from PlayerState)
     let currentTrack: Track
+    let currentQueueIndex: Int
     let nextTrack: Track?
     let previousTrack: Track?
     let isPlaying: Bool
@@ -195,6 +197,7 @@ struct ExpandedPlayerView: View {
 
     // MARK: - Carousel State (Direct @State for immediate updates)
     @State private var displayedTrack: Track
+    @State private var displayedQueueIndex: Int
     @State private var displayedNext: Track?
     @State private var displayedPrevious: Track?
     @State private var dragOffset: CGFloat = 0
@@ -210,8 +213,9 @@ struct ExpandedPlayerView: View {
     @State private var lastHapticThreshold: Int = 0
     @State private var confirmDeleteQueue: Bool = false
 
-    init(currentTrack: Track, nextTrack: Track?, previousTrack: Track?, isPlaying: Bool, namespace: Namespace.ID, playbackPosition: Binding<Double>, duration: Double, volume: Binding<Double>, isDraggingProgress: Binding<Bool>, isDraggingVolume: Binding<Bool>, onPlayPause: @escaping () -> Void, onNext: @escaping () -> Void, onPrevious: @escaping () -> Void, onSeek: @escaping (Bool) -> Void, onDismiss: @escaping () -> Void, previewQueueTracks: [Track]? = nil, initialShowQueue: Bool = false) {
+    init(currentTrack: Track, currentQueueIndex: Int = -1, nextTrack: Track?, previousTrack: Track?, isPlaying: Bool, namespace: Namespace.ID, playbackPosition: Binding<Double>, duration: Double, volume: Binding<Double>, isDraggingProgress: Binding<Bool>, isDraggingVolume: Binding<Bool>, onPlayPause: @escaping () -> Void, onNext: @escaping () -> Void, onPrevious: @escaping () -> Void, onSeek: @escaping (Bool) -> Void, onDismiss: @escaping () -> Void, previewQueueTracks: [Track]? = nil, initialShowQueue: Bool = false) {
         self.currentTrack = currentTrack
+        self.currentQueueIndex = currentQueueIndex
         self.nextTrack = nextTrack
         self.previousTrack = previousTrack
         self.isPlaying = isPlaying
@@ -231,6 +235,7 @@ struct ExpandedPlayerView: View {
 
         // Initialize display state
         _displayedTrack = State(initialValue: currentTrack)
+        _displayedQueueIndex = State(initialValue: currentQueueIndex)
         _displayedNext = State(initialValue: nextTrack)
         _displayedPrevious = State(initialValue: previousTrack)
         _showQueueSheet = State(initialValue: false)
@@ -372,11 +377,22 @@ struct ExpandedPlayerView: View {
                         if displayedTrack.id != newValue {
                             withAnimation(.interactiveSpring(response: 0.45, dampingFraction: 0.68)) {
                                 displayedTrack = currentTrack
+                                displayedQueueIndex = currentQueueIndex
                                 displayedNext = nextTrack
                                 displayedPrevious = previousTrack
                                 dragOffset = 0
                                 isDraggingArtwork = false
                             }
+                        }
+                    }
+                    .onChange(of: currentQueueIndex) { oldValue, newValue in
+                        // Sync queue index when it changes (handles edge cases like queue reorder)
+                        // Only sync if the track ID matches but index differs
+                        if displayedTrack.id == currentTrack.id && displayedQueueIndex != newValue {
+                            displayedQueueIndex = newValue
+                            // Recalculate adjacent tracks based on new index
+                            displayedNext = getNextTrackByIndex(newValue)
+                            displayedPrevious = getPreviousTrackByIndex(newValue)
                         }
                     }
                     .clipped()
@@ -385,8 +401,9 @@ struct ExpandedPlayerView: View {
                         lightHaptic.prepare()
                         heavyHaptic.prepare()
 
-                        // Initialize carousel with current tracks
+                        // Initialize carousel with current tracks and explicit queue index
                         displayedTrack = currentTrack
+                        displayedQueueIndex = currentQueueIndex
                         displayedNext = nextTrack
                         displayedPrevious = previousTrack
 
@@ -654,10 +671,12 @@ struct ExpandedPlayerView: View {
                 withAnimation(.interactiveSpring(response: 0.45, dampingFraction: 0.68, blendDuration: 0.1)) {
                     // Commit changes instantly
                     let newCurrent = displayedPrevious!
+                    let newIndex = displayedQueueIndex - 1
                     displayedNext = displayedTrack
                     displayedTrack = newCurrent
-                    // Calculate previous based on NEW current track position in queue
-                    displayedPrevious = getPreviousTrack(before: newCurrent)
+                    displayedQueueIndex = newIndex
+                    // Use explicit index to get previous track (avoids firstIndex() ambiguity)
+                    displayedPrevious = getPreviousTrackByIndex(newIndex)
                     dragOffset = 0
                     isDraggingArtwork = false
                 }
@@ -674,10 +693,12 @@ struct ExpandedPlayerView: View {
                 withAnimation(.interactiveSpring(response: 0.45, dampingFraction: 0.68, blendDuration: 0.1)) {
                     // Commit changes instantly
                     let newCurrent = displayedNext!
+                    let newIndex = displayedQueueIndex + 1
                     displayedPrevious = displayedTrack
                     displayedTrack = newCurrent
-                    // Calculate next based on NEW current track position in queue
-                    displayedNext = getNextTrack(after: newCurrent)
+                    displayedQueueIndex = newIndex
+                    // Use explicit index to get next track (avoids firstIndex() ambiguity)
+                    displayedNext = getNextTrackByIndex(newIndex)
                     dragOffset = 0
                     isDraggingArtwork = false
                 }
@@ -708,23 +729,18 @@ struct ExpandedPlayerView: View {
 
     // MARK: - Helper Functions
 
-    // Get queue index for any track
-    private func getQueueIndex(for track: Track) -> Int? {
-        return queueManager.queueTracks.firstIndex(where: { $0.id == track.id })
+    // Get next track based on explicit queue index (avoids firstIndex() ambiguity with duplicates)
+    private func getNextTrackByIndex(_ index: Int) -> Track? {
+        let queueTracks = previewQueueTracks ?? queueManager.queueTracks
+        let nextIndex = index + 1
+        return nextIndex < queueTracks.count ? queueTracks[nextIndex] : nil
     }
 
-    // Get next track based on any track (for carousel updates)
-    private func getNextTrack(after track: Track) -> Track? {
-        guard let currentIndex = getQueueIndex(for: track) else { return nil }
-        let nextIndex = currentIndex + 1
-        return nextIndex < queueManager.queueTracks.count ? queueManager.queueTracks[nextIndex] : nil
-    }
-
-    // Get previous track based on any track (for carousel updates)
-    private func getPreviousTrack(before track: Track) -> Track? {
-        guard let currentIndex = getQueueIndex(for: track) else { return nil }
-        let prevIndex = currentIndex - 1
-        return prevIndex >= 0 ? queueManager.queueTracks[prevIndex] : nil
+    // Get previous track based on explicit queue index (avoids firstIndex() ambiguity with duplicates)
+    private func getPreviousTrackByIndex(_ index: Int) -> Track? {
+        let queueTracks = previewQueueTracks ?? queueManager.queueTracks
+        let prevIndex = index - 1
+        return prevIndex >= 0 ? queueTracks[prevIndex] : nil
     }
 
     // Move queue item for reordering
