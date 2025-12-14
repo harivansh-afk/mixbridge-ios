@@ -233,7 +233,7 @@ struct ExpandedPlayerView: View {
         _displayedTrack = State(initialValue: currentTrack)
         _displayedNext = State(initialValue: nextTrack)
         _displayedPrevious = State(initialValue: previousTrack)
-        _showQueueSheet = State(initialValue: true)
+        _showQueueSheet = State(initialValue: false)
         _queueExpansion = State(initialValue: 0) // Queue visible but no displacement
     }
 
@@ -389,6 +389,11 @@ struct ExpandedPlayerView: View {
                         displayedTrack = currentTrack
                         displayedNext = nextTrack
                         displayedPrevious = previousTrack
+
+                        // Show queue sheet if queue has items
+                        if queueManager.hasQueue {
+                            showQueueSheet = true
+                        }
                     }
 
                     // 3. Controls Section
@@ -543,18 +548,20 @@ struct ExpandedPlayerView: View {
 
                             Spacer()
 
-                            // Queue button
-                            Button {
-                                confirmDeleteQueue = false // Reset confirmation state
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                    showQueueSheet = true
-                                    queueExpansion = 200 // Start expanded
+                            // Queue button (only show if queue has items)
+                            if queueManager.hasQueue {
+                                Button {
+                                    confirmDeleteQueue = false // Reset confirmation state
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                        showQueueSheet = true
+                                        queueExpansion = 200 // Start expanded
+                                    }
+                                } label: {
+                                    Image("queue")
+                                        .font(.system(size: 18, weight: .semibold))
                                 }
-                            } label: {
-                                Image("queue")
-                                    .font(.system(size: 18, weight: .semibold))
+                                .buttonStyle(GlassToolbarButtonStyle())
                             }
-                            .buttonStyle(GlassToolbarButtonStyle())
                         }
                         .padding(.horizontal, horizontalPadding)
                     }
@@ -570,6 +577,12 @@ struct ExpandedPlayerView: View {
             // Reset delete confirmation when queue sheet state changes
             if newValue {
                 confirmDeleteQueue = false
+            }
+        }
+        .onChange(of: queueManager.hasQueue) { _, hasQueue in
+            // Auto-open queue sheet when queue loads with items
+            if hasQueue && !showQueueSheet {
+                showQueueSheet = true
             }
         }
     }

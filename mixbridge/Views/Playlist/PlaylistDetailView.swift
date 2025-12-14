@@ -83,15 +83,6 @@ struct PlaylistDetailView: View {
                         .foregroundStyle(.primary)
                 }
             }
-
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    // More options
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.body)
-                }
-            }
         }
     }
 
