@@ -3,6 +3,7 @@
 .AppleDouble
 .LSOverride
 thoughts/
+docs/
 # Xcode
 *.xcuserstate
 *.xccheckout
