@@ -34,6 +34,7 @@ final class BackendAPI {
         }
 
         if httpResponse.statusCode == 401 {
+            await AuthManager.shared.logout()
             throw StreamError.notAuthenticated
         }
 

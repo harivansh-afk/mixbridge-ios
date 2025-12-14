@@ -27,6 +27,10 @@ actor AppDataPreloader {
     /// Start preloading during splash screen
     /// Returns when critical data (Tier 1) is ready
     func startPreloading(userId: String) async {
+        // Check if token is still valid before loading data
+        await MainActor.run { AuthManager.shared.checkAuthStatus() }
+        guard await MainActor.run(body: { AuthManager.shared.isAuthenticated }) else { return }
+
         guard !isPreloading else { return }
         isPreloading = true
 
@@ -64,6 +68,9 @@ actor AppDataPreloader {
 
     /// Refresh specific data in background (call when view appears)
     func refreshIfStale(userId: String, dataType: PreloadDataType) async {
+        await MainActor.run { AuthManager.shared.checkAuthStatus() }
+        guard await MainActor.run(body: { AuthManager.shared.isAuthenticated }) else { return }
+
         switch dataType {
         case .profile:
             if await MainActor.run(body: { store.isProfileStale() }) {

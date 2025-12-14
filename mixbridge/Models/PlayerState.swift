@@ -179,7 +179,8 @@ final class PlayerState: NSObject {
                 duration = savedDuration
                 // Set status to paused so UI shows it
                 playbackStatus = .paused
-                // Update remote command center
+                // Load artwork and update Now Playing info
+                refreshArtwork(for: savedTrack)
                 updateNowPlayingInfo(playbackRate: 0)
             }
         }
@@ -237,6 +238,8 @@ final class PlayerState: NSObject {
                 self.duration = track.duration
                 self.playbackPosition = 0
                 self.playbackStatus = .paused // Ready to play
+                // Load artwork and update Now Playing info
+                self.refreshArtwork(for: track)
                 self.updateNowPlayingInfo(playbackRate: 0)
                 self.savePlaybackState() // Save so we don't fetch next time
             }

@@ -243,6 +243,7 @@ final class ConvexService {
         }
 
         if httpResponse.statusCode == 401 {
+            await AuthManager.shared.logout()
             throw ConvexError.unauthorized
         }
 
