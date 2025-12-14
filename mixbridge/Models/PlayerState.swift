@@ -531,39 +531,10 @@ final class PlayerState: NSObject {
             return .success
         }
 
-        // Skip forward (15 seconds)
-        commandCenter.skipForwardCommand.isEnabled = true
-        commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: 15)]
-        commandCenter.skipForwardCommand.addTarget { [weak self] event in
-            guard let self else { return .commandFailed }
-            let skipInterval: Double
-            if let skipEvent = event as? MPSkipIntervalCommandEvent {
-                skipInterval = skipEvent.interval
-            } else {
-                skipInterval = 15.0
-            }
-
-            let newPosition = min(self.playbackPosition + skipInterval, self.duration)
-            self.seek(to: newPosition)
-            return .success
-        }
-
-        // Skip backward (15 seconds)
-        commandCenter.skipBackwardCommand.isEnabled = true
-        commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: 15)]
-        commandCenter.skipBackwardCommand.addTarget { [weak self] event in
-            guard let self else { return .commandFailed }
-            let skipInterval: Double
-            if let skipEvent = event as? MPSkipIntervalCommandEvent {
-                skipInterval = skipEvent.interval
-            } else {
-                skipInterval = 15.0
-            }
-
-            let newPosition = max(self.playbackPosition - skipInterval, 0)
-            self.seek(to: newPosition)
-            return .success
-        }
+        // Disable skip commands so iOS shows next/previous track buttons instead
+        // (Skip buttons are for podcast-style apps, not music players)
+        commandCenter.skipForwardCommand.isEnabled = false
+        commandCenter.skipBackwardCommand.isEnabled = false
 
         // Disable commands we don't support
         commandCenter.seekForwardCommand.isEnabled = false
