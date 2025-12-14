@@ -37,12 +37,24 @@ struct Track: Identifiable, Codable, Equatable, Hashable {
 struct TrackItem: Identifiable, Equatable {
     let track: Track
     let soundCloudTrack: SoundCloudTrack
+    // Play history tracking
+    var playCount: Int = 1
+    var lastPlayedPosition: Double = 0
+    var listenedPercentage: Double = 0
 
     var id: String { track.id }
 
     init(soundCloudTrack: SoundCloudTrack) {
         self.track = soundCloudTrack.toTrack()
         self.soundCloudTrack = soundCloudTrack
+    }
+
+    init(soundCloudTrack: SoundCloudTrack, playCount: Int, lastPlayedPosition: Double, listenedPercentage: Double) {
+        self.track = soundCloudTrack.toTrack()
+        self.soundCloudTrack = soundCloudTrack
+        self.playCount = playCount
+        self.lastPlayedPosition = lastPlayedPosition
+        self.listenedPercentage = listenedPercentage
     }
 
     static func == (lhs: TrackItem, rhs: TrackItem) -> Bool {

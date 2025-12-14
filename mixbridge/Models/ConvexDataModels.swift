@@ -75,6 +75,13 @@ struct ConvexPlayHistory: Codable {
     let source: String
     let trackData: SoundCloudTrack
     let playedAt: Double
+    // Position tracking fields (optional for backward compatibility)
+    let sessionId: String?
+    let queueIndex: Int?
+    let playbackPosition: Double?
+    let duration: Double?
+    let listenedPercentage: Double?
+    let lastUpdated: Double?
 }
 
 // MARK: - Discovery Models

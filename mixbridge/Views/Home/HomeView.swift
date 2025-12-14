@@ -24,6 +24,9 @@ struct HomeView: View {
             content
                 .navigationTitle("Home")
                 .navigationBarTitleDisplayMode(.large)
+                .refreshable {
+                    await loadHomeData(forceRefresh: true)
+                }
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         profileAvatar
@@ -153,11 +156,6 @@ struct HomeView: View {
             }
         }
         .listStyle(.plain)
-        .refreshable {
-            isRefreshing = true
-            await loadHomeData(forceRefresh: true)
-            isRefreshing = false
-        }
     }
 
     private func loadHomeData(forceRefresh: Bool = false) async {
@@ -167,19 +165,31 @@ struct HomeView: View {
         isLoading = true
         error = nil
 
-        // Load play history
+        // Load play history with position tracking
         do {
             let history = try await BackgroundExecutor.run {
-                try await ConvexService.shared.getPlayHistory(userId: userId, limit: 20)
+                try await ConvexService.shared.getPlayHistory(userId: userId, limit: 50)
             }
 
             var items: [TrackItem] = []
-            var seen = Set<String>()
+            var seen: [String: Int] = [:]  // Track key -> index in items
 
             for playItem in history {
                 let key = "\(playItem.trackData.title.lowercased())|\(playItem.trackData.user.username.lowercased())"
-                if seen.insert(key).inserted {
-                    items.append(TrackItem(soundCloudTrack: playItem.trackData))
+
+                if let existingIndex = seen[key] {
+                    // Track already exists - increment play count
+                    items[existingIndex].playCount += 1
+                } else {
+                    // New track - add with position info (use defaults for old entries)
+                    let item = TrackItem(
+                        soundCloudTrack: playItem.trackData,
+                        playCount: 1,
+                        lastPlayedPosition: playItem.playbackPosition ?? 0,
+                        listenedPercentage: playItem.listenedPercentage ?? 0
+                    )
+                    seen[key] = items.count
+                    items.append(item)
                 }
             }
 

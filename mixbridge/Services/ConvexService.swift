@@ -411,18 +411,39 @@ final class ConvexService {
 
     // MARK: - Mutations
 
-    /// Log a track play to history
-    func addPlay(userId: String, track: SoundCloudTrack) async throws {
+    /// Log a track play to history with session tracking
+    func addPlay(userId: String, track: SoundCloudTrack, sessionId: String, queueIndex: Int?) async throws {
         let trackData = try JSONEncoder().encode(track)
         let trackDict = try JSONSerialization.jsonObject(with: trackData) as? [String: Any] ?? [:]
 
+        var args: [String: Any] = [
+            "userId": userId,
+            "trackId": String(track.id),
+            "source": "soundcloud",
+            "trackData": trackDict,
+            "sessionId": sessionId,
+            "duration": Double(track.duration) / 1000.0  // Convert ms to seconds
+        ]
+
+        if let queueIndex = queueIndex {
+            args["queueIndex"] = queueIndex
+        }
+
         try await mutation(
             "playHistory:addPlay",
+            args: args
+        )
+    }
+
+    /// Update playback position for an existing play session
+    func updatePlayPosition(sessionId: String, userId: String, playbackPosition: Double, duration: Double) async throws {
+        try await mutation(
+            "playHistory:updatePlayPosition",
             args: [
+                "sessionId": sessionId,
                 "userId": userId,
-                "trackId": String(track.id),
-                "source": "soundcloud",
-                "trackData": trackDict
+                "playbackPosition": playbackPosition,
+                "duration": duration
             ]
         )
     }

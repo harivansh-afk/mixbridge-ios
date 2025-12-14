@@ -49,6 +49,7 @@ final class PlaybackCoordinator: NSObject {
     private let convexService = ConvexService.shared
     private let streamCache = StreamURLCache.shared
     private let itemCache = PreloadedItemCache.shared
+    private let positionTracker = PlaybackPositionTracker.shared
 
     private let player = AVQueuePlayer()
     private var timeObserverToken: Any?
@@ -155,6 +156,7 @@ final class PlaybackCoordinator: NSObject {
         isIntendedToPlay = false
         player.pause()
         status = .paused
+        positionTracker.flush()  // Save current position immediately
     }
 
     func resume() {
@@ -262,12 +264,22 @@ final class PlaybackCoordinator: NSObject {
             // Clear retry metadata on success
             retryAttempts.removeValue(forKey: pendingContext.track.id)
 
-            // Log play to history
+            // Start position tracking session and log play to history
             if let userId = AuthManager.shared.currentUserId,
                autoplayEnabled,
                let scTrack = pendingContext.soundCloudTrack {
+                let sessionId = positionTracker.startSession(
+                    trackId: pendingContext.track.id,
+                    queueIndex: pendingContext.queueIndex,
+                    duration: Double(scTrack.duration) / 1000.0  // Convert ms to seconds
+                )
                 Task {
-                    try? await convexService.addPlay(userId: userId, track: scTrack)
+                    try? await convexService.addPlay(
+                        userId: userId,
+                        track: scTrack,
+                        sessionId: sessionId,
+                        queueIndex: pendingContext.queueIndex
+                    )
                 }
             }
 
@@ -409,6 +421,11 @@ final class PlaybackCoordinator: NSObject {
                 let currentTime = CMTimeGetSeconds(self.player.currentTime())
                 let duration = CMTimeGetSeconds(self.player.currentItem?.duration ?? .invalid)
 
+                // Track position for periodic flush (every 10 seconds)
+                if currentTime.isFinite && duration.isFinite {
+                    self.positionTracker.updatePosition(currentTime, duration: duration)
+                }
+
                 // Preload at 50%
                 if !self.hasPreloadedForCurrentTrack,
                    currentTime.isFinite, duration.isFinite, duration > 0,
@@ -429,6 +446,9 @@ final class PlaybackCoordinator: NSObject {
             let finishedContext = itemContextMap[finishedItem]
         else { return }
 
+        // End position tracking for finished track
+        positionTracker.endSession()
+
         itemContextMap.removeValue(forKey: finishedItem)
 
         if autoplayEnabled,
@@ -445,8 +465,18 @@ final class PlaybackCoordinator: NSObject {
 
                 if let userId = AuthManager.shared.currentUserId,
                    let scTrack = preloadedContext.soundCloudTrack {
+                    let sessionId = positionTracker.startSession(
+                        trackId: preloadedContext.track.id,
+                        queueIndex: preloadedContext.queueIndex,
+                        duration: Double(scTrack.duration) / 1000.0
+                    )
                     Task {
-                        try? await convexService.addPlay(userId: userId, track: scTrack)
+                        try? await convexService.addPlay(
+                            userId: userId,
+                            track: scTrack,
+                            sessionId: sessionId,
+                            queueIndex: preloadedContext.queueIndex
+                        )
                     }
                 }
 
