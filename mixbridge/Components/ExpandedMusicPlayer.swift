@@ -24,7 +24,6 @@ struct ExpandedMusicPlayer: View {
     @Environment(QueueManager.self) private var queueManager
     @Environment(AuthManager.self) private var authManager
     @State private var isDraggingProgress = false
-    @State private var isDraggingVolume = false
 
     /// Local slider value used during dragging to prevent observer conflicts
     @State private var localSliderPosition: Double = 0
@@ -118,7 +117,6 @@ struct ExpandedMusicPlayer: View {
             duration: duration,
             volume: $playerState.volume,
             isDraggingProgress: $isDraggingProgress,
-            isDraggingVolume: $isDraggingVolume,
             onPlayPause: {
                 playerState.togglePlayback()
             },
@@ -182,7 +180,6 @@ struct ExpandedPlayerView: View {
     let duration: Double
     @Binding var volume: Double
     @Binding var isDraggingProgress: Bool
-    @Binding var isDraggingVolume: Bool
 
     // Actions
     let onPlayPause: () -> Void
@@ -213,7 +210,7 @@ struct ExpandedPlayerView: View {
     @State private var lastHapticThreshold: Int = 0
     @State private var confirmDeleteQueue: Bool = false
 
-    init(currentTrack: Track, currentQueueIndex: Int = -1, nextTrack: Track?, previousTrack: Track?, isPlaying: Bool, namespace: Namespace.ID, playbackPosition: Binding<Double>, duration: Double, volume: Binding<Double>, isDraggingProgress: Binding<Bool>, isDraggingVolume: Binding<Bool>, onPlayPause: @escaping () -> Void, onNext: @escaping () -> Void, onPrevious: @escaping () -> Void, onSeek: @escaping (Bool) -> Void, onDismiss: @escaping () -> Void, previewQueueTracks: [Track]? = nil, initialShowQueue: Bool = false) {
+    init(currentTrack: Track, currentQueueIndex: Int = -1, nextTrack: Track?, previousTrack: Track?, isPlaying: Bool, namespace: Namespace.ID, playbackPosition: Binding<Double>, duration: Double, volume: Binding<Double>, isDraggingProgress: Binding<Bool>, onPlayPause: @escaping () -> Void, onNext: @escaping () -> Void, onPrevious: @escaping () -> Void, onSeek: @escaping (Bool) -> Void, onDismiss: @escaping () -> Void, previewQueueTracks: [Track]? = nil, initialShowQueue: Bool = false) {
         self.currentTrack = currentTrack
         self.currentQueueIndex = currentQueueIndex
         self.nextTrack = nextTrack
@@ -224,7 +221,6 @@ struct ExpandedPlayerView: View {
         self.duration = duration
         self._volume = volume
         self._isDraggingProgress = isDraggingProgress
-        self._isDraggingVolume = isDraggingVolume
         self.onPlayPause = onPlayPause
         self.onNext = onNext
         self.onPrevious = onPrevious
@@ -968,7 +964,6 @@ struct TrackCard: View {
         duration: 210,
         volume: $volume,
         isDraggingProgress: .constant(false),
-        isDraggingVolume: .constant(false),
         onPlayPause: {},
         onNext: {},
         onPrevious: {},

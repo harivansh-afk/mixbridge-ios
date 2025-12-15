@@ -64,13 +64,4 @@ actor TrackPrefetcher {
         _ = await imageCache.getImage(for: url)
         prefetchedTrackIds.insert(track.id)
     }
-
-    func reset() {
-        currentPrefetchTask?.cancel()
-        prefetchedTrackIds.removeAll()
-    }
-
-    func cancelAll() {
-        currentPrefetchTask?.cancel()
-    }
 }
