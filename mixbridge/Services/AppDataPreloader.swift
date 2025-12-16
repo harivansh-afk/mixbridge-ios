@@ -95,6 +95,12 @@ actor AppDataPreloader {
         }
     }
 
+    /// Force refresh play history (bypasses staleness check)
+    /// Called after optimistic update to sync with Convex source of truth
+    func forceRefreshPlayHistory(userId: String) async {
+        await loadPlayHistory(userId: userId)
+    }
+
     /// Preload a specific playlist's tracks (call when user shows intent)
     /// - Parameter forceRefresh: If true, bypasses cache and fetches fresh data
     func preloadPlaylistTracks(userId: String, playlistId: String, forceRefresh: Bool = false) async {

@@ -100,6 +100,35 @@ final class PreloadedDataStore {
         self.lastPlayHistoryLoad = Date()
     }
 
+    /// Optimistically prepend or move a track to the top of play history
+    /// If track exists (by trackId): move to top, increment playCount, keep metadata
+    /// If track doesn't exist: prepend to top
+    /// Limits list to 50 items
+    func prependOrMovePlayHistoryTrack(_ item: TrackItem) {
+        let trackId = item.track.id
+
+        // Check if track already exists
+        if let existingIndex = playHistory.firstIndex(where: { $0.track.id == trackId }) {
+            // Move to top: remove from current position
+            var existingItem = playHistory.remove(at: existingIndex)
+            // Increment play count, keep other metadata
+            existingItem.playCount += 1
+            // Insert at top
+            playHistory.insert(existingItem, at: 0)
+        } else {
+            // New track: prepend
+            playHistory.insert(item, at: 0)
+        }
+
+        // Limit to 50 items
+        if playHistory.count > 50 {
+            playHistory = Array(playHistory.prefix(50))
+        }
+
+        // Update timestamp to prevent immediate stale refresh
+        self.lastPlayHistoryLoad = Date()
+    }
+
     func updatePlaylists(_ playlists: [Playlist]) {
         self.playlists = playlists
         self.playlistsState = .loaded
