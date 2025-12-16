@@ -44,7 +44,6 @@ final class PlaybackCoordinator: NSObject {
     var autoplayEnabled: Bool = true
 
     private let queueManager = QueueManager.shared
-    private let backendAPI = BackendAPI.shared
     private let keychain = KeychainManager.shared
     private let convexService = ConvexService.shared
     private let streamCache = StreamURLCache.shared
@@ -563,9 +562,9 @@ final class PlaybackCoordinator: NSObject {
             await streamCache.prefetchUpcoming(tracks: tracks, lookAhead: 5)
 
             for track in tracks.prefix(3) {
-                if let streamResponse = streamCache.getCachedStreamURL(for: track.id) {
+                if let cached = streamCache.getCachedStream(for: track.id) {
                     let scTrack = queueManager.soundCloudTrack(for: track.id)
-                    await itemCache.preloadItem(for: track, soundCloudTrack: scTrack, streamURL: streamResponse.stream_url)
+                    await itemCache.preloadItem(for: track, soundCloudTrack: scTrack, streamURL: cached.url)
                 }
             }
         }
@@ -574,8 +573,8 @@ final class PlaybackCoordinator: NSObject {
     func prefetchTrack(_ track: Track, with soundCloudTrack: SoundCloudTrack?) {
         Task {
             await streamCache.prefetchStreamURL(for: track.id)
-            if let streamResponse = streamCache.getCachedStreamURL(for: track.id) {
-                await itemCache.preloadItem(for: track, soundCloudTrack: soundCloudTrack, streamURL: streamResponse.stream_url)
+            if let cached = streamCache.getCachedStream(for: track.id) {
+                await itemCache.preloadItem(for: track, soundCloudTrack: soundCloudTrack, streamURL: cached.url)
             }
         }
     }

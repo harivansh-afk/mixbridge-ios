@@ -86,43 +86,6 @@ final class StreamURLCache {
         )
     }
 
-    /// Get cached stream URL if available and not expired (legacy compatibility)
-    /// Returns nil if not cached or expired
-    func getCachedStreamURL(for trackId: String) -> StreamResponse? {
-        guard let cached = cache[trackId] else {
-            return nil
-        }
-
-        // Remove if expired
-        if cached.isExpired {
-            cache.removeValue(forKey: trackId)
-            #if DEBUG
-            print("🗑️ Removed expired cache for track: \(trackId)")
-            #endif
-            return nil
-        }
-
-        // Refresh in background if expiring soon
-        if cached.isExpiringSoon {
-            #if DEBUG
-            print("⚠️ Cache expiring soon for track: \(trackId), refreshing...")
-            #endif
-            Task {
-                await prefetchStreamURL(for: trackId)
-            }
-        }
-
-        #if DEBUG
-        print("✅ Cache HIT for track: \(trackId)")
-        #endif
-
-        return StreamResponse(
-            stream_url: cached.url,
-            stream_type: cached.streamType,
-            track_id: trackId
-        )
-    }
-
     /// Prefetch stream URL for a track (fire and forget)
     /// Uses Convex action for direct CDN URLs
     func prefetchStreamURL(for trackId: String) async {
@@ -272,14 +235,5 @@ final class StreamURLCache {
         #if DEBUG
         print("🗑️ Invalidated cache for track: \(trackId)")
         #endif
-    }
-
-    /// Get cache statistics for debugging
-    func getCacheStats() -> (total: Int, valid: Int, expiring: Int, expired: Int) {
-        let valid = cache.values.filter { !$0.isExpired && !$0.isExpiringSoon }.count
-        let expiring = cache.values.filter { $0.isExpiringSoon && !$0.isExpired }.count
-        let expired = cache.values.filter { $0.isExpired }.count
-
-        return (cache.count, valid, expiring, expired)
     }
 }

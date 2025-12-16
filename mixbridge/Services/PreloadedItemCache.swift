@@ -65,53 +65,6 @@ final class PreloadedItemCache {
 
     // MARK: - Public API
 
-    /// Get preloaded AVPlayerItem if available
-    /// Returns nil if not preloaded or stale
-    /// NOTE: Does NOT remove from cache - call consumePreloadedItem after successful use
-    func getPreloadedItem(for trackId: String) -> (AVPlayerItem, SoundCloudTrack?)? {
-        guard let preloaded = cache[trackId] else {
-            #if DEBUG
-            print("⚠️ Cache MISS for track: \(trackId) - not preloaded")
-            #endif
-            return nil
-        }
-
-        if preloaded.isStale {
-            #if DEBUG
-            print("⚠️ Preloaded item is stale for track: \(trackId), discarding")
-            #endif
-            // Remove stale item
-            cache.removeValue(forKey: trackId)
-            readinessObservers.removeValue(forKey: trackId)
-            return nil
-        }
-
-        #if DEBUG
-        print("✅ Cache HIT for preloaded item: \(trackId) (age: \(String(format: "%.1f", preloaded.age))s)")
-        #endif
-
-        return (preloaded.item, preloaded.soundCloudTrack)
-    }
-
-    /// Consume (remove) preloaded item after successful playback start
-    /// Call this ONLY after playback has successfully started
-    func consumePreloadedItem(for trackId: String) {
-        cache.removeValue(forKey: trackId)
-        readinessObservers.removeValue(forKey: trackId)
-
-        #if DEBUG
-        print("✅ Consumed preloaded item: \(trackId)")
-        #endif
-    }
-
-    /// Check if track is preloaded and ready
-    func isPreloaded(_ trackId: String) -> Bool {
-        guard let preloaded = cache[trackId] else {
-            return false
-        }
-        return !preloaded.isStale
-    }
-
     /// Preload AVPlayerItem for a track
     /// Non-blocking, optimizes for instant playback
     func preloadItem(for track: Track, soundCloudTrack: SoundCloudTrack?, streamURL: String) async -> Bool {
@@ -196,49 +149,6 @@ final class PreloadedItemCache {
         }
     }
 
-    /// Aggressively preload AVPlayerItems for multiple tracks
-    /// Requires stream URLs (use StreamURLCache first)
-    func preloadBatch(tracks: [(Track, SoundCloudTrack?, String)]) async {
-        #if DEBUG
-        print("🔥 Batch preloading \(tracks.count) AVPlayerItems")
-        #endif
-
-        for (track, scTrack, streamURL) in tracks {
-            await preloadItem(for: track, soundCloudTrack: scTrack, streamURL: streamURL)
-        }
-    }
-
-    /// Smart preload: Prefetch stream URLs + preload AVPlayerItems for upcoming tracks
-    /// One-stop shop for aggressive preloading
-    func smartPreload(tracks: [Track], soundCloudTracks: [String: SoundCloudTrack], lookAhead: Int = 3) async {
-        let tracksToPreload = Array(tracks.prefix(lookAhead))
-
-        #if DEBUG
-        print("🧠 Smart preloading \(tracksToPreload.count) tracks (URLs + Items)")
-        #endif
-
-        // Step 1: Prefetch stream URLs
-        await streamCache.prefetchUpcoming(tracks: tracksToPreload, lookAhead: lookAhead)
-
-        // Step 2: Preload AVPlayerItems for tracks with cached URLs
-        for track in tracksToPreload {
-            if let streamResponse = streamCache.getCachedStreamURL(for: track.id) {
-                let scTrack = soundCloudTracks[track.id]
-                await preloadItem(for: track, soundCloudTrack: scTrack, streamURL: streamResponse.stream_url)
-            }
-        }
-    }
-
-    /// Remove preloaded item from cache
-    func removePreloadedItem(for trackId: String) {
-        cache.removeValue(forKey: trackId)
-        readinessObservers.removeValue(forKey: trackId)
-
-        #if DEBUG
-        print("🗑️ Removed preloaded item for track: \(trackId)")
-        #endif
-    }
-
     /// Clear all preloaded items
     func clearAll() {
         cache.removeAll()
@@ -248,14 +158,6 @@ final class PreloadedItemCache {
         #if DEBUG
         print("🗑️ Cleared all preloaded items")
         #endif
-    }
-
-    /// Get cache statistics
-    func getCacheStats() -> (total: Int, fresh: Int, stale: Int, inFlight: Int) {
-        let fresh = cache.values.filter { !$0.isStale }.count
-        let stale = cache.values.filter { $0.isStale }.count
-
-        return (cache.count, fresh, stale, preloadingTracks.count)
     }
 
     // MARK: - Private Helpers
