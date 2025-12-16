@@ -49,6 +49,8 @@ final class PlaybackCoordinator: NSObject {
     private let streamCache = StreamURLCache.shared
     private let itemCache = PreloadedItemCache.shared
     private let positionTracker = PlaybackPositionTracker.shared
+    private let dataStore = PreloadedDataStore.shared
+    private let dataPreloader = AppDataPreloader.shared
 
     private let player = AVQueuePlayer()
     private var timeObserverToken: Any?
@@ -263,6 +265,12 @@ final class PlaybackCoordinator: NSObject {
             // Clear retry metadata on success
             retryAttempts.removeValue(forKey: pendingContext.track.id)
 
+            // Optimistic UI update: add/move track to top of recently played
+            if let scTrack = pendingContext.soundCloudTrack {
+                let item = TrackItem(soundCloudTrack: scTrack)
+                dataStore.prependOrMovePlayHistoryTrack(item)
+            }
+
             // Start position tracking session and log play to history
             if let userId = AuthManager.shared.currentUserId,
                autoplayEnabled,
@@ -279,6 +287,8 @@ final class PlaybackCoordinator: NSObject {
                         sessionId: sessionId,
                         queueIndex: pendingContext.queueIndex
                     )
+                    // Background refresh to sync with Convex source of truth
+                    await dataPreloader.forceRefreshPlayHistory(userId: userId)
                 }
             }
 
@@ -462,6 +472,12 @@ final class PlaybackCoordinator: NSObject {
                 hasPreloadedForCurrentTrack = false
                 publishSnapshot()
 
+                // Optimistic UI update for autoplay transition
+                if let scTrack = preloadedContext.soundCloudTrack {
+                    let item = TrackItem(soundCloudTrack: scTrack)
+                    dataStore.prependOrMovePlayHistoryTrack(item)
+                }
+
                 if let userId = AuthManager.shared.currentUserId,
                    let scTrack = preloadedContext.soundCloudTrack {
                     let sessionId = positionTracker.startSession(
@@ -476,6 +492,8 @@ final class PlaybackCoordinator: NSObject {
                             sessionId: sessionId,
                             queueIndex: preloadedContext.queueIndex
                         )
+                        // Background refresh to sync with Convex source of truth
+                        await dataPreloader.forceRefreshPlayHistory(userId: userId)
                     }
                 }
 
