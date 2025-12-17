@@ -221,6 +221,26 @@ final class PlaybackCoordinator: NSObject {
 
     // MARK: - Playback Pipeline
 
+    /// Called when a track successfully starts playing. Removes it from queue and updates context.
+    private func handleTrackStartedPlaying(context: PlaybackContext) {
+        let shouldRemove = queueManager.isInQueue(context.track.id)
+
+        // Set context with appropriate queue index (-1 if removed from queue)
+        currentContext = PlaybackContext(
+            track: context.track,
+            soundCloudTrack: context.soundCloudTrack,
+            queueIndex: shouldRemove ? -1 : context.queueIndex
+        )
+
+        // Remove from queue in background (silently, no haptic feedback)
+        if shouldRemove {
+            let trackToRemove = context.track
+            Task {
+                try? await queueManager.removeTrack(trackToRemove, silent: true)
+            }
+        }
+    }
+
     private func startPlayback(with context: PlaybackContext, startTime: Double? = nil) async {
         isPreparingPlayback = true
         defer { isPreparingPlayback = false }
@@ -258,7 +278,7 @@ final class PlaybackCoordinator: NSObject {
             // Play
             isIntendedToPlay = true
             player.play()
-            currentContext = pendingContext
+            handleTrackStartedPlaying(context: pendingContext)
 
             logInfo("Playback started: \(pendingContext.track.title)")
 
@@ -466,7 +486,7 @@ final class PlaybackCoordinator: NSObject {
            preloadedContext == nextContext(after: finishedContext) {
 
             if preloadedItem.status == .readyToPlay {
-                currentContext = preloadedContext
+                handleTrackStartedPlaying(context: preloadedContext)
                 nextPreloadedContext = nil
                 nextPreloadedItem = nil
                 hasPreloadedForCurrentTrack = false
@@ -522,7 +542,7 @@ final class PlaybackCoordinator: NSObject {
     private func adoptCurrentItemContext() {
         if let currentItem = player.currentItem,
            let context = itemContextMap[currentItem] {
-            currentContext = context
+            handleTrackStartedPlaying(context: context)
             hasPreloadedForCurrentTrack = false
             nextPreloadedContext = nil
             nextPreloadedItem = nil

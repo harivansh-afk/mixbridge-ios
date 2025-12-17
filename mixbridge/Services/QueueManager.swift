@@ -105,7 +105,10 @@ class QueueManager {
     }
 
     /// Remove track from queue with optimistic update
-    func removeTrack(_ track: Track) async throws {
+    /// - Parameters:
+    ///   - track: The track to remove
+    ///   - silent: If true, suppresses haptic feedback (used when removing on playback start)
+    func removeTrack(_ track: Track, silent: Bool = false) async throws {
         guard let convexQueueTrackId = queueTrackIds[track.id] else {
             throw ConvexError.notFound
         }
@@ -119,7 +122,9 @@ class QueueManager {
         queueTrackIds.removeValue(forKey: track.id)
         soundCloudTracks.removeValue(forKey: track.id)
 
-        HapticManager.warning()
+        if !silent {
+            HapticManager.warning()
+        }
 
         do {
             try await BackgroundExecutor.run {
