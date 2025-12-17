@@ -741,7 +741,25 @@ struct ExpandedPlayerView: View {
 
     // Move queue item for reordering
     private func moveQueueItem(from source: IndexSet, to destination: Int) {
+        guard let fromIndex = source.first else { return }
+
+        // Calculate actual destination (List.onMove destination adjusts for removal)
+        let toIndex = destination > fromIndex ? destination - 1 : destination
+
+        // Skip if no actual movement
+        guard fromIndex != toIndex else { return }
+
+        // Local move
         queueManager.queueTracks.move(fromOffsets: source, toOffset: destination)
+
+        // Sync to backend
+        Task {
+            do {
+                try await ConvexService.shared.reorderQueue(fromIndex: fromIndex, toIndex: toIndex)
+            } catch {
+                logError("Failed to sync queue reorder: \(error)")
+            }
+        }
     }
 
     // Delete queue item (for swipe to delete)
