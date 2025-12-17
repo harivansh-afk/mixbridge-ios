@@ -26,12 +26,8 @@ struct PlaylistActionButtons: View {
                 .fontWeight(.semibold)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background {
-                    Capsule()
-                        .fill(.regularMaterial)
-                        .shadow(color: .black.opacity(0.1), radius: 2, y: 1)
-                }
                 .foregroundStyle(.primary)
+                .glassEffect(.clear, in: .capsule)
             }
             .buttonStyle(.plain)
 
@@ -48,12 +44,8 @@ struct PlaylistActionButtons: View {
                 .fontWeight(.semibold)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background {
-                    Capsule()
-                        .fill(.regularMaterial)
-                        .shadow(color: .black.opacity(0.1), radius: 2, y: 1)
-                }
                 .foregroundStyle(.primary)
+                .glassEffect(.clear, in: .capsule)
             }
             .buttonStyle(.plain)
         }

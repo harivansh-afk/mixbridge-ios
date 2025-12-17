@@ -39,25 +39,39 @@ struct PlaylistDetailView: View {
     }
 
     var body: some View {
-        List {
-            Section {
-                VStack(spacing: 20) {
-                    artwork
-                        .padding(.top, 20)
+        ZStack {
+            // Dynamic background from artwork
+            PlayerBackgroundView(artwork: playlist.artwork)
+                .blur(radius: 60)
 
-                    playlistInfo
+            // Subtle overlay for depth
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .opacity(0.12)
+                .ignoresSafeArea()
 
-                    actionButtons
-                        .padding(.horizontal)
-                        .padding(.bottom, 24)
+            List {
+                Section {
+                    VStack(spacing: 20) {
+                        artwork
+                            .padding(.top, 20)
+
+                        playlistInfo
+
+                        actionButtons
+                            .padding(.horizontal)
+                            .padding(.bottom, 24)
+                    }
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
-                .listRowInsets(EdgeInsets())
-                .listRowSeparator(.hidden)
-            }
 
-            tracksSection
+                tracksSection
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
-        .listStyle(.plain)
         .navigationAllowDismissalGestures(allowDismissalGesture)
         .navigationBarBackButtonHidden(true)
         .task {
@@ -125,10 +139,11 @@ struct PlaylistDetailView: View {
 
     private var playlistInfo: some View {
         VStack(spacing: 8) {
-            Text(playlist.name)
-                .font(.title)
-                .fontWeight(.bold)
-                .multilineTextAlignment(.center)
+            GlassEffectText(
+                text: playlist.name,
+                font: .systemFont(ofSize: 28, weight: .bold)
+            )
+            .frame(maxWidth: .infinity)
 
             Text(playlist.creator)
                 .font(.body)
@@ -164,6 +179,7 @@ struct PlaylistDetailView: View {
                 }
                 .padding()
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             } else if let error = loadError, trackItems.isEmpty {
                 VStack(spacing: 12) {
                     Text("Unable to load tracks")
@@ -175,6 +191,7 @@ struct PlaylistDetailView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
+                .listRowBackground(Color.clear)
             } else if !trackItems.isEmpty {
                 ForEach(Array(trackItems.enumerated()), id: \.element.id) { index, item in
                     TrackRow(
@@ -185,18 +202,24 @@ struct PlaylistDetailView: View {
                         listContext: trackItems,
                         indexInList: index
                     )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
             } else if !playlist.tracks.isEmpty {
                 ForEach(Array(playlist.tracks.enumerated()), id: \.element.id) { index, track in
                     TrackRow(track, number: index + 1, showCover: true)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 }
             } else {
                 Text("No tracks in this playlist")
                     .foregroundStyle(.secondary)
                     .padding()
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
         }
-        .listSectionSeparator(isLoading ? .hidden : .visible, edges: .top)
+        .listSectionSeparator(.hidden)
     }
 
     private func loadPlaylistTracks(forceRefresh: Bool = false) async {

@@ -10,15 +10,29 @@ import SwiftUI
 // MARK: - Glass Effect Text
 
 /// Static glass-effect text view (centered)
+/// Renders emojis as normal text since they don't have glyph paths
 struct GlassEffectText: View {
     let text: String
     let font: UIFont
 
+    private var segments: [TextSegment] {
+        text.splitByEmoji()
+    }
+
     var body: some View {
-        Text(text)
-            .font(Font(font))
-            .opacity(0)
-            .glassEffect(.clear, in: TextToShape(value: text, font: font))
+        HStack(spacing: 0) {
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                if segment.isEmoji {
+                    Text(segment.text)
+                        .font(Font(font))
+                } else {
+                    Text(segment.text)
+                        .font(Font(font))
+                        .opacity(0)
+                        .glassEffect(.clear, in: TextToShape(value: segment.text, font: font))
+                }
+            }
+        }
     }
 }
 
@@ -232,16 +246,30 @@ struct MarqueeGlassText: View {
 // MARK: - Left-Aligned Glass Text
 
 /// Glass effect text left-aligned (for marquee)
+/// Renders emojis as normal text since they don't have glyph paths
 struct LeftAlignedGlassText: View {
     let text: String
     let font: UIFont
 
+    private var segments: [TextSegment] {
+        text.splitByEmoji()
+    }
+
     var body: some View {
-        Text(text)
-            .font(Font(font))
-            .fixedSize()
-            .opacity(0)
-            .glassEffect(.clear, in: LeftAlignedTextShape(value: text, font: font))
+        HStack(spacing: 0) {
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                if segment.isEmoji {
+                    Text(segment.text)
+                        .font(Font(font))
+                } else {
+                    Text(segment.text)
+                        .font(Font(font))
+                        .opacity(0)
+                        .glassEffect(.clear, in: LeftAlignedTextShape(value: segment.text, font: font))
+                }
+            }
+        }
+        .fixedSize()
     }
 }
 
@@ -314,6 +342,55 @@ extension UIFont {
     }
 }
 
+// MARK: - Text Segment Helper
+
+struct TextSegment {
+    let text: String
+    let isEmoji: Bool
+}
+
+extension String {
+    /// Splits string into segments of regular text and emojis
+    func splitByEmoji() -> [TextSegment] {
+        var segments: [TextSegment] = []
+        var currentText = ""
+        var currentIsEmoji = false
+
+        for scalar in unicodeScalars {
+            let isEmoji = scalar.properties.isEmoji && scalar.properties.isEmojiPresentation
+                || scalar.value >= 0x1F600 && scalar.value <= 0x1F64F // Emoticons
+                || scalar.value >= 0x1F300 && scalar.value <= 0x1F5FF // Misc Symbols
+                || scalar.value >= 0x1F680 && scalar.value <= 0x1F6FF // Transport
+                || scalar.value >= 0x1F1E0 && scalar.value <= 0x1F1FF // Flags
+                || scalar.value >= 0x2600 && scalar.value <= 0x26FF   // Misc symbols
+                || scalar.value >= 0x2700 && scalar.value <= 0x27BF   // Dingbats
+                || scalar.value >= 0xFE00 && scalar.value <= 0xFE0F   // Variation selectors
+                || scalar.value >= 0x1F900 && scalar.value <= 0x1F9FF // Supplemental
+
+            if currentText.isEmpty {
+                currentIsEmoji = isEmoji
+                currentText.unicodeScalars.append(scalar)
+            } else if isEmoji == currentIsEmoji {
+                currentText.unicodeScalars.append(scalar)
+            } else {
+                // Switch type - save current and start new
+                if !currentText.isEmpty {
+                    segments.append(TextSegment(text: currentText, isEmoji: currentIsEmoji))
+                }
+                currentText = String(scalar)
+                currentIsEmoji = isEmoji
+            }
+        }
+
+        // Add final segment
+        if !currentText.isEmpty {
+            segments.append(TextSegment(text: currentText, isEmoji: currentIsEmoji))
+        }
+
+        return segments
+    }
+}
+
 // MARK: - Preview
 
 #Preview {
@@ -322,7 +399,7 @@ extension UIFont {
             .foregroundStyle(.clear)
             .overlay(Image("background"))
         GlassEffectText(
-            text: "mixbridge",
+            text: "mixbridge 🎵",
             font: .init(name: "InstrumentSerif-Italic", size: 100) ?? .systemFont(ofSize: 100)
         )
     }

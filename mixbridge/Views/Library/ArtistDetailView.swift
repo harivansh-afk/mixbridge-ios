@@ -16,44 +16,61 @@ struct ArtistDetailView: View {
     private let avatarSize: CGFloat = 200
 
     var body: some View {
-        List {
-            Section {
-                VStack(spacing: 20) {
-                    avatarView
-                        .padding(.top, 20)
-
-                    artistInfo
-
-                    actionButtons
-                        .padding(.horizontal)
-                        .padding(.bottom, 24)
-                }
-                .frame(maxWidth: .infinity)
-                .listRowInsets(EdgeInsets())
-                .listRowSeparator(.hidden)
+        ZStack {
+            // Dynamic background from artist avatar
+            if let avatarUrl = artist.avatarUrl {
+                PlayerBackgroundView(artwork: avatarUrl)
+                    .blur(radius: 60)
             }
 
-            if isLoading && !hasLoaded {
+            // Subtle overlay for depth
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .opacity(0.12)
+                .ignoresSafeArea()
+
+            List {
                 Section {
-                    HStack {
-                        Spacer()
-                        ProgressView()
-                        Spacer()
+                    VStack(spacing: 20) {
+                        avatarView
+                            .padding(.top, 20)
+
+                        artistInfo
+
+                        actionButtons
+                            .padding(.horizontal)
+                            .padding(.bottom, 24)
                     }
-                    .padding(.vertical, 40)
+                    .frame(maxWidth: .infinity)
+                    .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
-                }
-            } else {
-                if !combinedTrackItems.isEmpty {
-                    topSongsSection
+                    .listRowBackground(Color.clear)
                 }
 
-                if !artistPlaylists.isEmpty {
-                    releasesSection
+                if isLoading && !hasLoaded {
+                    Section {
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                            Spacer()
+                        }
+                        .padding(.vertical, 40)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                    }
+                } else {
+                    if !combinedTrackItems.isEmpty {
+                        topSongsSection
+                    }
+
+                    if !artistPlaylists.isEmpty {
+                        releasesSection
+                    }
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
-        .listStyle(.plain)
         .navigationAllowDismissalGestures(allowDismissalGesture)
         .navigationBarBackButtonHidden(true)
         .task {
@@ -69,15 +86,6 @@ struct ArtistDetailView: View {
                         .font(.body)
                         .fontWeight(.semibold)
                         .foregroundStyle(.primary)
-                }
-            }
-
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    // More options
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.body)
                 }
             }
         }
@@ -128,10 +136,11 @@ struct ArtistDetailView: View {
 
     private var artistInfo: some View {
         VStack(spacing: 8) {
-            Text(artist.name)
-                .font(.title)
-                .fontWeight(.bold)
-                .multilineTextAlignment(.center)
+            GlassEffectText(
+                text: artist.name,
+                font: .systemFont(ofSize: 28, weight: .bold)
+            )
+            .frame(maxWidth: .infinity)
         }
         .padding(.horizontal)
     }
@@ -170,11 +179,13 @@ struct ArtistDetailView: View {
                         .foregroundStyle(.primary)
                 }
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             } else {
                 Text("Top Songs")
                     .font(.title3)
                     .fontWeight(.semibold)
                     .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             }
 
             ForEach(Array(combinedTrackItems.prefix(5).enumerated()), id: \.element.id) { index, item in
@@ -186,6 +197,8 @@ struct ArtistDetailView: View {
                     listContext: combinedTrackItems,
                     indexInList: index
                 )
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             }
         }
         .listSectionSeparator(.hidden)
@@ -199,6 +212,7 @@ struct ArtistDetailView: View {
                 .font(.title3)
                 .fontWeight(.semibold)
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 16) {
@@ -216,6 +230,7 @@ struct ArtistDetailView: View {
             }
             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 16, trailing: 16))
             .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
         }
         .listSectionSeparator(.hidden)
     }
