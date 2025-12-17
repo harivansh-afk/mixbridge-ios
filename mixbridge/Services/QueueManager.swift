@@ -69,39 +69,58 @@ class QueueManager {
     }
 
     /// Insert track as "next up" (right after currently playing track)
+    /// If track is already in queue, moves it to the next up position
     func insertTrackNext(_ track: Track, soundCloudTrack: SoundCloudTrack) async throws {
-        if isInQueue(track.id) {
-            throw ConvexError.alreadyInQueue
-        }
-
-        // Add track to queue first (appends to end)
-        let queueTrackId = try await BackgroundExecutor.run {
-            try await ConvexService.shared.addTrackToQueue(track: soundCloudTrack)
-        }
-
-        // Calculate the target position (after current track)
+        // Calculate the target position (after current track, or first if nothing playing)
         let currentIndex = PlayerState.shared.currentQueueIndex
-        let targetIndex = max(0, currentIndex) + 1
-        let fromIndex = queueTracks.count // It was appended at the end
+        let targetIndex = currentIndex >= 0 ? currentIndex + 1 : 0
 
-        // Update local state first (optimistic)
-        queueTracks.append(track)
-        queueTrackIds[track.id] = queueTrackId
-        soundCloudTracks[track.id] = soundCloudTrack
+        if let existingIndex = queueTracks.firstIndex(where: { $0.id == track.id }) {
+            // Track already in queue - move it to next up position
+            guard existingIndex != targetIndex else {
+                // Already in the right position
+                HapticManager.success()
+                return
+            }
 
-        // Move to target position if needed
-        if fromIndex != targetIndex && targetIndex < queueTracks.count {
-            // Move in local array
-            let movedTrack = queueTracks.remove(at: fromIndex)
-            queueTracks.insert(movedTrack, at: targetIndex)
+            // Move in local array (optimistic)
+            let movedTrack = queueTracks.remove(at: existingIndex)
+            // Adjust target index if we removed from before it
+            let adjustedTargetIndex = existingIndex < targetIndex ? targetIndex - 1 : targetIndex
+            queueTracks.insert(movedTrack, at: min(adjustedTargetIndex, queueTracks.count))
 
             // Sync reorder to backend
             try await BackgroundExecutor.run {
-                try await ConvexService.shared.reorderQueue(fromIndex: fromIndex, toIndex: targetIndex)
+                try await ConvexService.shared.reorderQueue(fromIndex: existingIndex, toIndex: adjustedTargetIndex)
             }
-        }
 
-        HapticManager.success()
+            HapticManager.success()
+        } else {
+            // Track not in queue - add it and move to next up position
+            let queueTrackId = try await BackgroundExecutor.run {
+                try await ConvexService.shared.addTrackToQueue(track: soundCloudTrack)
+            }
+
+            let fromIndex = queueTracks.count // Will be appended at the end
+
+            // Update local state first (optimistic)
+            queueTracks.append(track)
+            queueTrackIds[track.id] = queueTrackId
+            soundCloudTracks[track.id] = soundCloudTrack
+
+            // Move to target position if needed
+            if fromIndex != targetIndex && targetIndex < queueTracks.count {
+                let movedTrack = queueTracks.remove(at: fromIndex)
+                queueTracks.insert(movedTrack, at: targetIndex)
+
+                // Sync reorder to backend
+                try await BackgroundExecutor.run {
+                    try await ConvexService.shared.reorderQueue(fromIndex: fromIndex, toIndex: targetIndex)
+                }
+            }
+
+            HapticManager.success()
+        }
     }
 
     /// Remove track from queue with optimistic update

@@ -536,11 +536,12 @@ struct ExpandedPlayerView: View {
                             if queueManager.hasQueue {
                                 Button {
                                     if confirmDeleteQueue {
-                                        Task {
-                                            try? await queueManager.clearQueueWithSync()
-                                        }
+                                        // Reset state first, then clear queue
                                         withAnimation(.smooth(duration: 0.3)) {
                                             confirmDeleteQueue = false
+                                        }
+                                        Task {
+                                            try? await queueManager.clearQueueWithSync()
                                         }
                                     } else {
                                         withAnimation(.smooth(duration: 0.3)) {
@@ -593,9 +594,14 @@ struct ExpandedPlayerView: View {
             }
         }
         .onChange(of: queueManager.hasQueue) { _, hasQueue in
-            // Auto-open queue sheet when queue loads with items
-            if hasQueue && !showQueueSheet {
-                showQueueSheet = true
+            if hasQueue {
+                // Auto-open queue sheet when queue loads with items
+                if !showQueueSheet {
+                    showQueueSheet = true
+                }
+            } else {
+                // Reset confirmation state when queue becomes empty
+                confirmDeleteQueue = false
             }
         }
     }
