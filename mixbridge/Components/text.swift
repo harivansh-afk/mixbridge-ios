@@ -350,6 +350,38 @@ struct TextSegment {
 }
 
 extension String {
+    /// Truncates string to fit within maxWidth, adding ellipsis if needed
+    func truncatedToFit(font: UIFont, maxWidth: CGFloat) -> String {
+        let fullWidth = NSString(string: self).size(withAttributes: [.font: font]).width
+        guard fullWidth > maxWidth else { return self }
+
+        let ellipsis = "…"
+        let ellipsisWidth = NSString(string: ellipsis).size(withAttributes: [.font: font]).width
+        let targetWidth = maxWidth - ellipsisWidth
+
+        guard targetWidth > 0 else { return ellipsis }
+
+        // Binary search for the right length
+        var low = 0
+        var high = count
+        var result = ""
+
+        while low < high {
+            let mid = (low + high + 1) / 2
+            let testString = String(prefix(mid))
+            let testWidth = NSString(string: testString).size(withAttributes: [.font: font]).width
+
+            if testWidth <= targetWidth {
+                result = testString
+                low = mid
+            } else {
+                high = mid - 1
+            }
+        }
+
+        return result.isEmpty ? ellipsis : result + ellipsis
+    }
+
     /// Splits string into segments of regular text and emojis
     func splitByEmoji() -> [TextSegment] {
         var segments: [TextSegment] = []

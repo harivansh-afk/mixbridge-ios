@@ -139,11 +139,16 @@ struct PlaylistDetailView: View {
 
     private var playlistInfo: some View {
         VStack(spacing: 8) {
-            GlassEffectText(
-                text: playlist.name,
-                font: .systemFont(ofSize: 28, weight: .bold)
-            )
-            .frame(maxWidth: .infinity)
+            GeometryReader { geo in
+                let font = UIFont.systemFont(ofSize: 28, weight: .bold)
+                let truncatedName = playlist.name.truncatedToFit(font: font, maxWidth: geo.size.width)
+                GlassEffectText(
+                    text: truncatedName,
+                    font: font
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .frame(height: 34)
 
             Text(playlist.creator)
                 .font(.body)
