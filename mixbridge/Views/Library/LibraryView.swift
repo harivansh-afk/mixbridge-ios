@@ -17,24 +17,22 @@ struct LibraryView: View {
 
     var body: some View {
         NavigationStack {
-            RefreshableScrollView(isRefreshing: $isRefreshing) {
-                await loadPlaylists(forceRefresh: true)
-            } content: {
-                VStack(alignment: .leading, spacing: 24) {
-                    if dataStore.playlistsState == .loading && dataStore.playlists.isEmpty && !isRefreshing {
-                        VStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
-                        }
-                        .frame(maxHeight: .infinity)
-                    } else {
-                        if !dataStore.playlists.isEmpty {
-                            playlistGridSection
-                        }
-                        navigationSection
-                        if dataStore.playlists.count > 6 {
-                            recentlyAddedGridSection
+            Group {
+                if dataStore.playlistsState == .loading && dataStore.playlists.isEmpty && !isRefreshing {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    RefreshableScrollView(isRefreshing: $isRefreshing) {
+                        await loadPlaylists(forceRefresh: true)
+                    } content: {
+                        VStack(alignment: .leading, spacing: 24) {
+                            if !dataStore.playlists.isEmpty {
+                                playlistGridSection
+                            }
+                            navigationSection
+                            if dataStore.playlists.count > 6 {
+                                recentlyAddedGridSection
+                            }
                         }
                     }
                 }
