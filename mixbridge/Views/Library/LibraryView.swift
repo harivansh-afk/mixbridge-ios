@@ -13,6 +13,7 @@ struct LibraryView: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(PreloadedDataStore.self) private var dataStore
     @State private var isRefreshing = false
+    @State private var hasLoadedOnce = false
     @Namespace private var namespace
 
     var body: some View {
@@ -21,13 +22,14 @@ struct LibraryView: View {
                 await loadPlaylists(forceRefresh: true)
             } content: {
                 VStack(alignment: .leading, spacing: 24) {
-                    if dataStore.playlistsState == .loading && dataStore.playlists.isEmpty && !isRefreshing {
-                        VStack {
-                            Spacer()
+                    // Only show loading if we've loaded before and are refreshing with empty data
+                    // Don't show on initial app load - preloader handles that behind splash
+                    if hasLoadedOnce && dataStore.playlistsState == .loading && dataStore.playlists.isEmpty && !isRefreshing {
+                        GeometryReader { geometry in
                             ProgressView()
-                            Spacer()
+                                .frame(width: geometry.size.width, height: geometry.size.height)
                         }
-                        .frame(maxHeight: .infinity)
+                        .frame(minHeight: 300)
                     } else {
                         if !dataStore.playlists.isEmpty {
                             playlistGridSection
@@ -37,6 +39,11 @@ struct LibraryView: View {
                             recentlyAddedGridSection
                         }
                     }
+                }
+            }
+            .onChange(of: dataStore.playlistsState) { _, newState in
+                if newState == .loaded {
+                    hasLoadedOnce = true
                 }
             }
             .navigationTitle("Library")
