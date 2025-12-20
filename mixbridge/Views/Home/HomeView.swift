@@ -9,21 +9,17 @@ import SwiftUI
 
 struct HomeView: View {
     @State private var showingAccount = false
+    @State private var showingDiscover = false
     @Environment(AuthManager.self) private var authManager
     @Environment(UserProfileManager.self) private var profileManager
     @Environment(QueueManager.self) private var queueManager
     @Environment(PreloadedDataStore.self) private var dataStore
-
-    @State private var isRefreshing = false
 
     var body: some View {
         NavigationStack {
             content
                 .navigationTitle("Home")
                 .navigationBarTitleDisplayMode(.large)
-                .refreshable {
-                    await loadHomeData(forceRefresh: true)
-                }
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         profileAvatar
@@ -39,6 +35,9 @@ struct HomeView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.hidden)
                 .interactiveDismissDisabled(false)
+            }
+            .fullScreenCover(isPresented: $showingDiscover) {
+                DiscoverView(isPresented: $showingDiscover)
             }
             .task {
                 if let userId = authManager.currentUserId {
@@ -125,41 +124,63 @@ struct HomeView: View {
 
     private var homeList: some View {
         List {
-            if !dataStore.playHistory.isEmpty {
-                Text("Recents")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .foregroundColor(Color.primary)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 8, trailing: 16))
+            // Pages Section
+            Section {
+                pagesSection
+            }
+            .listRowInsets(EdgeInsets())
+            .listRowSeparator(.hidden)
 
-                ForEach(Array(dataStore.playHistory.prefix(100).enumerated()), id: \.element.id) { index, item in
-                    TrackRow(
-                        item.track,
-                        number: index + 1,
-                        showCover: true,
-                        soundCloudTrack: item.soundCloudTrack,
-                        listContext: Array(dataStore.playHistory.prefix(100)),
-                        indexInList: index
-                    )
-                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+            // Recents Section
+            if !dataStore.playHistory.isEmpty {
+                Section {
+                    Text("Recents")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 8, trailing: 16))
+                        .listRowSeparator(.hidden)
+
+                    ForEach(Array(dataStore.playHistory.prefix(100).enumerated()), id: \.element.id) { index, item in
+                        TrackRow(
+                            item.track,
+                            number: index + 1,
+                            showCover: true,
+                            soundCloudTrack: item.soundCloudTrack,
+                            listContext: Array(dataStore.playHistory.prefix(100)),
+                            indexInList: index
+                        )
+                    }
                 }
             }
         }
         .listStyle(.plain)
+        .refreshable {
+            await loadHomeData(forceRefresh: true)
+        }
+    }
+
+    private var pagesSection: some View {
+        VStack(spacing: 0) {
+            Button {
+                HapticManager.selection()
+                showingDiscover = true
+            } label: {
+                LibraryNavigationRow(
+                    icon: "apple.intelligence",
+                    title: "Discover",
+                    iconColor: .primary
+                )
+            }
+            .buttonStyle(.plain)
+
+            Divider()
+                .padding(.leading, 60)
+        }
     }
 
     private func loadHomeData(forceRefresh: Bool = false) async {
         guard let userId = authManager.currentUserId else { return }
-
-        if forceRefresh {
-            isRefreshing = true
-        }
-
-        // Background refresh - data already shown from dataStore
         await AppDataPreloader.shared.refreshIfStale(userId: userId, dataType: .playHistory)
-
-        isRefreshing = false
     }
 }
 
