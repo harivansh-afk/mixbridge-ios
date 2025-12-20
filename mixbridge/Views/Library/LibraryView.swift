@@ -13,37 +13,28 @@ struct LibraryView: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(PreloadedDataStore.self) private var dataStore
     @State private var isRefreshing = false
-    @State private var hasLoadedOnce = false
     @Namespace private var namespace
 
     var body: some View {
         NavigationStack {
-            RefreshableScrollView(isRefreshing: $isRefreshing) {
-                await loadPlaylists(forceRefresh: true)
-            } content: {
-                VStack(alignment: .leading, spacing: 24) {
-                    // Only show loading if we've loaded before and are refreshing with empty data
-                    // Don't show on initial app load - preloader handles that behind splash
-                    if hasLoadedOnce && dataStore.playlistsState == .loading && dataStore.playlists.isEmpty && !isRefreshing {
-                        GeometryReader { geometry in
-                            ProgressView()
-                                .frame(width: geometry.size.width, height: geometry.size.height)
-                        }
-                        .frame(minHeight: 300)
-                    } else {
-                        if !dataStore.playlists.isEmpty {
-                            playlistGridSection
-                        }
-                        navigationSection
-                        if dataStore.playlists.count > 6 {
-                            recentlyAddedGridSection
+            Group {
+                if dataStore.playlistsState == .loading && dataStore.playlists.isEmpty && !isRefreshing {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    RefreshableScrollView(isRefreshing: $isRefreshing) {
+                        await loadPlaylists(forceRefresh: true)
+                    } content: {
+                        VStack(alignment: .leading, spacing: 24) {
+                            if !dataStore.playlists.isEmpty {
+                                playlistGridSection
+                            }
+                            navigationSection
+                            if dataStore.playlists.count > 6 {
+                                recentlyAddedGridSection
+                            }
                         }
                     }
-                }
-            }
-            .onChange(of: dataStore.playlistsState) { _, newState in
-                if newState == .loaded {
-                    hasLoadedOnce = true
                 }
             }
             .navigationTitle("Library")
