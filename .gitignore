@@ -4,7 +4,11 @@ SourcePackages/
 .AppleDouble
 .LSOverride
 thoughts/
-docs/
+docs/components
+docs/design
+docs/ios
+docs/swiftui
+docs/syntax
 # Xcode
 *.xcuserstate
 *.xccheckout
