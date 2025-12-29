@@ -3,7 +3,7 @@ import Security
 
 /// Manages secure storage of OAuth tokens in iOS Keychain
 final class KeychainManager {
-    static let shared = KeychainManager()
+    nonisolated static let shared = KeychainManager()
 
     private init() {}
 

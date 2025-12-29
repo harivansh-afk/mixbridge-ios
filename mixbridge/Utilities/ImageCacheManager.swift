@@ -7,10 +7,11 @@
 
 import UIKit
 import SwiftUI
+import CryptoKit
 
 // Synchronous memory cache for instant access (no flicker)
 class MemoryImageCache {
-    static let shared = MemoryImageCache()
+    nonisolated static let shared = MemoryImageCache()
     private let cache = NSCache<NSString, UIImage>()
 
     private init() {
@@ -34,16 +35,15 @@ class MemoryImageCache {
 actor ImageCacheManager {
     static let shared = ImageCacheManager()
 
-    private nonisolated let fileManager = FileManager.default
-    private nonisolated let cacheDirectory: URL
+    private let cacheDirectory: URL
 
     private init() {
         // Setup disk cache directory
-        let paths = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)
+        let paths = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
         cacheDirectory = paths[0].appendingPathComponent("ImageCache")
 
         // Create cache directory if it doesn't exist
-        try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
     }
 
     // MARK: - Public Methods
@@ -57,7 +57,7 @@ actor ImageCacheManager {
         }
 
         // Check disk cache
-        if let diskImage = loadFromDisk(url: url) {
+        if let diskImage = await loadFromDisk(url: url) {
             // Store back in memory cache
             MemoryImageCache.shared.set(diskImage, forKey: key)
             return diskImage
@@ -68,17 +68,13 @@ actor ImageCacheManager {
     }
 
     func clearCache() async {
-        await MainActor.run {
-            MemoryImageCache.shared.removeAll()
-        }
-        try? fileManager.removeItem(at: cacheDirectory)
-        try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        MemoryImageCache.shared.removeAll()
+        try? FileManager.default.removeItem(at: cacheDirectory)
+        try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
     }
 
     func clearMemoryCache() async {
-        await MainActor.run {
-            MemoryImageCache.shared.removeAll()
-        }
+        MemoryImageCache.shared.removeAll()
     }
 
     // MARK: - Private Methods
@@ -97,7 +93,7 @@ actor ImageCacheManager {
             // Cache the image
             let key = url.absoluteString
             MemoryImageCache.shared.set(image, forKey: key)
-            saveToDisk(image: image, url: url)
+            await saveToDisk(data: data, url: url)
 
             return image
         } catch {
@@ -105,25 +101,29 @@ actor ImageCacheManager {
         }
     }
 
-    nonisolated private func loadFromDisk(url: URL) -> UIImage? {
-        let fileURL = cacheDirectory.appendingPathComponent(url.lastPathComponent)
+    private func loadFromDisk(url: URL) async -> UIImage? {
+        let fileURL = cacheDirectory.appendingPathComponent(diskFilename(for: url))
 
-        guard fileManager.fileExists(atPath: fileURL.path),
-              let data = try? Data(contentsOf: fileURL),
-              let image = UIImage(data: data) else {
-            return nil
-        }
-
-        return image
+        return await Task.detached(priority: .utility) {
+            guard FileManager.default.fileExists(atPath: fileURL.path),
+                  let data = try? Data(contentsOf: fileURL),
+                  let image = UIImage(data: data) else {
+                return nil
+            }
+            return image
+        }.value
     }
 
-    nonisolated private func saveToDisk(image: UIImage, url: URL) {
-        let fileURL = cacheDirectory.appendingPathComponent(url.lastPathComponent)
+    private func saveToDisk(data: Data, url: URL) async {
+        let fileURL = cacheDirectory.appendingPathComponent(diskFilename(for: url))
 
-        guard let data = image.jpegData(compressionQuality: 0.8) else {
-            return
-        }
+        _ = await Task.detached(priority: .utility) {
+            try? data.write(to: fileURL, options: [.atomic])
+        }.value
+    }
 
-        try? data.write(to: fileURL)
+    nonisolated private func diskFilename(for url: URL) -> String {
+        let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 }
