@@ -21,8 +21,8 @@ private struct CachedStream {
     }
 
     nonisolated var isExpiringSoon: Bool {
-        // Consider expired if within 5 minutes of expiry
-        Date().addingTimeInterval(300) > expiresAt
+        // Consider expiring soon if within 1 minute of expiry
+        Date().addingTimeInterval(60) > expiresAt
     }
 }
 
@@ -54,8 +54,9 @@ actor StreamURLCache {
     /// Cap queued prefetches to avoid runaway work from list scrolling
     private let maxQueuedPrefetches = 50
 
-    /// 4 hours - SoundCloud HLS URLs remain valid for extended periods
-    private let defaultExpiryInterval: TimeInterval = 14400
+    /// SoundCloud HLS URLs expire after ~5 minutes (signed Policy + Signature)
+    /// Cache for 3 minutes to leave buffer before expiration
+    private let defaultExpiryInterval: TimeInterval = 180
 
     private init() {
         #if DEBUG
