@@ -16,11 +16,11 @@ private struct CachedStream {
     let cachedAt: Date
     let expiresAt: Date
 
-    var isExpired: Bool {
+    nonisolated var isExpired: Bool {
         Date() > expiresAt
     }
 
-    var isExpiringSoon: Bool {
+    nonisolated var isExpiringSoon: Bool {
         // Consider expired if within 5 minutes of expiry
         Date().addingTimeInterval(300) > expiresAt
     }
@@ -35,21 +35,24 @@ struct CachedStreamData {
 
 /// High-performance stream URL cache with aggressive prefetching
 /// Eliminates 500-1000ms network latency by prefetching stream URLs before user interaction
-@MainActor
-final class StreamURLCache {
+actor StreamURLCache {
     static let shared = StreamURLCache()
 
     private let convexService = ConvexService.shared
-    private let keychain = KeychainManager.shared
 
     /// Track ID -> Cached stream mapping
     private var cache: [String: CachedStream] = [:]
 
-    /// Tracks in-flight prefetch requests to avoid duplicates
-    private var prefetchingTracks: Set<String> = []
+    /// Track ID -> in-flight fetch task (dedupes concurrent callers)
+    private var inFlight: [String: Task<CachedStreamData, Error>] = [:]
 
-    /// Background queue for prefetch operations
-    private let prefetchQueue = DispatchQueue(label: "com.mixbridge.stream-prefetch", qos: .utility)
+    /// Pending prefetch queue (rate-limited to avoid flooding network/server)
+    private var pendingPrefetch: [String] = []
+    private var pendingPrefetchSet: Set<String> = []
+    private var prefetchWorker: Task<Void, Never>?
+
+    /// Cap queued prefetches to avoid runaway work from list scrolling
+    private let maxQueuedPrefetches = 50
 
     /// 4 hours - SoundCloud HLS URLs remain valid for extended periods
     private let defaultExpiryInterval: TimeInterval = 14400
@@ -74,9 +77,7 @@ final class StreamURLCache {
         }
 
         if cached.isExpiringSoon {
-            Task {
-                await prefetchStreamURL(for: trackId)
-            }
+            enqueuePrefetch(trackId: trackId)
         }
 
         return CachedStreamData(
@@ -88,64 +89,32 @@ final class StreamURLCache {
 
     /// Prefetch stream URL for a track (fire and forget)
     /// Uses Convex action for direct CDN URLs
-    func prefetchStreamURL(for trackId: String) async {
-        // Skip if already cached or in-flight
-        guard cache[trackId] == nil && !prefetchingTracks.contains(trackId) else {
-            return
-        }
-
-        prefetchingTracks.insert(trackId)
-        defer { prefetchingTracks.remove(trackId) }
-
-        do {
-            let response = try await convexService.getDirectStreamURL(trackId: trackId)
-
-            let cached = CachedStream(
-                url: response.stream_url,
-                streamType: response.stream_type,
-                accessToken: response.access_token,
-                cachedAt: Date(),
-                expiresAt: Date().addingTimeInterval(defaultExpiryInterval)
-            )
-
-            cache[trackId] = cached
-
-            #if DEBUG
-            print("✅ Prefetched stream URL for track: \(trackId)")
-            #endif
-        } catch {
-            #if DEBUG
-            print("❌ Prefetch failed for track \(trackId): \(error)")
-            #endif
-        }
+    func prefetchStreamURL(for trackId: String) {
+        enqueuePrefetch(trackId: trackId)
     }
 
     /// Aggressively prefetch stream URLs for multiple tracks
     /// Spotify-style: prefetch next 3-5 tracks in queue
-    func prefetchBatch(trackIds: [String], priority: TaskPriority = .utility) async {
+    func prefetchBatch(trackIds: [String], priority: TaskPriority = .utility) {
         #if DEBUG
         print("🔥 Batch prefetching \(trackIds.count) tracks")
         #endif
 
-        await withTaskGroup(of: Void.self) { group in
-            for trackId in trackIds {
-                group.addTask(priority: priority) {
-                    await self.prefetchStreamURL(for: trackId)
-                }
-            }
+        for trackId in trackIds {
+            enqueuePrefetch(trackId: trackId)
         }
     }
 
     /// Prefetch stream URLs for upcoming tracks in queue
     /// Looks ahead N tracks (default: 3, Spotify uses 3)
-    func prefetchUpcoming(tracks: [Track], lookAhead: Int = 3) async {
+    func prefetchUpcoming(tracks: [Track], lookAhead: Int = 3) {
         let trackIds = tracks.prefix(lookAhead).map { $0.id }
-        await prefetchBatch(trackIds: trackIds)
+        prefetchBatch(trackIds: trackIds)
     }
 
     /// Prefetch current track + neighbors (previous + next N tracks)
     /// Useful for queue browsing and instant playback
-    func prefetchTrackAndNeighbors(currentIndex: Int, queue: [Track], lookAhead: Int = 3) async {
+    func prefetchTrackAndNeighbors(currentIndex: Int, queue: [Track], lookAhead: Int = 3) {
         var trackIds: [String] = []
 
         // Add previous track (instant back button)
@@ -160,7 +129,7 @@ final class StreamURLCache {
         let nextTracks = queue.dropFirst(currentIndex + 1).prefix(lookAhead)
         trackIds.append(contentsOf: nextTracks.map { $0.id })
 
-        await prefetchBatch(trackIds: trackIds, priority: .userInitiated)
+        prefetchBatch(trackIds: trackIds, priority: .userInitiated)
     }
 
     /// Clear expired entries from cache
@@ -179,7 +148,11 @@ final class StreamURLCache {
     /// Clear all cached URLs (useful on memory warning or logout)
     func clearAll() {
         cache.removeAll()
-        prefetchingTracks.removeAll()
+        inFlight.removeAll()
+        pendingPrefetch.removeAll()
+        pendingPrefetchSet.removeAll()
+        prefetchWorker?.cancel()
+        prefetchWorker = nil
 
         #if DEBUG
         print("🗑️ Cleared all cached stream URLs")
@@ -192,34 +165,23 @@ final class StreamURLCache {
     func forceRefresh(for trackId: String) async -> CachedStreamData? {
         // Remove from cache first
         cache.removeValue(forKey: trackId)
-        prefetchingTracks.remove(trackId)
+        inFlight[trackId]?.cancel()
+        inFlight.removeValue(forKey: trackId)
+        pendingPrefetchSet.remove(trackId)
+        pendingPrefetch.removeAll { $0 == trackId }
 
         #if DEBUG
         print("🔄 Force refreshing stream URL for track: \(trackId)")
         #endif
 
         do {
-            let response = try await convexService.getDirectStreamURL(trackId: trackId)
-
-            let cached = CachedStream(
-                url: response.stream_url,
-                streamType: response.stream_type,
-                accessToken: response.access_token,
-                cachedAt: Date(),
-                expiresAt: Date().addingTimeInterval(defaultExpiryInterval)
-            )
-
-            cache[trackId] = cached
+            let stream = try await ensureStream(for: trackId, priority: .userInitiated, forceRefresh: true)
 
             #if DEBUG
             print("✅ Force refresh successful for track: \(trackId)")
             #endif
 
-            return CachedStreamData(
-                url: response.stream_url,
-                streamType: response.stream_type,
-                accessToken: response.access_token
-            )
+            return stream
         } catch {
             #if DEBUG
             print("❌ Force refresh failed for track \(trackId): \(error)")
@@ -235,5 +197,103 @@ final class StreamURLCache {
         #if DEBUG
         print("🗑️ Invalidated cache for track: \(trackId)")
         #endif
+    }
+
+    /// Ensure a stream is available (used by actual playback start).
+    /// - Note: Returns cached value if fresh; otherwise fetches and updates cache.
+    func ensureStream(
+        for trackId: String,
+        priority: TaskPriority = .userInitiated,
+        forceRefresh: Bool = false
+    ) async throws -> CachedStreamData {
+        if !forceRefresh, let cached = getCachedStream(for: trackId), cached.url.isEmpty == false {
+            return cached
+        }
+
+        if let existingTask = inFlight[trackId] {
+            return try await existingTask.value
+        }
+
+        let task = Task<CachedStreamData, Error>(priority: priority) { [convexService] in
+            let response = try await convexService.getDirectStreamURL(trackId: trackId)
+            return CachedStreamData(
+                url: response.stream_url,
+                streamType: response.stream_type,
+                accessToken: response.access_token
+            )
+        }
+
+        inFlight[trackId] = task
+        defer { inFlight.removeValue(forKey: trackId) }
+
+        let stream = try await task.value
+
+        let cached = CachedStream(
+            url: stream.url,
+            streamType: stream.streamType,
+            accessToken: stream.accessToken,
+            cachedAt: Date(),
+            expiresAt: Date().addingTimeInterval(defaultExpiryInterval)
+        )
+
+        cache[trackId] = cached
+        return stream
+    }
+
+    // MARK: - Prefetch Queue (rate-limited)
+
+    private func enqueuePrefetch(trackId: String) {
+        cleanupExpired()
+
+        // Skip if already cached or in-flight
+        if cache[trackId] != nil || inFlight[trackId] != nil {
+            return
+        }
+
+        guard pendingPrefetch.count < maxQueuedPrefetches else { return }
+        guard !pendingPrefetchSet.contains(trackId) else { return }
+
+        pendingPrefetch.append(trackId)
+        pendingPrefetchSet.insert(trackId)
+        startPrefetchWorkerIfNeeded()
+    }
+
+    private func startPrefetchWorkerIfNeeded() {
+        guard prefetchWorker == nil else { return }
+
+        prefetchWorker = Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            await self.runPrefetchWorker()
+        }
+    }
+
+    private func runPrefetchWorker() async {
+        defer {
+            prefetchWorker = nil
+        }
+
+        while !Task.isCancelled {
+            guard let trackId = dequeuePrefetch() else {
+                return
+            }
+
+            do {
+                _ = try await ensureStream(for: trackId, priority: .utility)
+                #if DEBUG
+                print("✅ Prefetched stream URL for track: \(trackId)")
+                #endif
+            } catch {
+                #if DEBUG
+                print("❌ Prefetch failed for track \(trackId): \(error)")
+                #endif
+            }
+        }
+    }
+
+    private func dequeuePrefetch() -> String? {
+        guard !pendingPrefetch.isEmpty else { return nil }
+        let next = pendingPrefetch.removeFirst()
+        pendingPrefetchSet.remove(next)
+        return next
     }
 }

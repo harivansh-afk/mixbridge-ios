@@ -133,6 +133,7 @@ struct SearchView: View {
 
     private func resultsView(results: SearchResult) -> some View {
         let trackItems = results.tracks.prefix(10).map { TrackItem(soundCloudTrack: $0) }
+        let listContext = Array(trackItems)
 
         return List {
             if !results.tracks.isEmpty {
@@ -149,7 +150,7 @@ struct SearchView: View {
                         number: index + 1,
                         showCover: true,
                         soundCloudTrack: item.soundCloudTrack,
-                        listContext: Array(trackItems),
+                        listContext: listContext,
                         indexInList: index
                     )
                 }

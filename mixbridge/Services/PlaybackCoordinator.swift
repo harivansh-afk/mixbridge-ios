@@ -47,7 +47,6 @@ final class PlaybackCoordinator: NSObject {
     private let keychain = KeychainManager.shared
     private let convexService = ConvexService.shared
     private let streamCache = StreamURLCache.shared
-    private let itemCache = PreloadedItemCache.shared
     private let positionTracker = PlaybackPositionTracker.shared
     private let dataStore = PreloadedDataStore.shared
     private let dataPreloader = AppDataPreloader.shared
@@ -327,16 +326,15 @@ final class PlaybackCoordinator: NSObject {
     }
 
     private func prepareItem(for context: PlaybackContext) async throws -> AVPlayerItem {
-        // Use Convex action for direct CDN access (faster than Next.js API)
-        let response = try await convexService.getDirectStreamURL(trackId: context.track.id)
+        let stream = try await streamCache.ensureStream(for: context.track.id, priority: .userInitiated)
 
-        guard let url = URL(string: response.stream_url) else {
+        guard let url = URL(string: stream.url) else {
             throw PlayerState.PlaybackError.invalidStreamURL
         }
 
         // Use SoundCloud OAuth token directly for CDN access
         // This bypasses the HLS proxy, saving ~200-400ms
-        let headers = ["Authorization": "OAuth \(response.access_token)"]
+        let headers = ["Authorization": "OAuth \(stream.accessToken)"]
         let asset = AVURLAsset(url: url, options: [
             "AVURLAssetHTTPHeaderFieldsKey": headers
         ])
@@ -598,22 +596,12 @@ final class PlaybackCoordinator: NSObject {
 
         Task {
             await streamCache.prefetchUpcoming(tracks: tracks, lookAhead: 5)
-
-            for track in tracks.prefix(3) {
-                if let cached = streamCache.getCachedStream(for: track.id) {
-                    let scTrack = queueManager.soundCloudTrack(for: track.id)
-                    await itemCache.preloadItem(for: track, soundCloudTrack: scTrack, streamURL: cached.url)
-                }
-            }
         }
     }
 
     func prefetchTrack(_ track: Track, with soundCloudTrack: SoundCloudTrack?) {
         Task {
             await streamCache.prefetchStreamURL(for: track.id)
-            if let cached = streamCache.getCachedStream(for: track.id) {
-                await itemCache.preloadItem(for: track, soundCloudTrack: soundCloudTrack, streamURL: cached.url)
-            }
         }
     }
 

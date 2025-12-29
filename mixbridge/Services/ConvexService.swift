@@ -3,7 +3,7 @@ import Foundation
 /// Convex client for all data operations
 /// Calls Convex actions that handle caching and SoundCloud API fetching automatically
 final class ConvexService {
-    static let shared = ConvexService()
+    nonisolated static let shared = ConvexService()
 
     private let deploymentUrl = "https://avid-falcon-471.convex.cloud"
     private let apiBaseUrl = "https://mixbridge.app"
@@ -500,7 +500,7 @@ final class ConvexService {
     /// Get stream URL with OAuth token for direct SoundCloud CDN access
     /// This bypasses the HLS proxy, reducing latency by ~200-400ms
     func getDirectStreamURL(trackId: String) async throws -> ConvexStreamResponse {
-        guard let userId = AuthManager.shared.currentUserId else {
+        guard let userId = KeychainManager.shared.getUserId() else {
             throw ConvexError.notAuthenticated
         }
 

@@ -124,8 +124,10 @@ struct HomeView: View {
     }
 
     private var homeList: some View {
-        List {
-            if !dataStore.playHistory.isEmpty {
+        let listContext = Array(dataStore.playHistory.prefix(100))
+
+        return List {
+            if !listContext.isEmpty {
                 Text("Recents")
                     .font(.title2)
                     .fontWeight(.bold)
@@ -133,13 +135,13 @@ struct HomeView: View {
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 8, trailing: 16))
 
-                ForEach(Array(dataStore.playHistory.prefix(100).enumerated()), id: \.element.id) { index, item in
+                ForEach(Array(listContext.enumerated()), id: \.element.id) { index, item in
                     TrackRow(
                         item.track,
                         number: index + 1,
                         showCover: true,
                         soundCloudTrack: item.soundCloudTrack,
-                        listContext: Array(dataStore.playHistory.prefix(100)),
+                        listContext: listContext,
                         indexInList: index
                     )
                     .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
