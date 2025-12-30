@@ -26,7 +26,7 @@ struct PlaybackSnapshot {
     let duration: Double
 }
 
-private struct PlaybackContext: Equatable {
+struct PlaybackContext: Equatable {
     let track: Track
     let soundCloudTrack: SoundCloudTrack?
     let queueIndex: Int?
@@ -43,6 +43,17 @@ final class PlaybackCoordinator: NSObject {
     weak var delegate: PlaybackCoordinatorDelegate?
     var autoplayEnabled: Bool = true
 
+    // MARK: - Mix Mode Settings
+
+    /// Enable automatic crossfade between tracks
+    var mixEnabled: Bool = false
+
+    /// Crossfade duration in seconds
+    var crossfadeSeconds: Double = 6
+
+    /// Prewarm lead time in seconds
+    var prewarmSeconds: Double = 15
+
     private let queueManager = QueueManager.shared
     private let keychain = KeychainManager.shared
     private let convexService = ConvexService.shared
@@ -50,6 +61,18 @@ final class PlaybackCoordinator: NSObject {
     private let positionTracker = PlaybackPositionTracker.shared
     private let dataStore = PreloadedDataStore.shared
     private let dataPreloader = AppDataPreloader.shared
+
+    // MARK: - Mix Mode Engine
+
+    /// Lazy-initialized mix engine for crossfade playback
+    private lazy var mixEngine: MixPlaybackEngine = {
+        let engine = MixPlaybackEngine()
+        engine.delegate = self
+        return engine
+    }()
+
+    /// Whether we're currently using mix mode for playback
+    private var isUsingMixMode: Bool = false
 
     private let player = AVQueuePlayer()
     private var timeObserverToken: Any?
@@ -118,7 +141,10 @@ final class PlaybackCoordinator: NSObject {
     // MARK: - Public Controls
 
     var hasLoadedItems: Bool {
-        !player.items().isEmpty
+        if isUsingMixMode {
+            return mixEngine.duration > 0
+        }
+        return !player.items().isEmpty
     }
 
     func play(track: Track, soundCloudTrack: SoundCloudTrack?, queueIndex: Int?, startTime: Double? = nil) {
@@ -140,49 +166,80 @@ final class PlaybackCoordinator: NSObject {
         let context = PlaybackContext(track: track, soundCloudTrack: soundCloudTrack, queueIndex: effectiveQueueIndex)
 
         Task {
-            await startPlayback(with: context, startTime: startTime)
+            if mixEnabled {
+                await startMixPlayback(with: context, startTime: startTime)
+            } else {
+                await startPlayback(with: context, startTime: startTime)
+            }
         }
     }
 
     func togglePlayback() {
-        if player.timeControlStatus == .playing {
-            pause()
+        if isUsingMixMode {
+            if mixEngine.isPlaying {
+                pause()
+            } else {
+                resume()
+            }
         } else {
-            resume()
+            if player.timeControlStatus == .playing {
+                pause()
+            } else {
+                resume()
+            }
         }
     }
 
     func pause() {
         isIntendedToPlay = false
-        player.pause()
+        if isUsingMixMode {
+            mixEngine.pause()
+        } else {
+            player.pause()
+        }
         status = .paused
         positionTracker.flush()  // Save current position immediately
     }
 
     func resume() {
-        guard !player.items().isEmpty else { return }
-        isIntendedToPlay = true
-        player.play()
-        status = .playing
+        if isUsingMixMode {
+            isIntendedToPlay = true
+            mixEngine.resume()
+            status = .playing
+        } else {
+            guard !player.items().isEmpty else { return }
+            isIntendedToPlay = true
+            player.play()
+            status = .playing
+        }
     }
 
     func seek(to time: Double) {
-        let wasPlaying = player.timeControlStatus == .playing
-        let target = CMTime(seconds: time, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        if isUsingMixMode {
+            mixEngine.seek(to: time)
+            publishSnapshot()
+        } else {
+            let wasPlaying = player.timeControlStatus == .playing
+            let target = CMTime(seconds: time, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
 
-        player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
-            guard let self = self, finished else { return }
-            Task { @MainActor in
-                if wasPlaying {
-                    self.player.play()
+            player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+                guard let self = self, finished else { return }
+                Task { @MainActor in
+                    if wasPlaying {
+                        self.player.play()
+                    }
+                    self.publishSnapshot()
                 }
-                self.publishSnapshot()
             }
         }
     }
 
     func setVolume(_ value: Double) {
-        player.volume = Float(value)
+        if isUsingMixMode {
+            mixEngine.setVolume(value)
+        } else {
+            player.volume = Float(value)
+        }
     }
 
     func playNext(manual: Bool = false) {
@@ -322,6 +379,82 @@ final class PlaybackCoordinator: NSObject {
             delegate?.playbackCoordinator(self, didEncounter: error)
             status = .failed(error.localizedDescription)
             logError("Playback failed (attempt \(metadata.attemptCount)/\(metadata.maxAttempts)): \(error)")
+        }
+    }
+
+    // MARK: - Mix Mode Playback
+
+    private func startMixPlayback(with context: PlaybackContext, startTime: Double? = nil) async {
+        isPreparingPlayback = true
+        defer { isPreparingPlayback = false }
+
+        status = .loading
+
+        do {
+            logDebug("[MixMode] Fetching stream URL...")
+            let stream = try await streamCache.ensureStream(for: context.track.id, priority: .userInitiated)
+
+            // Stop regular playback and switch to mix mode
+            player.pause()
+            player.removeAllItems()
+            itemContextMap.removeAll()
+
+            // Configure mix engine
+            mixEngine.crossfadeSeconds = crossfadeSeconds
+            mixEngine.prewarmSeconds = prewarmSeconds
+
+            // Start mix playback
+            mixEngine.play(context: context, streamData: stream, startTime: startTime)
+            isUsingMixMode = true
+
+            isIntendedToPlay = true
+            currentContext = context
+            handleTrackStartedPlaying(context: context)
+
+            logInfo("[MixMode] Playback started: \(context.track.title)")
+
+            // Clear retry metadata on success
+            retryAttempts.removeValue(forKey: context.track.id)
+
+            // Optimistic UI update
+            if let scTrack = context.soundCloudTrack {
+                let item = TrackItem(soundCloudTrack: scTrack)
+                dataStore.prependOrMovePlayHistoryTrack(item)
+            }
+
+            // Start position tracking
+            if let userId = AuthManager.shared.currentUserId,
+               autoplayEnabled,
+               let scTrack = context.soundCloudTrack {
+                let sessionId = positionTracker.startSession(
+                    trackId: context.track.id,
+                    queueIndex: context.queueIndex,
+                    duration: Double(scTrack.duration) / 1000.0
+                )
+                Task {
+                    try? await convexService.addPlay(
+                        userId: userId,
+                        track: scTrack,
+                        sessionId: sessionId,
+                        queueIndex: context.queueIndex
+                    )
+                    await dataPreloader.forceRefreshPlayHistory(userId: userId)
+                }
+            }
+
+            status = .playing
+
+        } catch {
+            var metadata = retryAttempts[context.track.id] ?? RetryMetadata()
+            metadata.attemptCount += 1
+            metadata.lastAttemptTime = Date()
+            retryAttempts[context.track.id] = metadata
+
+            isIntendedToPlay = false
+            isUsingMixMode = false
+            delegate?.playbackCoordinator(self, didEncounter: error)
+            status = .failed(error.localizedDescription)
+            logError("[MixMode] Playback failed: \(error)")
         }
     }
 
@@ -553,11 +686,23 @@ final class PlaybackCoordinator: NSObject {
     }
 
     private func publishSnapshot() {
-        let currentTime = CMTimeGetSeconds(player.currentTime())
-        let duration = CMTimeGetSeconds(player.currentItem?.duration ?? .invalid)
+        let currentTime: Double
+        let duration: Double
+
+        if isUsingMixMode {
+            currentTime = mixEngine.currentTime
+            duration = mixEngine.duration
+        } else {
+            currentTime = CMTimeGetSeconds(player.currentTime())
+            duration = CMTimeGetSeconds(player.currentItem?.duration ?? .invalid)
+        }
 
         let effectiveStatus: PlayerState.PlaybackStatus = {
             if case .failed = status { return status }
+
+            if isUsingMixMode {
+                return mixEngine.isPlaying ? .playing : (isIntendedToPlay ? .loading : .paused)
+            }
 
             switch player.timeControlStatus {
             case .waitingToPlayAtSpecifiedRate:
@@ -609,5 +754,88 @@ final class PlaybackCoordinator: NSObject {
         readinessObservation?.invalidate()
         waitingReasonObservation?.invalidate()
         NotificationCenter.default.removeObserver(self)
+    }
+}
+
+// MARK: - MixPlaybackEngineDelegate
+
+extension PlaybackCoordinator: MixPlaybackEngineDelegate {
+    func mixEngine(_ engine: MixPlaybackEngine, didEmit event: MixObservabilityEvent) {
+        // Log observability events
+        switch event {
+        case .prewarmStart(let trackId, let nextTrackId, let crossfade):
+            logInfo("[MixObservability] mix_prewarm_start: \(trackId) -> \(nextTrackId), crossfade=\(crossfade)s")
+        case .prewarmReady(let trackId, let nextTrackId, let crossfade):
+            logInfo("[MixObservability] mix_prewarm_ready: \(trackId) -> \(nextTrackId), crossfade=\(crossfade)s")
+        case .fadeStart(let trackId, let nextTrackId, let crossfade):
+            logInfo("[MixObservability] mix_fade_start: \(trackId) -> \(nextTrackId), crossfade=\(crossfade)s")
+        case .fadeComplete(let trackId, let nextTrackId, let crossfade):
+            logInfo("[MixObservability] mix_fade_complete: \(trackId) -> \(nextTrackId), crossfade=\(crossfade)s")
+        case .fadeAbort(let trackId, let nextTrackId, let crossfade, let reason):
+            logWarning("[MixObservability] mix_fade_abort(\(reason)): \(trackId) -> \(nextTrackId ?? "nil"), crossfade=\(crossfade)s")
+        }
+    }
+
+    func mixEngine(_ engine: MixPlaybackEngine, didCompleteTransitionTo track: Track, context: PlaybackContext) {
+        // End position tracking for previous track
+        positionTracker.endSession()
+
+        // Update current context
+        currentContext = context
+        handleTrackStartedPlaying(context: context)
+
+        logInfo("[MixMode] Transition complete: now playing \(track.title)")
+
+        // Optimistic UI update
+        if let scTrack = context.soundCloudTrack {
+            let item = TrackItem(soundCloudTrack: scTrack)
+            dataStore.prependOrMovePlayHistoryTrack(item)
+        }
+
+        // Start position tracking for new track
+        if let userId = AuthManager.shared.currentUserId,
+           autoplayEnabled,
+           let scTrack = context.soundCloudTrack {
+            let sessionId = positionTracker.startSession(
+                trackId: context.track.id,
+                queueIndex: context.queueIndex,
+                duration: Double(scTrack.duration) / 1000.0
+            )
+            Task {
+                try? await convexService.addPlay(
+                    userId: userId,
+                    track: scTrack,
+                    sessionId: sessionId,
+                    queueIndex: context.queueIndex
+                )
+                await dataPreloader.forceRefreshPlayHistory(userId: userId)
+            }
+        }
+
+        publishSnapshot()
+    }
+
+    func mixEngine(_ engine: MixPlaybackEngine, didAbortWithFallback track: Track?, context: PlaybackContext?) {
+        // Mix transition aborted - fallback to normal playback
+        logWarning("[MixMode] Transition aborted, falling back to normal playback")
+
+        // If we have a next track context, try normal playback
+        if let context = context {
+            Task {
+                // Switch back to non-mix mode for fallback
+                isUsingMixMode = false
+                await startPlayback(with: context)
+            }
+        }
+    }
+
+    func mixEngineDidUpdateTime(_ engine: MixPlaybackEngine, currentTime: Double, duration: Double) {
+        // Track position for periodic flush
+        if currentTime.isFinite && duration.isFinite {
+            positionTracker.updatePosition(currentTime, duration: duration)
+        }
+
+        // Publish snapshot to update UI
+        publishSnapshot()
     }
 }

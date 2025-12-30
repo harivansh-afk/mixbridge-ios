@@ -1,58 +1,73 @@
 # macOS
-SourcePackages/
 .DS_Store
 .AppleDouble
 .LSOverride
-thoughts/
-docs/components
-docs/design
-docs/ios
-docs/swiftui
-docs/syntax
-# Xcode
-*.xcuserstate
-*.xccheckout
-*.moved-aside
-*.xcscmblueprint
 
-# User-specific workspace data
-xcuserdata/
-
-# Build products
-build/
+# Repo-local generated / scratch
+.derived-data/
 DerivedData/
+.tmp/
+build/
 index.noindex/
 
-# Swift Package Manager
+# Swift Package Manager / Xcode SPM checkouts
+SourcePackages/
+Packages/
 .swiftpm/
 .build/
-Packages/
 
-# CocoaPods (if you ever add it)
-Pods/
-Podfile.lock
-*.xcworkspace
+# Xcode user-specific files
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+*.moved-aside
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+!default.pbxuser
+!default.mode1v3
+!default.mode2v3
+!default.perspectivev3
 
-# Carthage (if you ever add it)
-Carthage/Build/
+# Swift compiler artifacts (usually live under build dirs, but harmless to ignore)
+*.swiftdoc
+*.swiftmodule
+*.swiftsourceinfo
 
-# Fastlane (if you ever add it)
-fastlane/report.xml
-fastlane/Preview.html
-fastlane/screenshots/**/*.png
-fastlane/test_output/
-
-# Playgrounds
-timeline.xctimeline
-playground.xcworkspace
-
-# Logs
+# Logs / crash reports
 *.log
+*.crash
+*.ips
 
 # Archives & generated artifacts
 *.ipa
 *.dSYM.zip
 *.dSYM
 
-# Swift concurrency crash logs (rare, but can show up)
-*.crash
+# Carthage (if you ever add it)
+Carthage/Build/
+
+# CocoaPods (if you ever add it)
+Pods/
+# Podfile.lock is usually committed; uncomment only if you intentionally don't want it tracked.
+# Podfile.lock
+
+# Fastlane (if you ever add it)
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+fastlane/test_output/
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# App-specific (keep noise out of git status)
+thoughts/
+docs/components
+docs/design
+docs/ios
+docs/swiftui
+docs/syntax
