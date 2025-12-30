@@ -175,6 +175,9 @@ struct ExpandedPlayerView: View {
     // Queue access for proper track mapping
     private var queueManager = QueueManager.shared
 
+    // Player state access for Mix Mode toggle
+    @Bindable private var playerState = PlayerState.shared
+
     // Bindings
     @Binding var playbackPosition: Double
     let duration: Double
@@ -559,6 +562,27 @@ struct ExpandedPlayerView: View {
                                 }
                                 .glassEffect(.regular, in: .circle)
                             }
+
+                            Spacer()
+
+                            // Mix Mode toggle
+                            Button {
+                                withAnimation(.smooth(duration: 0.2)) {
+                                    playerState.mixEnabled.toggle()
+                                }
+                                HapticManager.selection()
+                            } label: {
+                                Image("wave-sine")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 20, height: 20)
+                                    .foregroundStyle(playerState.mixEnabled ? .white : .secondary)
+                                    .frame(width: 44, height: 44)
+                                    .background(playerState.mixEnabled ? Color.blue : Color.clear)
+                                    .clipShape(Circle())
+                            }
+                            .glassEffect(.regular, in: .circle)
 
                             Spacer()
 

@@ -51,6 +51,42 @@ final class PlayerState: NSObject {
         }
     }
     var errorMessage: String?
+
+    // MARK: - Mix Mode Settings
+
+    /// Enable automatic crossfade between tracks (default: false)
+    var mixEnabled: Bool = false {
+        didSet {
+            UserDefaults.standard.set(mixEnabled, forKey: kMixEnabled)
+            playbackCoordinator.mixEnabled = mixEnabled
+        }
+    }
+
+    /// Crossfade duration in seconds (default: 6, clamped to 0...12)
+    var crossfadeSeconds: Double = 6 {
+        didSet {
+            let clamped = max(0, min(12, crossfadeSeconds))
+            if clamped != crossfadeSeconds {
+                crossfadeSeconds = clamped
+                return
+            }
+            UserDefaults.standard.set(crossfadeSeconds, forKey: kCrossfadeSeconds)
+            playbackCoordinator.crossfadeSeconds = crossfadeSeconds
+        }
+    }
+
+    /// Prewarm lead time in seconds (default: 15, clamped to 0...60)
+    var prewarmSeconds: Double = 15 {
+        didSet {
+            let clamped = max(0, min(60, prewarmSeconds))
+            if clamped != prewarmSeconds {
+                prewarmSeconds = clamped
+                return
+            }
+            UserDefaults.standard.set(prewarmSeconds, forKey: kPrewarmSeconds)
+            playbackCoordinator.prewarmSeconds = prewarmSeconds
+        }
+    }
     
     /// Returns true if there's an active track (not idle and has valid duration)
     var hasActiveTrack: Bool {
@@ -112,6 +148,9 @@ final class PlayerState: NSObject {
     private let kSavedTrack = "mixbridge.savedTrack"
     private let kSavedPosition = "mixbridge.savedPosition"
     private let kSavedDuration = "mixbridge.savedDuration"
+    private let kMixEnabled = "mixbridge.mixEnabled"
+    private let kCrossfadeSeconds = "mixbridge.crossfadeSeconds"
+    private let kPrewarmSeconds = "mixbridge.prewarmSeconds"
 
     private override init() {
         // Initialize with placeholder initially
@@ -129,7 +168,10 @@ final class PlayerState: NSObject {
         playbackCoordinator.delegate = self
         playbackCoordinator.setVolume(volume)
         playbackCoordinator.autoplayEnabled = autoplayEnabled
-        
+
+        // Load Mix Mode settings from UserDefaults
+        loadMixSettings()
+
         // Load saved state
         loadPlaybackState()
         
@@ -152,18 +194,39 @@ final class PlayerState: NSObject {
     }
 
     // MARK: - Persistence
-    
+
+    private func loadMixSettings() {
+        // Load Mix Mode settings with defaults
+        let defaults = UserDefaults.standard
+
+        // Only load if values exist, otherwise use defaults
+        if defaults.object(forKey: kMixEnabled) != nil {
+            mixEnabled = defaults.bool(forKey: kMixEnabled)
+        }
+        if defaults.object(forKey: kCrossfadeSeconds) != nil {
+            crossfadeSeconds = max(0, min(12, defaults.double(forKey: kCrossfadeSeconds)))
+        }
+        if defaults.object(forKey: kPrewarmSeconds) != nil {
+            prewarmSeconds = max(0, min(60, defaults.double(forKey: kPrewarmSeconds)))
+        }
+
+        // Sync to coordinator
+        playbackCoordinator.mixEnabled = mixEnabled
+        playbackCoordinator.crossfadeSeconds = crossfadeSeconds
+        playbackCoordinator.prewarmSeconds = prewarmSeconds
+    }
+
     private func savePlaybackState() {
         // Save current track
         if let encoded = try? JSONEncoder().encode(currentTrack) {
             UserDefaults.standard.set(encoded, forKey: kSavedTrack)
         }
-        
+
         // Save position and duration
         UserDefaults.standard.set(playbackPosition, forKey: kSavedPosition)
         UserDefaults.standard.set(duration, forKey: kSavedDuration)
     }
-    
+
     private func loadPlaybackState() {
         // Load track
         if let savedTrackData = UserDefaults.standard.data(forKey: kSavedTrack),

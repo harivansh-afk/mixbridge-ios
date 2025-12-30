@@ -88,6 +88,28 @@ actor StreamURLCache {
         )
     }
 
+    /// Check if cached stream will expire before a given deadline
+    /// Used by Mix Mode to determine if a just-in-time refresh is needed
+    /// - Parameters:
+    ///   - trackId: The track to check
+    ///   - deadline: The deadline to check against (e.g., now + crossfadeSeconds + 15s)
+    /// - Returns: true if stream is cached but will expire before deadline,
+    ///            false if not cached or will still be valid
+    func isStreamExpiring(for trackId: String, before deadline: Date) -> Bool {
+        guard let cached = cache[trackId] else {
+            // Not cached - caller should fetch fresh
+            return false
+        }
+        // Check if cached stream expires before the deadline
+        return cached.expiresAt < deadline
+    }
+
+    /// Check if a stream is cached and fresh (not expiring soon)
+    func hasValidCachedStream(for trackId: String) -> Bool {
+        guard let cached = cache[trackId] else { return false }
+        return !cached.isExpired && !cached.isExpiringSoon
+    }
+
     /// Prefetch stream URL for a track (fire and forget)
     /// Uses Convex action for direct CDN URLs
     func prefetchStreamURL(for trackId: String) {
