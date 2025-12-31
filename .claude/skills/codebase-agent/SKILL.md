@@ -26,6 +26,51 @@ and leverage proven approaches.
 
 ## Codebase Context
 
-<!-- POPULATED BY /setup-agent -->
-<!-- Run /setup-agent after installation to populate this section -->
-<!-- Architecture, tech stack, key directories, and conventions will be added here -->
+### Architecture
+
+**mixbridge** is a native iOS music streaming app that integrates with SoundCloud. It follows a SwiftUI-first architecture with:
+
+- **Observable pattern**: Uses Swift's `@Observable` macro for state management (managers are singletons with `.shared`)
+- **Service layer**: Backend communication via `ConvexService` (connects to Convex backend at mixbridge.app)
+- **Coordinator pattern**: `PlaybackCoordinator` handles all audio playback including mix/crossfade mode
+- **Data preloading**: `AppDataPreloader` and `PreloadedDataStore` for optimistic UI and background data loading
+
+### Tech Stack
+
+- **Language**: Swift 5.9+ (iOS 18+, uses new Swift concurrency features)
+- **UI Framework**: SwiftUI (declarative, uses `@Observable`, `@Environment`, `@State`)
+- **Audio**: AVFoundation (`AVQueuePlayer`, `AVAudioEngine` for mix mode)
+- **Backend**: Convex (BaaS) - queries, mutations, actions via REST API
+- **Auth**: OAuth 2.0 via SoundCloud, JWT session tokens stored in Keychain
+- **Animation**: Lottie (via SPM)
+
+### Key Directories
+
+- `mixbridge/` - Main source directory
+  - `Auth/` - Authentication (AuthManager, KeychainManager, SessionTokenDecoder)
+  - `Components/` - Reusable SwiftUI views (TrackRow, PlaylistCard, ExpandedMusicPlayer, etc.)
+  - `Extensions/` - Swift/SwiftUI extensions (Color+Theme, String+SoundCloud, View+Animations)
+  - `Models/` - Data models (Track, Playlist, SoundCloudModels, PlayerState, MixSettings)
+  - `Services/` - Business logic (ConvexService, PlaybackCoordinator, QueueManager, etc.)
+  - `Utilities/` - Helpers (HapticManager, LogManager, Debouncer, ImageCacheManager)
+  - `Views/` - Screen views organized by feature (Home, Library, Search, Settings, etc.)
+  - `Onboarding/` - Onboarding flow views
+
+### Build & Test Commands
+
+- Build: `xcodebuild -project mixbridge.xcodeproj -scheme mixbridge -destination 'platform=iOS Simulator,name=iPhone 16'`
+- Tests: No dedicated test target currently exists
+- CI: `ci_scripts/ci_post_clone.sh` for Xcode Cloud
+
+### Conventions
+
+1. **Singletons with `.shared`**: Managers use `static let shared = ManagerName()` pattern
+2. **@Observable macro**: Modern Swift observation for state (not ObservableObject)
+3. **Environment injection**: Managers passed via `.environment(Manager.shared)`
+4. **Haptic feedback**: Use `HapticManager.light()`, `.medium()`, `.selection()` for interactions
+5. **Async/await**: All async operations use Swift concurrency (no completion handlers)
+6. **File naming**: PascalCase for types, feature-organized directories
+7. **Preview providers**: Both light and dark mode previews for views
+8. **Adaptive colors**: Use `Color.adaptive*` extensions for theme support
+9. **Error handling**: Typed errors (e.g., `ConvexError`, `PlayerState.PlaybackError`)
+10. **Logging**: Use `logInfo()`, `logWarning()`, `logError()`, `logDebug()` from LogManager
