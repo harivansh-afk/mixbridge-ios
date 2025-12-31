@@ -439,7 +439,7 @@ struct ExpandedPlayerView: View {
                     .ignoresSafeArea(.all, edges: .top) // Flush artwork to top, applied to whole group
                     .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.8), value: queueExpansion)
 
-                    // 4. Queue List or Toolbar
+                    // 4. Queue List (when shown)
                     if showQueueSheet {
                         VStack(spacing: 0) {
                             // Drag handle area - larger hit target
@@ -533,78 +533,79 @@ struct ExpandedPlayerView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     } else {
                         Spacer()
+                    }
 
-                        // Clear queue button (left) and Queue button (right)
-                        HStack {
-                            // Clear queue button (only show if queue has items)
-                            if queueManager.hasQueue {
-                                Button {
-                                    if confirmDeleteQueue {
-                                        // Reset state first, then clear queue
-                                        withAnimation(.smooth(duration: 0.3)) {
-                                            confirmDeleteQueue = false
-                                        }
-                                        Task {
-                                            try? await queueManager.clearQueueWithSync()
-                                        }
-                                    } else {
-                                        withAnimation(.smooth(duration: 0.3)) {
-                                            confirmDeleteQueue = true
-                                        }
+                    // 5. Bottom Toolbar (always visible)
+                    HStack {
+                        // Clear queue button (only show if queue has items)
+                        if queueManager.hasQueue {
+                            Button {
+                                if confirmDeleteQueue {
+                                    // Reset state first, then clear queue
+                                    withAnimation(.smooth(duration: 0.3)) {
+                                        confirmDeleteQueue = false
                                     }
-                                } label: {
-                                    Image(systemName: confirmDeleteQueue ? "checkmark" : "trash")
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .foregroundStyle(confirmDeleteQueue ? .white : .red)
-                                        .contentTransition(.symbolEffect(.replace))
-                                        .frame(width: 44, height: 44)
-                                        .background(confirmDeleteQueue ? Color.blue : Color.clear)
-                                        .clipShape(Circle())
+                                    Task {
+                                        try? await queueManager.clearQueueWithSync()
+                                    }
+                                } else {
+                                    withAnimation(.smooth(duration: 0.3)) {
+                                        confirmDeleteQueue = true
+                                    }
                                 }
-                                .glassEffect(.regular, in: .circle)
+                            } label: {
+                                Image(systemName: confirmDeleteQueue ? "checkmark" : "trash")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(confirmDeleteQueue ? .white : .red)
+                                    .contentTransition(.symbolEffect(.replace))
+                                    .frame(width: 44, height: 44)
+                                    .background(confirmDeleteQueue ? Color.blue : Color.clear)
+                                    .clipShape(Circle())
                             }
+                            .glassEffect(.regular, in: .circle)
+                        }
 
-                            Spacer()
+                        Spacer()
 
-                            // Mix + Queue toolbar group
-                            GlassEffectContainer {
-                                HStack(spacing: 0) {
-                                    // Mix Mode toggle
+                        // Mix + Queue toolbar group
+                        GlassEffectContainer {
+                            HStack(spacing: 0) {
+                                // Mix Mode toggle
+                                Button {
+                                    playerState.mixEnabled.toggle()
+                                    HapticManager.selection()
+                                } label: {
+                                    Image("wave-sine")
+                                        .renderingMode(.template)
+                                        .foregroundStyle(playerState.mixEnabled ? .blue : .secondary)
+                                        .padding(.leading, 8)
+                                        .animation(nil, value: playerState.mixEnabled)
+                                }
+                                .buttonStyle(.glass)
+                                .glassEffectUnion(id: "playback-toolbar", namespace: toolbarUnionNamespace)
+
+                                // Queue button (only show if queue has items)
+                                if queueManager.hasQueue {
                                     Button {
-                                        playerState.mixEnabled.toggle()
-                                        HapticManager.selection()
-                                    } label: {
-                                        Image("wave-sine")
-                                            .renderingMode(.template)
-                                            .foregroundStyle(playerState.mixEnabled ? .blue : .secondary)
-                                            .padding(.leading, 8)
-                                            .animation(nil, value: playerState.mixEnabled)
-                                    }
-                                    .buttonStyle(.glass)
-                                    .glassEffectUnion(id: "playback-toolbar", namespace: toolbarUnionNamespace)
-
-                                    // Queue button (only show if queue has items)
-                                    if queueManager.hasQueue {
-                                        Button {
-                                            confirmDeleteQueue = false
-                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                                showQueueSheet = true
-                                                queueExpansion = 200
-                                            }
-                                        } label: {
-                                            Label("Queue", image: "queue")
-                                                .labelStyle(.iconOnly)
-                                                .padding(.trailing, 8)
-                                                .foregroundStyle(.secondary)
+                                        confirmDeleteQueue = false
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                            showQueueSheet.toggle()
+                                            queueExpansion = showQueueSheet ? 200 : 0
                                         }
-                                        .buttonStyle(.glassProminent)
-                                        .glassEffectUnion(id: "playback-toolbar", namespace: toolbarUnionNamespace)
+                                    } label: {
+                                        Label("Queue", image: "queue")
+                                            .labelStyle(.iconOnly)
+                                            .padding(.trailing, 8)
+                                            .foregroundStyle(showQueueSheet ? .blue : .secondary)
                                     }
+                                    .buttonStyle(.glassProminent)
+                                    .glassEffectUnion(id: "playback-toolbar", namespace: toolbarUnionNamespace)
                                 }
                             }
                         }
-                        .padding(.horizontal, horizontalPadding)
+                        .glassEffect(playerState.mixEnabled ? .regular : .clear)
                     }
+                    .padding(.horizontal, horizontalPadding)
 
                 }
 
