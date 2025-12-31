@@ -87,6 +87,14 @@ final class PlayerState: NSObject {
             playbackCoordinator.prewarmSeconds = prewarmSeconds
         }
     }
+
+    /// Fade curve type for crossfade transitions (default: equalPower)
+    var fadeCurve: FadeCurve = .equalPower {
+        didSet {
+            UserDefaults.standard.set(fadeCurve.rawValue, forKey: kFadeCurve)
+            playbackCoordinator.fadeCurve = fadeCurve
+        }
+    }
     
     /// Returns true if there's an active track (not idle and has valid duration)
     var hasActiveTrack: Bool {
@@ -151,6 +159,7 @@ final class PlayerState: NSObject {
     private let kMixEnabled = "mixbridge.mixEnabled"
     private let kCrossfadeSeconds = "mixbridge.crossfadeSeconds"
     private let kPrewarmSeconds = "mixbridge.prewarmSeconds"
+    private let kFadeCurve = "mixbridge.fadeCurve"
 
     private override init() {
         // Initialize with placeholder initially
@@ -209,11 +218,16 @@ final class PlayerState: NSObject {
         if defaults.object(forKey: kPrewarmSeconds) != nil {
             prewarmSeconds = max(0, min(60, defaults.double(forKey: kPrewarmSeconds)))
         }
+        if let curveRaw = defaults.string(forKey: kFadeCurve),
+           let curve = FadeCurve(rawValue: curveRaw) {
+            fadeCurve = curve
+        }
 
         // Sync to coordinator
         playbackCoordinator.mixEnabled = mixEnabled
         playbackCoordinator.crossfadeSeconds = crossfadeSeconds
         playbackCoordinator.prewarmSeconds = prewarmSeconds
+        playbackCoordinator.fadeCurve = fadeCurve
     }
 
     private func savePlaybackState() {
