@@ -34,15 +34,6 @@ enum FadeCurve: String, CaseIterable, Codable {
         }
     }
 
-    var icon: String {
-        switch self {
-        case .linear: return "line.diagonal"
-        case .equalPower: return "wave.3.right"
-        case .sCurve: return "s.circle"
-        case .exponential: return "chart.line.downtrend.xyaxis"
-        }
-    }
-
     /// Calculate fade-out gain (1 -> 0) for the outgoing track
     /// - Parameter progress: 0.0 (start) to 1.0 (end)
     /// - Returns: Volume multiplier 0.0 to 1.0
