@@ -16,71 +16,66 @@ struct AutomixSettingsView: View {
             // Automix Toggle
             Section {
                 Toggle(isOn: $playerState.mixEnabled) {
-                    Label("Automix", systemImage: "waveform.path")
+                    Text("Automix")
                 }
                 .tint(.blue)
             }
 
             // Duration Section
             Section {
-                VStack(alignment: .leading, spacing: 12) {
-                    Slider(value: $playerState.crossfadeSeconds, in: 0...12, step: 0.5) {
-                        Text("Duration")
-                    } minimumValueLabel: {
-                        Text("0s")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } maximumValueLabel: {
-                        Text("12s")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .tint(.blue)
+                Slider(value: $playerState.crossfadeSeconds, in: 0...12, step: 0.5) {
+                    Text("Duration")
+                } minimumValueLabel: {
+                    Text("0s")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } maximumValueLabel: {
+                    Text("12s")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .glassEffect(.regular)
+                .tint(.blue)
             } header: {
                 Text("Duration")
             }
 
-            // Curve Section - Native Picker with liquid glass
+            // Prewarm Time Section
             Section {
-                Picker("Fade Curve", selection: $playerState.fadeCurve) {
-                    ForEach(FadeCurve.allCases, id: \.self) { curve in
-                        Label {
-                            Text(curve.displayName)
-                        } icon: {
-                            Image(systemName: curve.icon)
-                        }
-                        .tag(curve)
-                    }
+                Slider(value: $playerState.prewarmSeconds, in: 5...60, step: 5) {
+                    Text("Prewarm Time")
+                } minimumValueLabel: {
+                    Text("5s")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } maximumValueLabel: {
+                    Text("60s")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .pickerStyle(.navigationLink)
-                .onChange(of: playerState.fadeCurve) { _, _ in
-                    HapticManager.selection()
+                .tint(.blue)
+            } header: {
+                Text("Prewarm Time")
+            }
+
+            // Fade Curve Section
+            Section {
+                NavigationLink {
+                    FadeCurvePicker(selection: $playerState.fadeCurve)
+                } label: {
+                    Text(playerState.fadeCurve.displayName)
                 }
             } header: {
                 Text("Fade Curve")
             }
-
-            // Advanced Section
-            Section {
-                HStack {
-                    Text("Prewarm Time")
-                    Spacer()
-                    Text("\(Int(playerState.prewarmSeconds))s")
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-
-                Slider(value: $playerState.prewarmSeconds, in: 5...60, step: 5) {
-                    Text("Prewarm")
-                }
-                .tint(.blue)
-            } header: {
-                Text("Advanced")
-            }
         }
         .listStyle(InsetGroupedListStyle())
+        .listSectionSpacing(12)
+        .scrollContentBackground(.hidden)
+        .background(.clear)
+        .contentMargins(.top, 5, for: .scrollContent)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .containerBackground(.clear, for: .navigation)
+        .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -93,14 +88,49 @@ struct AutomixSettingsView: View {
             }
         }
     }
+}
 
-    private func formatDuration(_ seconds: Double) -> String {
-        if seconds == 0 {
-            return "Off"
-        } else if seconds == floor(seconds) {
-            return "\(Int(seconds))s"
-        } else {
-            return String(format: "%.1fs", seconds)
+// MARK: - Fade Curve Picker
+
+struct FadeCurvePicker: View {
+    @Binding var selection: FadeCurve
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        List {
+            ForEach(FadeCurve.allCases, id: \.self) { curve in
+                Button {
+                    selection = curve
+                    HapticManager.selection()
+                    dismiss()
+                } label: {
+                    HStack {
+                        Text(curve.displayName)
+                        Spacer()
+                        if curve == selection {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                }
+                .foregroundStyle(.primary)
+            }
+        }
+        .listStyle(InsetGroupedListStyle())
+        .scrollContentBackground(.hidden)
+        .background(.clear)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .fontWeight(.semibold)
+                }
+            }
         }
     }
 }
