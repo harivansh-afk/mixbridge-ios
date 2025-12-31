@@ -44,6 +44,7 @@ final class MixPlaybackEngine {
 
     var crossfadeSeconds: Double = 6
     var prewarmSeconds: Double = 15
+    var fadeCurve: FadeCurve = .equalPower
 
     var isPlaying: Bool {
         currentPlayer.timeControlStatus == .playing
@@ -439,12 +440,12 @@ final class MixPlaybackEngine {
         let elapsed = Date().timeIntervalSince(fadeStart)
         let progress = min(1.0, elapsed / effectiveCrossfadeDuration)
 
-        // Equal-power crossfade
-        let currentGain = cos(progress * .pi / 2)
-        let nextGain = sin(progress * .pi / 2)
+        // Apply selected fade curve
+        let currentGain = fadeCurve.fadeOutGain(progress: progress)
+        let nextGain = fadeCurve.fadeInGain(progress: progress)
 
-        currentPlayer.volume = Float(currentGain)
-        nextPlayer.volume = Float(nextGain)
+        currentPlayer.volume = currentGain
+        nextPlayer.volume = nextGain
 
         if progress >= 1.0 {
             completeCrossfade()

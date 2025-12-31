@@ -212,6 +212,7 @@ struct ExpandedPlayerView: View {
     @State private var heavyHaptic = UIImpactFeedbackGenerator(style: .heavy)
     @State private var lastHapticThreshold: Int = 0
     @State private var confirmDeleteQueue: Bool = false
+    @Namespace private var toolbarUnionNamespace
 
     init(currentTrack: Track, currentQueueIndex: Int = -1, nextTrack: Track?, previousTrack: Track?, isPlaying: Bool, namespace: Namespace.ID, playbackPosition: Binding<Double>, duration: Double, volume: Binding<Double>, isDraggingProgress: Binding<Bool>, onPlayPause: @escaping () -> Void, onNext: @escaping () -> Void, onPrevious: @escaping () -> Void, onSeek: @escaping (Bool) -> Void, onDismiss: @escaping () -> Void, previewQueueTracks: [Track]? = nil, initialShowQueue: Bool = false) {
         self.currentTrack = currentTrack
@@ -565,40 +566,41 @@ struct ExpandedPlayerView: View {
 
                             Spacer()
 
-                            // Mix Mode toggle
-                            Button {
-                                withAnimation(.smooth(duration: 0.2)) {
-                                    playerState.mixEnabled.toggle()
-                                }
-                                HapticManager.selection()
-                            } label: {
-                                Image("wave-sine")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(width: 20, height: 20)
-                                    .foregroundStyle(playerState.mixEnabled ? .white : .secondary)
-                                    .frame(width: 44, height: 44)
-                                    .background(playerState.mixEnabled ? Color.blue : Color.clear)
-                                    .clipShape(Circle())
-                            }
-                            .glassEffect(.regular, in: .circle)
-
-                            Spacer()
-
-                            // Queue button (only show if queue has items)
-                            if queueManager.hasQueue {
-                                Button {
-                                    confirmDeleteQueue = false // Reset confirmation state
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                        showQueueSheet = true
-                                        queueExpansion = 200 // Start expanded
+                            // Mix + Queue toolbar group
+                            GlassEffectContainer {
+                                HStack(spacing: 0) {
+                                    // Mix Mode toggle
+                                    Button {
+                                        playerState.mixEnabled.toggle()
+                                        HapticManager.selection()
+                                    } label: {
+                                        Image("wave-sine")
+                                            .renderingMode(.template)
+                                            .foregroundStyle(playerState.mixEnabled ? .blue : .secondary)
+                                            .padding(.leading, 8)
+                                            .animation(nil, value: playerState.mixEnabled)
                                     }
-                                } label: {
-                                    Image("queue")
-                                        .font(.system(size: 18, weight: .semibold))
+                                    .buttonStyle(.glass)
+                                    .glassEffectUnion(id: "playback-toolbar", namespace: toolbarUnionNamespace)
+
+                                    // Queue button (only show if queue has items)
+                                    if queueManager.hasQueue {
+                                        Button {
+                                            confirmDeleteQueue = false
+                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                                showQueueSheet = true
+                                                queueExpansion = 200
+                                            }
+                                        } label: {
+                                            Label("Queue", image: "queue")
+                                                .labelStyle(.iconOnly)
+                                                .padding(.trailing, 8)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .buttonStyle(.glassProminent)
+                                        .glassEffectUnion(id: "playback-toolbar", namespace: toolbarUnionNamespace)
+                                    }
                                 }
-                                .buttonStyle(GlassToolbarButtonStyle())
                             }
                         }
                         .padding(.horizontal, horizontalPadding)

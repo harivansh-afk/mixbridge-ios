@@ -14,10 +14,8 @@ struct AccountBottomSheet: View {
     @Environment(AuthManager.self) private var authManager
     @AppStorage("themeMode") private var themeMode: AppearanceMode = .system
     @State private var Notifications: Bool = false
-    @State private var Personalization: Bool = true
-    @State private var profile: SoundCloudProfile?
-    @State private var isLoadingProfile = false
     @State private var showDeleteConfirmation = false
+    private var profileManager = UserProfileManager.shared
     @State private var showFinalDeleteConfirmation = false
     @State private var isDeleting = false
 
@@ -44,14 +42,7 @@ struct AccountBottomSheet: View {
             List {
                 // Profile Section
                 Section {
-                    if isLoadingProfile {
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
-                        }
-                        .padding()
-                    } else if let profile {
+                    if let profile = profileManager.profile {
                         ZStack {
                             NavigationLink(destination: ProfileStatsView(profile: profile)) {
                                 EmptyView()
@@ -60,6 +51,13 @@ struct AccountBottomSheet: View {
 
                             convexProfileHeader(profile: profile)
                         }
+                    } else if profileManager.isLoading {
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                            Spacer()
+                        }
+                        .padding()
                     } else {
                         ZStack {
                             NavigationLink(destination: ProfileStatsView(profile: nil)) {
@@ -92,13 +90,14 @@ struct AccountBottomSheet: View {
 
                 // Settings Section
                 Section {
-                    Toggle(isOn: $Personalization) {
-                        HStack(spacing: 8) {
-                            Text("Personalization")
+                    NavigationLink {
+                        AutomixSettingsView()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Text("Automix")
                                 .font(.system(size: 18))
                         }
                     }
-                    .tint(.blue)
 
                     Toggle(isOn: $Notifications) {
                         HStack(spacing: 8) {
@@ -186,7 +185,10 @@ struct AccountBottomSheet: View {
                 }
             }
             .task {
-                await loadProfile()
+                // Only fetch if not already cached
+                if profileManager.profile == nil, let userId = authManager.currentUserId {
+                    await profileManager.loadProfile(userId: userId)
+                }
             }
             .alert("Delete Account?", isPresented: $showDeleteConfirmation) {
                 Button("Cancel", role: .cancel) { }
@@ -260,25 +262,6 @@ struct AccountBottomSheet: View {
     }
 
     // MARK: - Data Loading
-
-    private func loadProfile() async {
-        guard let userId = authManager.currentUserId else {
-            return
-        }
-
-        isLoadingProfile = true
-
-        do {
-            let fetchedProfile = try await BackgroundExecutor.run {
-                try await ConvexService.shared.getUserProfile(userId: userId)
-            }
-            self.profile = fetchedProfile
-        } catch {
-            // Silently handle errors
-        }
-
-        isLoadingProfile = false
-    }
 
     private func deleteAccount() async {
         guard let userId = authManager.currentUserId else {

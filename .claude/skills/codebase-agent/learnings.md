@@ -1,0 +1,131 @@
+# Accumulated Learnings
+
+This file is automatically updated after each coding session.
+The SessionEnd hook triggers `/retrospective` which analyzes the session and adds new learnings here.
+
+---
+
+## Patterns (What Works)
+
+Successful approaches and code patterns that should be reused.
+
+### State Management
+- Use `@Observable` macro (Swift 5.9+) for observable classes, not `ObservableObject`
+- Pass managers via `.environment(Manager.shared)` in the view hierarchy
+- Access in views via `@Environment(ManagerType.self) private var manager`
+
+### SwiftUI View Structure
+```swift
+struct MyView: View {
+    @State private var localState = false
+    @Environment(AuthManager.self) private var authManager
+
+    var body: some View {
+        NavigationStack {
+            content
+                .navigationTitle("Title")
+                .task { await loadData() }
+        }
+    }
+}
+```
+
+### Async Data Loading
+- Use `.task { }` modifier for initial data loading
+- Use `RefreshableScrollView` with async closure for pull-to-refresh
+- Background preloading via `Task(priority: .background) { }`
+
+### Audio Playback
+- `PlaybackCoordinator.shared` handles all playback
+- Use `PlayerState.shared` for UI state (current track, isPlaying, progress)
+- Exponential backoff for retries (`RetryMetadata` pattern)
+
+---
+
+## Failures (What to Avoid)
+
+Approaches that failed, bugs encountered, and time-wasting paths.
+
+### AVPlayer Buffering
+- NEVER set `automaticallyWaitsToMinimizeStalling = false` - causes random pauses
+- Always set `preferredForwardBufferDuration` to prevent micro-stalls (10 seconds used in this codebase)
+
+### Deprecated Patterns
+- Don't use `ObservableObject` + `@Published` - use `@Observable` macro instead
+- Don't use completion handlers - use async/await
+
+---
+
+## Edge Cases
+
+Tricky scenarios and non-obvious behaviors discovered during development.
+
+### SoundCloud API
+- Track duration is in milliseconds - divide by 1000 for seconds
+- Artwork URLs use `t500x500` by default - use `String.upgradeArtworkQuality()` for higher resolution
+- Stream URLs require OAuth token in Authorization header for direct CDN access
+
+### Queue Management
+- Tracks are removed from queue when they start playing (see `handleTrackStartedPlaying`)
+- Queue index becomes -1 after track is removed from queue
+- Use `QueueManager.indexOfTrack(withId:)` to find current position
+
+---
+
+## Technology Insights
+
+Framework-specific knowledge, library quirks, and API insights.
+
+### Convex Backend
+- Three operation types: `query` (read), `mutation` (write), `action` (side effects/external APIs)
+- All responses wrapped in `ConvexResponse<T>` with `status` and `value` fields
+- Use `forceRefresh: true` parameter to bypass cache
+
+### SwiftUI iOS 18 Features
+- `@Observable` macro replaces ObservableObject
+- `Tab` view with `.tabViewBottomAccessory` for mini player
+- `.navigationTransition(.zoom(sourceID:in:))` for matched transitions
+- `.matchedTransitionSource(id:in:)` for transition sources
+
+### AVAudioEngine (Mix Mode)
+- Used for crossfade playback via `MixPlaybackEngine`
+- Supports configurable crossfade duration, prewarm time, and fade curves
+- Falls back to regular AVPlayer on failure
+
+---
+
+## Conventions
+
+Project-specific coding conventions and style guidelines.
+
+### File Organization
+- One primary type per file, file named after the type
+- Related extensions can be in the same file
+- Views organized by feature in `Views/` subdirectories
+
+### Naming
+- Types: PascalCase (`PlaybackCoordinator`, `TrackRow`)
+- Properties/methods: camelCase (`currentTrack`, `playNext()`)
+- Private properties: prefixed with nothing special, just `private`
+
+### SwiftUI Conventions
+- Use `@ViewBuilder` for computed properties returning views
+- Use `private var` for sub-views extracted from body
+- Include both light and dark mode `#Preview` blocks
+
+### Error Handling
+- Define typed error enums (e.g., `ConvexError`, `PlayerState.PlaybackError`)
+- Implement `LocalizedError` with `errorDescription` for user-facing messages
+- Use `async throws` pattern, catch at call site
+
+### Haptic Feedback
+```swift
+// Light tap (buttons)
+HapticManager.light()
+
+// Medium impact (important actions)
+HapticManager.medium()
+
+// Selection change (tab switches, list selections)
+HapticManager.selection()
+```

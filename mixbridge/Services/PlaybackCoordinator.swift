@@ -54,6 +54,9 @@ final class PlaybackCoordinator: NSObject {
     /// Prewarm lead time in seconds
     var prewarmSeconds: Double = 15
 
+    /// Fade curve type for crossfade transitions
+    var fadeCurve: FadeCurve = .equalPower
+
     private let queueManager = QueueManager.shared
     private let keychain = KeychainManager.shared
     private let convexService = ConvexService.shared
@@ -402,6 +405,7 @@ final class PlaybackCoordinator: NSObject {
             // Configure mix engine
             mixEngine.crossfadeSeconds = crossfadeSeconds
             mixEngine.prewarmSeconds = prewarmSeconds
+            mixEngine.fadeCurve = fadeCurve
 
             // Start mix playback
             mixEngine.play(context: context, streamData: stream, startTime: startTime)
