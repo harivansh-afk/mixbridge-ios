@@ -77,7 +77,7 @@ struct CustomSlider: View {
                             .fill(progressColor)
                             .frame(
                                 width: progressWidth(for: geometry),
-                                height: isDragging ? 10 : 7
+                                height: isDragging ? 7 : 7
                             )
                         Spacer(minLength: 0)
                     }
@@ -239,8 +239,7 @@ struct ConditionalGlassEffect: ViewModifier {
     func body(content: Content) -> some View {
         if isDragging {
             content
-                .frame(minWidth: 0, maxWidth: .infinity)
-                .glassEffect(.clear)
+                .glassEffect(.clear, in: .capsule)
         } else {
             content
         }
