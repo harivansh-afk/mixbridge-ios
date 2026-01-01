@@ -52,6 +52,28 @@ final class PlayerState: NSObject {
     }
     var errorMessage: String?
 
+    // MARK: - Crossfade Visual State
+
+    /// Current crossfade progress (0.0 to 1.0) for visual transitions
+    var crossfadeProgress: Double = 0
+
+    /// Whether a crossfade is currently active
+    var isCrossfading: Bool = false
+
+    /// The artwork we're crossfading FROM.
+    /// This is captured at crossfade start so visuals don't change `from` mid-transition
+    /// when `currentTrack` swaps at the end.
+    var crossfadeFromArtwork: String = ""
+
+    /// The track we're crossfading TO (for artwork morph effect)
+    var crossfadeNextTrack: Track? = nil
+
+    /// Next track's playback position during crossfade (for smooth progress bar transition)
+    var crossfadeNextPosition: Double = 0
+
+    /// Next track's duration during crossfade (for smooth progress bar transition)
+    var crossfadeNextDuration: Double = 0
+
     // MARK: - Mix Mode Settings
 
     /// Enable automatic crossfade between tracks (default: false)

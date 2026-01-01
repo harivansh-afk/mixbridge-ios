@@ -28,6 +28,7 @@ protocol MixPlaybackEngineDelegate: AnyObject {
     func mixEngine(_ engine: MixPlaybackEngine, didCompleteTransitionTo track: Track, context: PlaybackContext)
     func mixEngine(_ engine: MixPlaybackEngine, didAbortWithFallback track: Track?, context: PlaybackContext?)
     func mixEngineDidUpdateTime(_ engine: MixPlaybackEngine, currentTime: Double, duration: Double)
+    func mixEngineDidUpdateCrossfadeProgress(_ engine: MixPlaybackEngine, progress: Double, nextTrack: Track?)
 }
 
 /// Context for mix playback (reuses PlaybackContext from PlaybackCoordinator)
@@ -56,6 +57,19 @@ final class MixPlaybackEngine {
 
     var duration: Double {
         guard let item = currentPlayer.currentItem else { return 0 }
+        let dur = CMTimeGetSeconds(item.duration)
+        return dur.isFinite ? dur : 0
+    }
+
+    /// Next track's current time (during crossfade)
+    var nextTime: Double {
+        guard let player = nextPlayer else { return 0 }
+        return CMTimeGetSeconds(player.currentTime())
+    }
+
+    /// Next track's duration (during crossfade)
+    var nextDuration: Double {
+        guard let player = nextPlayer, let item = player.currentItem else { return 0 }
         let dur = CMTimeGetSeconds(item.duration)
         return dur.isFinite ? dur : 0
     }
@@ -418,6 +432,9 @@ final class MixPlaybackEngine {
 
         logInfo("[MixEngine] mix_fade_start: crossfading to \(nextCtx.track.title)")
 
+        // Initialize crossfade progress for visual transition
+        delegate?.mixEngineDidUpdateCrossfadeProgress(self, progress: 0, nextTrack: nextCtx.track)
+
         // Start display link for smooth volume ramping
         startFadeDisplayLink()
     }
@@ -440,6 +457,9 @@ final class MixPlaybackEngine {
         let elapsed = Date().timeIntervalSince(fadeStart)
         let progress = min(1.0, elapsed / effectiveCrossfadeDuration)
 
+        // Notify delegate of crossfade progress for visual transitions
+        delegate?.mixEngineDidUpdateCrossfadeProgress(self, progress: progress, nextTrack: nextContext?.track)
+
         // Apply selected fade curve
         let currentGain = fadeCurve.fadeOutGain(progress: progress)
         let nextGain = fadeCurve.fadeInGain(progress: progress)
@@ -457,6 +477,9 @@ final class MixPlaybackEngine {
         fadeDisplayLink = nil
 
         guard let currentCtx = currentContext, let nextCtx = nextContext else { return }
+
+        // Signal crossfade complete for visual transition
+        delegate?.mixEngineDidUpdateCrossfadeProgress(self, progress: 1.0, nextTrack: nextCtx.track)
 
         emitEvent(.fadeComplete(
             trackId: currentCtx.track.id,
@@ -515,6 +538,9 @@ final class MixPlaybackEngine {
 
         fadeDisplayLink?.invalidate()
         fadeDisplayLink = nil
+
+        // Reset crossfade progress for visual transition
+        delegate?.mixEngineDidUpdateCrossfadeProgress(self, progress: 0, nextTrack: nil)
 
         // Restore current player volume
         currentPlayer.volume = 1.0

@@ -31,20 +31,25 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
                 content(Image(uiImage: image))
             } else {
                 placeholder()
-                    .task {
-                        await loadImage()
+                    .task(id: url) {
+                        // Reset on URL change so we never show a stale image.
+                        image = nil
+                        isLoading = false
+                        await loadImage(for: url)
                     }
             }
         }
     }
 
-    private func loadImage() async {
-        guard let url = url, !isLoading else { return }
+    private func loadImage(for requestURL: URL?) async {
+        guard let requestURL, !isLoading else { return }
 
         isLoading = true
 
-        if let cachedImage = await ImageCacheManager.shared.getImage(for: url) {
-            self.image = cachedImage
+        if let cachedImage = await ImageCacheManager.shared.getImage(for: requestURL) {
+            if requestURL == url {
+                self.image = cachedImage
+            }
         }
 
         isLoading = false
@@ -86,27 +91,35 @@ struct CachedAsyncImagePhase<Content: View>: View {
             }
         }
         .task(id: url) {
-            await loadImage()
+            // Reset on URL change so we never show a stale image.
+            // Also check memory cache synchronously to avoid placeholder flicker.
+            if let url {
+                image = MemoryImageCache.shared.get(url.absoluteString)
+            } else {
+                image = nil
+            }
+            error = nil
+            isLoading = false
+            await loadImage(for: url)
         }
     }
 
-    private func loadImage() async {
-        guard let url = url else {
-            return
-        }
-
-        // Skip if already have image (from memory cache in init)
-        guard image == nil else {
+    private func loadImage(for requestURL: URL?) async {
+        guard let requestURL else {
             return
         }
 
         isLoading = true
 
-        if let cachedImage = await ImageCacheManager.shared.getImage(for: url) {
-            self.image = cachedImage
-            self.error = nil
+        if let cachedImage = await ImageCacheManager.shared.getImage(for: requestURL) {
+            if requestURL == url {
+                self.image = cachedImage
+                self.error = nil
+            }
         } else {
-            self.error = NSError(domain: "ImageCache", code: -1)
+            if requestURL == url {
+                self.error = NSError(domain: "ImageCache", code: -1)
+            }
         }
 
         isLoading = false
