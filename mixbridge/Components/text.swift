@@ -43,8 +43,8 @@ struct GlassEffectText: View {
 struct MarqueeGlassText: View {
     let text: String
     let font: UIFont
-    var leftFade: CGFloat = 10
-    var rightFade: CGFloat = 10
+    var leftFade: CGFloat = 7
+    var rightFade: CGFloat = 7
     var startDelay: Double = 5.0
     var spacing: CGFloat = 56
     var loopsBeforePause: Int = 3
@@ -205,14 +205,19 @@ struct MarqueeGlassText: View {
         }
     }
 
+    // Only show fade when text is actually moving (not during delay or when paused)
+    private var showFade: Bool {
+        needsScroll && !isStopped
+    }
+
     private var fadeMask: some View {
         HStack(spacing: 0) {
-            if needsScroll {
+            if showFade {
                 LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
                     .frame(width: leftFade)
             }
             Color.black
-            if needsScroll {
+            if showFade {
                 LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
                     .frame(width: rightFade)
             }

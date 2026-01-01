@@ -65,20 +65,6 @@ struct ExpandedMusicPlayer: View {
         return prevIndex >= 0 ? queueManager.queueTracks[prevIndex] : nil
     }
 
-    // Get next track based on any track (for carousel updates)
-    private func getNextTrack(after track: Track) -> Track? {
-        guard let currentIndex = getQueueIndex(for: track) else { return nil }
-        let nextIndex = currentIndex + 1
-        return nextIndex < queueManager.queueTracks.count ? queueManager.queueTracks[nextIndex] : nil
-    }
-
-    // Get previous track based on any track (for carousel updates)
-    private func getPreviousTrack(before track: Track) -> Track? {
-        guard let currentIndex = getQueueIndex(for: track) else { return nil }
-        let prevIndex = currentIndex - 1
-        return prevIndex >= 0 ? queueManager.queueTracks[prevIndex] : nil
-    }
-
     // Prefetch tracks around current position
     private func prefetchSurroundingTracks() {
         guard let currentIndex = getCurrentIndex() else { return }
@@ -248,10 +234,9 @@ struct ExpandedPlayerView: View {
             let screenHeight = geometry.size.height
 
             // Responsive sizing
-            let horizontalPadding = screenWidth * 0.075// 7.5% of screen width
-            let artworkMaxWidth = screenWidth // 95% of screen width (leaves small margin)
-            let cardSpacing: CGFloat = 60 // Spacing between cards in carousel (visible during swipe)
-            let cornerRadius = screenWidth * 0.12 // 8% of width for rounded corners
+            let horizontalPadding = screenWidth * 0.075 // 7.5% of screen width
+            let artworkMaxWidth = screenWidth
+            let cornerRadius = screenWidth * 0.12
             let contentSpacing = screenHeight * 0.04 // 4% of screen height
             let progressTopSpacing = screenHeight * -0.05 // 2.5% of screen height
 
@@ -293,74 +278,57 @@ struct ExpandedPlayerView: View {
                     Group {
                     // 2. Artwork + Title Carousel (grouped together)
                     ZStack(alignment: .top) {
-                        // Previous card (left, off-screen)
+                        // Previous artwork (left hexagon face)
                         if let prevTrack = displayedPrevious {
-                            TrackCard(
+                            HexagonArtworkFace(
                                 track: prevTrack,
-                                namespace: nil,
                                 artworkWidth: artworkMaxWidth,
                                 cornerRadius: cornerRadius,
+                                rotation: calculate3DRotation(offset: dragOffset, direction: .left, screenWidth: screenWidth),
+                                anchor: .trailing, // Hinge at right edge
+                                opacity: calculateOpacity(offset: dragOffset, direction: .left, screenWidth: screenWidth),
                                 isPlaying: false
                             )
-                            .frame(width: artworkMaxWidth)
-                            .offset(x: -(artworkMaxWidth + cardSpacing) + dragOffset)
-                            .opacity(calculateOpacity(offset: dragOffset, direction: .left, screenWidth: screenWidth))
-                            .scaleEffect(calculateScale(offset: dragOffset, direction: .left, screenWidth: screenWidth))
-                            .rotation3DEffect(
-                                .degrees(calculate3DRotation(offset: dragOffset, direction: .left, screenWidth: screenWidth)),
-                                axis: (x: 0, y: 1, z: 0),
-                                perspective: 0.5
-                            )
+                            .offset(x: -artworkMaxWidth + dragOffset)
                             .zIndex(0)
                             .id("prev-\(prevTrack.id)")
                         }
 
-                        // Current card (center) - No matchedGeometryEffect needed as we use navigationTransition(.zoom)
-                        TrackCard(
+                        // Current artwork (center hexagon face - flat)
+                        HexagonArtworkFace(
                             track: displayedTrack,
-                            namespace: nil,
                             artworkWidth: artworkMaxWidth,
                             cornerRadius: cornerRadius,
-                            isMatchedGeometrySource: false,
+                            rotation: calculate3DRotation(offset: dragOffset, direction: .center, screenWidth: screenWidth),
+                            anchor: dragOffset > 0 ? .leading : .trailing,
+                            opacity: 1.0,
+                            scale: isDraggingArtwork ? 0.97 : 1.0,
                             isPlaying: isPlaying
                         )
-                        .frame(width: artworkMaxWidth)
                         .offset(x: dragOffset)
-                        .scaleEffect(isDraggingArtwork ? 0.97 : 1.0)
-                        .rotation3DEffect(
-                            .degrees(calculate3DRotation(offset: dragOffset, direction: .center, screenWidth: screenWidth)),
-                            axis: (x: 0, y: 1, z: 0),
-                            perspective: 0.5
-                        )
                         .zIndex(1)
                         .id("current-\(displayedTrack.id)")
 
-                        // Next card (right, off-screen)
+                        // Next artwork (right hexagon face)
                         if let nxtTrack = displayedNext {
-                            TrackCard(
+                            HexagonArtworkFace(
                                 track: nxtTrack,
-                                namespace: nil,
                                 artworkWidth: artworkMaxWidth,
                                 cornerRadius: cornerRadius,
+                                rotation: calculate3DRotation(offset: dragOffset, direction: .right, screenWidth: screenWidth),
+                                anchor: .leading, // Hinge at left edge
+                                opacity: calculateOpacity(offset: dragOffset, direction: .right, screenWidth: screenWidth),
                                 isPlaying: false
                             )
-                            .frame(width: artworkMaxWidth)
-                            .offset(x: (artworkMaxWidth + cardSpacing) + dragOffset)
-                            .opacity(calculateOpacity(offset: dragOffset, direction: .right, screenWidth: screenWidth))
-                            .scaleEffect(calculateScale(offset: dragOffset, direction: .right, screenWidth: screenWidth))
-                            .rotation3DEffect(
-                                .degrees(calculate3DRotation(offset: dragOffset, direction: .right, screenWidth: screenWidth)),
-                                axis: (x: 0, y: 1, z: 0),
-                                perspective: 0.5
-                            )
+                            .offset(x: artworkMaxWidth + dragOffset)
                             .zIndex(0)
                             .id("next-\(nxtTrack.id)")
                         }
                     }
                     .frame(maxWidth: artworkMaxWidth)
                     .contentShape(Rectangle())
-                    .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.78), value: dragOffset)
-                    .animation(.interactiveSpring(response: 0.45, dampingFraction: 0.68), value: displayedTrack.id)
+                    .animation(.interactiveSpring(response: 0.25, dampingFraction: 0.82), value: dragOffset)
+                    .animation(.interactiveSpring(response: 0.35, dampingFraction: 0.8), value: displayedTrack.id)
                     // Use custom gesture recognizer to allow vertical swipes (dismissal) to pass through
                     .overlay(
                         HorizontalPanGesture(
@@ -375,7 +343,7 @@ struct ExpandedPlayerView: View {
                     .onChange(of: currentTrack.id) { oldValue, newValue in
                         // Sync carousel when player changes externally (buttons, auto-advance)
                         if displayedTrack.id != newValue {
-                            withAnimation(.interactiveSpring(response: 0.45, dampingFraction: 0.68)) {
+                            withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.8)) {
                                 displayedTrack = currentTrack
                                 displayedQueueIndex = currentQueueIndex
                                 displayedNext = nextTrack
@@ -696,8 +664,8 @@ struct ExpandedPlayerView: View {
                 // Swipe right → previous
                 heavyHaptic.impactOccurred(intensity: 1.0) // Final heavy haptic on commit
 
-                // Smooth spring animation with iOS 18 interactiveSpring
-                withAnimation(.interactiveSpring(response: 0.45, dampingFraction: 0.68, blendDuration: 0.1)) {
+                // Snappy spring for hexagon "click into place" feel
+                withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.8, blendDuration: 0)) {
                     // Commit changes instantly
                     let newCurrent = displayedPrevious!
                     let newIndex = displayedQueueIndex - 1
@@ -718,8 +686,8 @@ struct ExpandedPlayerView: View {
                 // Swipe left → next
                 heavyHaptic.impactOccurred(intensity: 1.0) // Final heavy haptic on commit
 
-                // Smooth spring animation
-                withAnimation(.interactiveSpring(response: 0.45, dampingFraction: 0.68, blendDuration: 0.1)) {
+                // Snappy spring for hexagon "click into place" feel
+                withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.8, blendDuration: 0)) {
                     // Commit changes instantly
                     let newCurrent = displayedNext!
                     let newIndex = displayedQueueIndex + 1
@@ -836,34 +804,23 @@ struct ExpandedPlayerView: View {
         }
     }
 
-    private func calculateScale(offset: CGFloat, direction: Direction, screenWidth: CGFloat) -> CGFloat {
-        let normalizedOffset = abs(offset) / screenWidth
-
-        switch direction {
-        case .left:
-            // Scale up as it comes into view
-            return 0.85 + (offset > 0 ? normalizedOffset * 0.15 : 0)
-        case .right:
-            // Scale up as it comes into view
-            return 0.85 - (offset < 0 ? normalizedOffset * 0.15 : -0.15)
-        case .center:
-            return 1.0
-        }
-    }
-
     private func calculate3DRotation(offset: CGFloat, direction: Direction, screenWidth: CGFloat) -> Double {
         let normalizedOffset = offset / screenWidth
-        let maxRotation: Double = 15 // degrees
+        let maxRotation: Double = 60 // degrees - hexagon face angle
 
         switch direction {
         case .left:
-            // Rotate inward as it slides in from left
-            return normalizedOffset > 0 ? -maxRotation * (1 - Double(normalizedOffset)) : -maxRotation
+            // Previous card: starts at -60deg (on left face of hexagon)
+            // Rotates toward 0 as it becomes center
+            return -maxRotation + (offset > 0 ? Double(normalizedOffset) * maxRotation : 0)
         case .right:
-            // Rotate inward as it slides in from right
-            return normalizedOffset < 0 ? maxRotation * (1 + Double(normalizedOffset)) : maxRotation
+            // Next card: starts at +60deg (on right face of hexagon)
+            // Rotates toward 0 as it becomes center
+            return maxRotation + (offset < 0 ? Double(normalizedOffset) * maxRotation : 0)
         case .center:
-            // Current card rotates based on swipe direction
+            // Current card: rotates away onto hexagon face as you swipe
+            // Swipe left (offset < 0): rotates to -60 (exits left)
+            // Swipe right (offset > 0): rotates to +60 (exits right)
             return Double(normalizedOffset) * maxRotation
         }
     }
@@ -936,49 +893,39 @@ struct HorizontalPanGesture: UIViewRepresentable {
     }
 }
 
-
-// MARK: - Glass Button Style
-struct GlassToolbarButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(.primary)
-            .frame(width: 44, height: 44)
-            .scaleEffect(configuration.isPressed ? 0.9 : 1.0)
-            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
-            .glassEffect(.regular, in: .capsule)
-            .onChange(of: configuration.isPressed) { _, isPressed in
-                if isPressed {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-            }
-    }
-}
-
-// MARK: - Track Card Component (Artwork + Title grouped)
-struct TrackCard: View {
+// MARK: - Hexagon Artwork Face (3D rotated artwork only)
+struct HexagonArtworkFace: View {
     let track: Track
-    let namespace: Namespace.ID?
     let artworkWidth: CGFloat
     let cornerRadius: CGFloat
-    var isMatchedGeometrySource: Bool = false
+    let rotation: Double
+    let anchor: UnitPoint
+    var opacity: Double = 1.0
+    var scale: CGFloat = 1.0
     var isPlaying: Bool = true
 
     var body: some View {
         VStack(spacing: 20) {
-            // Artwork (flush to top)
-            // Only apply matched geometry effect to the source card to avoid conflicts
-            // Use constant ID to match MiniPlayer, not track.id
+            // Artwork with 3D rotation applied
             PlayerArtworkView(
                 artwork: track.artwork,
-                namespace: isMatchedGeometrySource ? namespace : nil,
-                id: isMatchedGeometrySource && namespace != nil ? "MINIPLAYER_ARTWORK" : nil,
+                namespace: nil,
+                id: nil,
                 cornerRadius: cornerRadius,
                 shadowRadius: 0
             )
             .aspectRatio(1, contentMode: .fit)
             .frame(width: artworkWidth, height: artworkWidth)
+            .rotation3DEffect(
+                .degrees(rotation),
+                axis: (x: 0, y: 1, z: 0),
+                anchor: anchor,
+                perspective: 0.3
+            )
+            .opacity(opacity)
+            .scaleEffect(scale)
 
-            // Song info
+            // Song info (doesn't rotate - stays flat)
             VStack(spacing: 6) {
                 MarqueeGlassText(
                     text: track.title,
@@ -988,14 +935,16 @@ struct TrackCard: View {
                     startDelay: 5.0,
                     isPlaying: isPlaying
                 )
-                .frame(maxWidth: artworkWidth - 40) // Padding on sides
+                .frame(maxWidth: artworkWidth - 40)
 
                 Text(track.artist)
                     .font(.headline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+            .opacity(opacity)
         }
+        .frame(width: artworkWidth)
     }
 }
 
