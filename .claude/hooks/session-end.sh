@@ -58,25 +58,15 @@ fi
 
 log "Starting retrospective analysis in background..."
 
-# Run retrospective in background using claude with skill invocation
+# Run retrospective in background using the /retrospective slash command
+# Pass transcript path as argument so the command knows where to read the session
 # Use nohup to ensure the process survives after hook exits
-# cd to project dir since --cwd is not a valid flag
 (
-    cd "$PROJECT_DIR" && nohup claude --dangerously-skip-permissions -p "$(cat <<EOF
-Analyze the coding session that just ended and extract valuable learnings.
+    cd "$PROJECT_DIR" && nohup claude --dangerously-skip-permissions \
+        -p "/retrospective
 
-Session transcript is at: $TRANSCRIPT
-
-Your task:
-1. Read the transcript file to understand what happened in the session
-2. Identify patterns (what worked), failures (what to avoid), edge cases, and technology insights
-3. Read the current learnings file at: $LEARNINGS_FILE
-4. Add any NEW valuable learnings to the appropriate sections - skip generic knowledge
-5. Use the format: ### Title, then bullet points for Context, Learning, Example (optional), Session date
-
-Be selective - only add genuinely useful, project-specific insights that will help future sessions.
-EOF
-)" \
+The session transcript is at: $TRANSCRIPT
+Read it to understand what happened in this session." \
         >> "$LOG_FILE" 2>&1 &
 ) &
 
