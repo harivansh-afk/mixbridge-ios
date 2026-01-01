@@ -29,13 +29,32 @@ struct ExpandedMusicPlayer: View {
     @State private var localSliderPosition: Double = 0
 
     // Compute duration safely
-    // Prefer PlayerState duration (from AVPlayer), fall back to Track metadata (from API)
+    // During crossfade, interpolate between current and next track durations
     private var duration: Double {
+        let currentDuration: Double
         if playerState.duration > 0 {
-            return playerState.duration
+            currentDuration = playerState.duration
+        } else {
+            currentDuration = max(playerState.currentTrack.duration, 0)
         }
-        // Use track's duration directly - it's preloaded from API
-        return max(playerState.currentTrack.duration, 0)
+
+        // Interpolate during crossfade for smooth transition
+        if playerState.isCrossfading && playerState.crossfadeNextDuration > 0 {
+            let progress = playerState.crossfadeProgress
+            return currentDuration * (1 - progress) + playerState.crossfadeNextDuration * progress
+        }
+
+        return currentDuration
+    }
+
+    // Compute interpolated playback position during crossfade
+    private var interpolatedPosition: Double {
+        if playerState.isCrossfading {
+            let progress = playerState.crossfadeProgress
+            // Interpolate from current position to next track's position
+            return playerState.playbackPosition * (1 - progress) + playerState.crossfadeNextPosition * progress
+        }
+        return playerState.playbackPosition
     }
 
     // Get queue index for any track
@@ -92,8 +111,9 @@ struct ExpandedMusicPlayer: View {
             namespace: namespace,
             playbackPosition: Binding(
                 get: {
-                    // Use local value during dragging, otherwise use actual playback position
-                    isDraggingProgress ? localSliderPosition : playerState.playbackPosition
+                    // Use local value during dragging, otherwise use interpolated position
+                    // (interpolatedPosition handles crossfade smoothly)
+                    isDraggingProgress ? localSliderPosition : interpolatedPosition
                 },
                 set: { newValue in
                     // Update local value during dragging
@@ -192,6 +212,11 @@ struct ExpandedPlayerView: View {
     @State private var queueExpansion: CGFloat // How much queue pushes content up
     @State private var queueDragStart: CGFloat = 0 // Starting expansion when drag begins
 
+    // Crossfade-safe background handoff (never swap to an unready image).
+    @State private var backgroundStableArtwork: String
+    @State private var backgroundPendingArtwork: String? = nil
+    @State private var backgroundPendingReady: Bool = false
+
     // Haptic generators (prepared for instant feedback)
     @State private var lightHaptic = UIImpactFeedbackGenerator(style: .light)
     @State private var mediumHaptic = UIImpactFeedbackGenerator(style: .medium)
@@ -226,6 +251,7 @@ struct ExpandedPlayerView: View {
         _displayedPrevious = State(initialValue: previousTrack)
         _showQueueSheet = State(initialValue: false)
         _queueExpansion = State(initialValue: 0) // Queue visible but no displacement
+        _backgroundStableArtwork = State(initialValue: currentTrack.artwork)
     }
 
     var body: some View {
@@ -239,6 +265,10 @@ struct ExpandedPlayerView: View {
             let cornerRadius = screenWidth * 0.12
             let contentSpacing = screenHeight * 0.04 // 4% of screen height
             let progressTopSpacing = screenHeight * -0.05 // 2.5% of screen height
+            // If SwiftUI carousel state lags behind playback state, prefer playback-derived values
+            // so we never briefly show the previous track at the end of a crossfade.
+            let shouldPreferPlaybackTrack = !isDraggingArtwork && abs(dragOffset) < 0.5 && displayedTrack.id != currentTrack.id
+            let effectiveDisplayedTrack = shouldPreferPlaybackTrack ? currentTrack : displayedTrack
 
             //Main stack below body
             ZStack(alignment: .top) {
@@ -251,20 +281,29 @@ struct ExpandedPlayerView: View {
                             .blur(radius: 80)
                     }
 
-                    // Layer 2: Current track background (always visible)
-                    PlayerBackgroundView(artwork: displayedTrack.artwork)
+                    // Layer 2: Stable background (never swaps to an unready image)
+                    PlayerBackgroundView(artwork: backgroundStableArtwork)
                         .blur(radius: 60)
-                        .id(displayedTrack.id)
+                        .opacity(playerState.isCrossfading && backgroundPendingReady ? 1.0 - playerState.crossfadeProgress : 1.0)
 
-                    // Layer 3: Next track background (fades in when swiping left)
+                    // Layer 3: Next track background during crossfade (fades in)
+                    if playerState.isCrossfading,
+                       backgroundPendingReady,
+                       let pendingArtwork = backgroundPendingArtwork {
+                        PlayerBackgroundView(artwork: pendingArtwork)
+                            .blur(radius: 60)
+                            .opacity(playerState.crossfadeProgress)
+                    }
+
+                    // Layer 4: Next track background (fades in when swiping left)
                     if let nextTrack = displayedNext, dragOffset < 0 {
                         PlayerBackgroundView(artwork: nextTrack.artwork)
                             .opacity(calculateBackgroundOpacity(offset: dragOffset, direction: .right, screenWidth: screenWidth))
                             .blur(radius: 80)
-                            .blendMode(.screen) // Additive blending for richer colors
+                            .blendMode(.screen)
                     }
 
-                    // Layer 4: Subtle overlay for depth
+                    // Layer 5: Subtle overlay for depth
                     Rectangle()
                         .fill(.ultraThinMaterial)
                         .opacity(0.12)
@@ -295,24 +334,24 @@ struct ExpandedPlayerView: View {
                         }
 
                         // Current artwork (center hexagon face - flat)
-                        HexagonArtworkFace(
-                            track: displayedTrack,
-                            artworkWidth: artworkMaxWidth,
-                            cornerRadius: cornerRadius,
-                            rotation: calculate3DRotation(offset: dragOffset, direction: .center, screenWidth: screenWidth),
-                            anchor: dragOffset > 0 ? .leading : .trailing,
-                            opacity: 1.0,
-                            scale: isDraggingArtwork ? 0.97 : 1.0,
-                            isPlaying: isPlaying
-                        )
-                        .offset(x: dragOffset)
-                        .zIndex(1)
-                        .id("current-\(displayedTrack.id)")
+	                        HexagonArtworkFace(
+	                            track: effectiveDisplayedTrack,
+	                            artworkWidth: artworkMaxWidth,
+	                            cornerRadius: cornerRadius,
+	                            rotation: calculate3DRotation(offset: dragOffset, direction: .center, screenWidth: screenWidth),
+	                            anchor: dragOffset > 0 ? .leading : .trailing,
+	                            opacity: 1.0,
+	                            scale: isDraggingArtwork ? 0.97 : 1.0,
+	                            isPlaying: isPlaying,
+	                            isCurrentTrack: true
+	                        )
+	                        .offset(x: dragOffset)
+	                        .zIndex(1)
 
-                        // Next artwork (right hexagon face)
-                        if let nxtTrack = displayedNext {
-                            HexagonArtworkFace(
-                                track: nxtTrack,
+	                        // Next artwork (right hexagon face)
+	                        if let nxtTrack = displayedNext {
+	                            HexagonArtworkFace(
+	                                track: nxtTrack,
                                 artworkWidth: artworkMaxWidth,
                                 cornerRadius: cornerRadius,
                                 rotation: calculate3DRotation(offset: dragOffset, direction: .right, screenWidth: screenWidth),
@@ -375,9 +414,59 @@ struct ExpandedPlayerView: View {
                         displayedNext = nextTrack
                         displayedPrevious = previousTrack
 
+                        // Crossfade-safe background: start from the current track artwork.
+                        backgroundStableArtwork = currentTrack.artwork
+
                         // Show queue sheet if queue has items
                         if queueManager.hasQueue {
                             showQueueSheet = true
+                        }
+                    }
+                    .onChange(of: playerState.crossfadeNextTrack?.artwork) { _, newArtwork in
+                        // Important: don't clear pending artwork when `crossfadeNextTrack` becomes nil at
+                        // transition end; we commit/clear in the `isCrossfading` handoff below to avoid a
+                        // 1-frame fallback to the old stable background.
+                        guard let newArtwork, !newArtwork.isEmpty else { return }
+
+                        backgroundPendingArtwork = newArtwork
+                        backgroundPendingReady = isArtworkReady(newArtwork)
+                        guard !backgroundPendingReady else { return }
+
+                        let request = newArtwork
+                        Task { @MainActor in
+                            let ok = await preloadArtwork(request)
+                            if backgroundPendingArtwork == request {
+                                backgroundPendingReady = ok
+                            }
+                        }
+                    }
+                    .onChange(of: currentTrack.artwork) { _, newArtwork in
+                        guard backgroundStableArtwork != newArtwork else { return }
+
+                        if isArtworkReady(newArtwork) {
+                            backgroundStableArtwork = newArtwork
+                            return
+                        }
+
+                        let request = newArtwork
+                        Task { @MainActor in
+                            let ok = await preloadArtwork(request)
+                            if ok, currentTrack.artwork == request {
+                                backgroundStableArtwork = request
+                            }
+                        }
+                    }
+                    .onChange(of: playerState.isCrossfading) { _, isCrossfading in
+                        // When crossfade ends, keep showing the stable background until the new
+                        // `currentTrack.artwork` is confirmed ready (handled by onChange above).
+                        if !isCrossfading {
+                            // Commit the destination background before removing the overlay to prevent
+                            // any one-frame flash back to the previous stable artwork.
+                            if backgroundPendingReady, let pending = backgroundPendingArtwork {
+                                backgroundStableArtwork = pending
+                            }
+                            backgroundPendingArtwork = nil
+                            backgroundPendingReady = false
                         }
                     }
 
@@ -399,7 +488,7 @@ struct ExpandedPlayerView: View {
                             onPrevious: onPrevious
                         )
                         .padding(.horizontal, horizontalPadding)
-                        .padding(.top, contentSpacing)
+                        .padding(.top, 20)
                     }
                     }
                     // Apply offset to entire top section (artwork + controls) when queue expands
@@ -524,13 +613,13 @@ struct ExpandedPlayerView: View {
                             } label: {
                                 Image(systemName: confirmDeleteQueue ? "checkmark" : "trash")
                                     .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(confirmDeleteQueue ? .white : .red)
+                                    .foregroundStyle(confirmDeleteQueue ? .white : .secondary)
                                     .contentTransition(.symbolEffect(.replace))
                                     .frame(width: 44, height: 44)
                                     .background(confirmDeleteQueue ? Color.blue : Color.clear)
                                     .clipShape(Circle())
                             }
-                            .glassEffect(.regular, in: .circle)
+                            .glassEffect(.clear, in: .circle)
                         }
 
                         Spacer()
@@ -538,7 +627,7 @@ struct ExpandedPlayerView: View {
                         // Mix + Queue toolbar group (only show if queue has items)
                         if queueManager.hasQueue {
                             GlassEffectContainer {
-                                HStack(spacing: 0) {
+                                HStack(spacing: 12) {
                                     // Mix Mode toggle
                                     Button {
                                         playerState.mixEnabled.toggle()
@@ -546,11 +635,14 @@ struct ExpandedPlayerView: View {
                                     } label: {
                                         Image("wave-sine")
                                             .renderingMode(.template)
-                                            .foregroundStyle(playerState.mixEnabled ? .blue : .secondary)
-                                            .padding(.leading, 8)
+                                            .foregroundStyle(playerState.mixEnabled ? .white : .secondary)
                                             .animation(nil, value: playerState.mixEnabled)
+                                            .shadow(color: playerState.mixEnabled ? .white.opacity(0.7) : .clear, radius: 6)
+                                            .shadow(color: playerState.mixEnabled ? .white.opacity(0.3) : .clear, radius: 12)
+                                            .animation(.easeInOut(duration: 0.25), value: playerState.mixEnabled)
+                                            .padding(.leading, 12)
+                                            .padding(.vertical, 6)
                                     }
-                                    .buttonStyle(.glass)
                                     .glassEffectUnion(id: "playback-toolbar", namespace: toolbarUnionNamespace)
 
                                     // Queue button
@@ -561,16 +653,17 @@ struct ExpandedPlayerView: View {
                                             queueExpansion = 200
                                         }
                                     } label: {
-                                        Label("Queue", image: "queue")
-                                            .labelStyle(.iconOnly)
-                                            .padding(.trailing, 8)
+                                        Image("queue")
+                                            .renderingMode(.template)
                                             .foregroundStyle(.secondary)
+                                            .padding(.trailing, 12)
+                                            .padding(.vertical, 6)
                                     }
-                                    .buttonStyle(.glassProminent)
+                                    .tint(.secondary)
                                     .glassEffectUnion(id: "playback-toolbar", namespace: toolbarUnionNamespace)
                                 }
                             }
-                            .glassEffect(playerState.mixEnabled ? .regular : .clear)
+                            .glassEffect(.clear, in: .capsule)
                         }
                     }
                     .padding(.horizontal, horizontalPadding)
@@ -609,7 +702,7 @@ struct ExpandedPlayerView: View {
             isDraggingArtwork = true
             lastHapticThreshold = 0
             lightHaptic.prepare()
-            
+
             heavyHaptic.prepare()
         }
 
@@ -785,6 +878,23 @@ struct ExpandedPlayerView: View {
         }
     }
 
+    // MARK: - Background Handoff Helpers
+
+    private func isArtworkReady(_ artwork: String) -> Bool {
+        if artwork.starts(with: "http"), let url = URL(string: artwork) {
+            return MemoryImageCache.shared.get(url.absoluteString) != nil
+        }
+        // Local assets are effectively always ready once name is known.
+        return UIImage(named: artwork) != nil || !artwork.isEmpty
+    }
+
+    private func preloadArtwork(_ artwork: String) async -> Bool {
+        guard artwork.starts(with: "http"), let url = URL(string: artwork) else {
+            return !artwork.isEmpty
+        }
+        return await ImageCacheManager.shared.getImage(for: url) != nil
+    }
+
     private enum Direction {
         case left, center, right
     }
@@ -903,17 +1013,64 @@ struct HexagonArtworkFace: View {
     var opacity: Double = 1.0
     var scale: CGFloat = 1.0
     var isPlaying: Bool = true
+    var isCurrentTrack: Bool = false // Whether this is the center/current track
+
+    // Access to PlayerState for crossfade visual state
+    @Bindable private var playerState = PlayerState.shared
+
+    // Crossfade handoff: if crossfade visuals end before `currentTrack` updates,
+    // keep showing the destination artwork until the track swap arrives.
+    @State private var crossfadeHandoffTrackId: String? = nil
+    @State private var crossfadeHandoffArtwork: String? = nil
 
     var body: some View {
         VStack(spacing: 20) {
             // Artwork with 3D rotation applied
-            PlayerArtworkView(
-                artwork: track.artwork,
-                namespace: nil,
-                id: nil,
-                cornerRadius: cornerRadius,
-                shadowRadius: 0
-            )
+            // Layer the destination artwork behind Metal view to prevent flicker on transition end
+            ZStack {
+                // Base layer: Regular artwork
+                // For current track position: use playerState sources (always up-to-date)
+                // During crossfade: show next track (destination)
+                // After crossfade: show currentTrack (already updated)
+                // For prev/next carousel positions: use track (displayedPrevious/displayedNext)
+                let baseArtwork: String = {
+                    guard isCurrentTrack else { return track.artwork }
+                    if playerState.isCrossfading {
+                        return playerState.crossfadeNextTrack?.artwork ?? playerState.currentTrack.artwork
+                    }
+                    if let targetId = crossfadeHandoffTrackId,
+                       playerState.currentTrack.id != targetId,
+                       let handoff = crossfadeHandoffArtwork {
+                        return handoff
+                    }
+                    return playerState.currentTrack.artwork
+                }()
+                PlayerArtworkView(
+                    artwork: baseArtwork,
+                    namespace: nil,
+                    id: nil,
+                    cornerRadius: cornerRadius,
+                    shadowRadius: 0
+                )
+
+                // Overlay: Metal morph during crossfade
+                if isCurrentTrack,
+                   playerState.isCrossfading,
+                   let nextTrack = playerState.crossfadeNextTrack,
+                   LiquidMorphView.isMetalAvailable {
+                    let fromArtwork = playerState.crossfadeFromArtwork.isEmpty
+                        ? playerState.currentTrack.artwork
+                        : playerState.crossfadeFromArtwork
+                    LiquidMorphView(
+                        fromArtworkURL: fromArtwork,
+                        toArtworkURL: nextTrack.artwork,
+                        progress: playerState.crossfadeProgress,
+                        size: CGSize(width: artworkWidth, height: artworkWidth)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                    .allowsHitTesting(false)
+                }
+            }
             .aspectRatio(1, contentMode: .fit)
             .frame(width: artworkWidth, height: artworkWidth)
             .rotation3DEffect(
@@ -945,6 +1102,30 @@ struct HexagonArtworkFace: View {
             .opacity(opacity)
         }
         .frame(width: artworkWidth)
+        .onChange(of: playerState.crossfadeNextTrack?.id) { _, _ in
+            guard isCurrentTrack, let next = playerState.crossfadeNextTrack else { return }
+            crossfadeHandoffTrackId = next.id
+            crossfadeHandoffArtwork = next.artwork
+        }
+        .onChange(of: playerState.currentTrack.id) { _, _ in
+            guard isCurrentTrack else { return }
+            if let targetId = crossfadeHandoffTrackId, playerState.currentTrack.id == targetId {
+                crossfadeHandoffTrackId = nil
+                crossfadeHandoffArtwork = nil
+            }
+        }
+        .onChange(of: playerState.crossfadeProgress) { _, progress in
+            // Abort case: progress snaps back to 0 with no next track, and we never swapped tracks.
+            // Keep the handoff alive across normal completion (where `currentTrack.id` becomes the target).
+            guard isCurrentTrack else { return }
+            guard progress <= 0.0001 else { return }
+            guard !playerState.isCrossfading else { return }
+            guard playerState.crossfadeNextTrack == nil else { return }
+            guard let targetId = crossfadeHandoffTrackId else { return }
+            guard playerState.currentTrack.id != targetId else { return }
+            crossfadeHandoffTrackId = nil
+            crossfadeHandoffArtwork = nil
+        }
     }
 }
 

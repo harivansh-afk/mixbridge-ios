@@ -919,11 +919,28 @@ extension PlaybackCoordinator: MixPlaybackEngineDelegate {
         }
 
         publishSnapshot()
+
+        // Reset crossfade visual state AFTER PlayerState.currentTrack updates via snapshot.
+        // This prevents a 1-frame flicker back to the old artwork when the Metal overlay is removed.
+        PlayerState.shared.crossfadeFromArtwork = ""
+        PlayerState.shared.crossfadeProgress = 0
+        PlayerState.shared.isCrossfading = false
+        PlayerState.shared.crossfadeNextTrack = nil
+        PlayerState.shared.crossfadeNextPosition = 0
+        PlayerState.shared.crossfadeNextDuration = 0
     }
 
     func mixEngine(_ engine: MixPlaybackEngine, didAbortWithFallback track: Track?, context: PlaybackContext?) {
         // Mix transition aborted - fallback to normal playback
         logWarning("[MixMode] Transition aborted, falling back to normal playback")
+
+        // Reset crossfade visual state
+        PlayerState.shared.crossfadeFromArtwork = ""
+        PlayerState.shared.crossfadeProgress = 0
+        PlayerState.shared.isCrossfading = false
+        PlayerState.shared.crossfadeNextTrack = nil
+        PlayerState.shared.crossfadeNextPosition = 0
+        PlayerState.shared.crossfadeNextDuration = 0
 
         // If we have a next track context, try normal playback
         if let context = context {
@@ -943,5 +960,45 @@ extension PlaybackCoordinator: MixPlaybackEngineDelegate {
 
         // Publish snapshot to update UI
         publishSnapshot()
+    }
+
+    func mixEngineDidUpdateCrossfadeProgress(_ engine: MixPlaybackEngine, progress: Double, nextTrack: Track?) {
+        // Capture and prefetch crossfade artwork at the very start so visuals never
+        // briefly render with a missing `nextTrack` or a changing `from` artwork.
+        if progress <= 0.0001 {
+            if let nextTrack {
+                if PlayerState.shared.crossfadeFromArtwork.isEmpty {
+                    PlayerState.shared.crossfadeFromArtwork = PlayerState.shared.currentTrack.artwork
+                }
+                Task(priority: .utility) {
+                    await preloadCrossfadeArtwork(from: PlayerState.shared.crossfadeFromArtwork, to: nextTrack.artwork)
+                }
+            } else {
+                PlayerState.shared.crossfadeFromArtwork = ""
+            }
+        }
+
+        // Update PlayerState for visual transitions (order matters to avoid transient flicker):
+        // set nextTrack first, then progress, then isCrossfading last.
+        PlayerState.shared.crossfadeNextTrack = nextTrack
+        PlayerState.shared.crossfadeNextPosition = engine.nextTime
+        PlayerState.shared.crossfadeNextDuration = engine.nextDuration
+        PlayerState.shared.crossfadeProgress = progress
+
+        // Keep isCrossfading true at progress=1.0 to prevent flicker; we reset after track swap.
+        PlayerState.shared.isCrossfading = progress > 0 && progress <= 1.0
+    }
+}
+
+// MARK: - Crossfade Artwork Prefetch
+
+@MainActor
+private func preloadCrossfadeArtwork(from: String, to: String) async {
+    // Fill MemoryImageCache so SwiftUI and Metal can both render without placeholders.
+    if from.starts(with: "http"), let url = URL(string: from) {
+        _ = await ImageCacheManager.shared.getImage(for: url)
+    }
+    if to.starts(with: "http"), let url = URL(string: to) {
+        _ = await ImageCacheManager.shared.getImage(for: url)
     }
 }

@@ -129,3 +129,86 @@ HapticManager.medium()
 // Selection change (tab switches, list selections)
 HapticManager.selection()
 ```
+
+---
+
+## Metal / GPU Programming
+
+Insights from implementing Metal shaders and GPU-based effects.
+
+### MTKView Texture Loading Race Condition
+- **Context**: When using MTKView with UIViewRepresentable for image morphing
+- **Learning**: The first `draw(in:)` call often happens before textures are loaded. If you return early without drawing, uninitialized GPU buffer memory may show (appears as red/garbage colors). Always explicitly clear to transparent when textures aren't ready.
+- **Example**:
+```swift
+guard let fromTexture = fromTexture, let toTexture = toTexture else {
+    // DON'T just return - clear to transparent
+    renderPassDescriptor.colorAttachments[0].loadAction = .clear
+    renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+    if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+        encoder.endEncoding()
+    }
+    commandBuffer.present(drawable)
+    commandBuffer.commit()
+    return
+}
+```
+- **Session**: Metal artwork crossfade morph implementation (2026-01-01)
+
+### MTKView Transparency Setup
+- **Context**: Making MTKView content properly transparent for layering
+- **Learning**: Must set multiple properties: `isOpaque = false`, `backgroundColor = .clear`, `framebufferOnly = false`. The clearColor in render pass must also have alpha = 0.
+- **Session**: Metal artwork crossfade morph implementation (2026-01-01)
+
+### Layer Behind GPU Views for Seamless Transitions
+- **Context**: SwiftUI conditionally rendering Metal views during animations
+- **Learning**: Always layer the "destination" content behind GPU views. When the GPU view is removed (conditional becomes false), the correct content is already visible - prevents flicker.
+- **Example**:
+```swift
+ZStack {
+    // Base layer - destination artwork always visible
+    PlayerArtworkView(artwork: destinationArtwork)
+
+    // Overlay - Metal morph only during transition
+    if isTransitioning {
+        MetalMorphView(from: currentArtwork, to: destinationArtwork)
+    }
+}
+```
+- **Session**: Metal artwork crossfade morph implementation (2026-01-01)
+
+---
+
+## SwiftUI State Synchronization
+
+### DisplayedTrack vs PlayerState.currentTrack Race Condition
+- **Context**: Carousel UI state (`displayedTrack`) vs actual playback state (`playerState.currentTrack`)
+- **Learning**: During crossfade completion, `isCrossfading` becomes false before `displayedTrack` updates via `.onChange`. Using `playerState.currentTrack.artwork` instead of `displayedTrack.artwork` prevents the brief flicker to old artwork.
+- **Example**:
+```swift
+// BAD - uses displayedTrack which may be stale
+artwork: track.artwork  // where track = displayedTrack
+
+// GOOD - uses playerState which is already updated
+artwork: playerState.crossfadeNextTrack?.artwork ?? playerState.currentTrack.artwork
+```
+- **Session**: Metal artwork crossfade morph implementation (2026-01-01)
+
+### Progress Bar Interpolation During Crossfade
+- **Context**: Audio crossfade where playback position jumps from end of track A to start of track B
+- **Learning**: Interpolate both position and duration during crossfade to create smooth progress bar transition. Formula: `displayedPosition = outgoingPosition * (1 - progress) + incomingPosition * progress`
+- **Session**: Metal artwork crossfade morph implementation (2026-01-01)
+
+---
+
+## Metal Shader Tips
+
+### Liquid Morph Effect Pattern
+- **Context**: Creating visually appealing image transitions
+- **Learning**: FBM (Fractional Brownian Motion) noise-based displacement + crossfade creates a "liquid morph" effect. The displacement amplitude should peak at mid-transition (progress = 0.5), so images appear to transform rather than just dissolve.
+- **Session**: Metal artwork crossfade morph implementation (2026-01-01)
+
+### Background Metal View Optimization
+- **Context**: Using Metal for blurred background effects
+- **Learning**: For heavily blurred backgrounds, consider using SwiftUI opacity crossfade instead of Metal - simpler, more reliable, and the blur hides most detail anyway. Reserve Metal for where the effect is clearly visible.
+- **Session**: Metal artwork crossfade morph implementation (2026-01-01)
