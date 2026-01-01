@@ -1,6 +1,6 @@
 ---
 description: Analyze the current session and extract learnings to memory
-allowed-tools: Read, Edit
+allowed-tools: Read, Edit, Grep, Bash, Task
 ---
 
 # Session Retrospective
@@ -10,6 +10,14 @@ Analyze this coding session and extract valuable learnings to improve future ses
 ## Your Task
 
 ### 1. Review What Happened This Session
+
+The session transcript is at: $CLAUDE_SESSION_TRANSCRIPT_PATH
+
+**Important**: Session transcripts can be large. Use these strategies:
+- Use `Read` with `offset` and `limit` parameters to read portions (e.g., last 500 lines)
+- Use `Grep` to search for specific patterns like "Error", "Edit", "Write" to find key moments
+- Use `Bash` with `tail` or `head` to get specific portions
+- Focus on the most recent activity (end of file) for the session summary
 
 Reflect on the session:
 - What code was written or modified?
