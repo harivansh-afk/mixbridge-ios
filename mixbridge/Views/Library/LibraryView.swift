@@ -9,6 +9,7 @@ import SwiftUI
 
 struct LibraryView: View {
     @State private var showingAccount = false
+    @State private var accountSheetDetent: PresentationDetent = .medium
     @Environment(UserProfileManager.self) private var profileManager
     @Environment(AuthManager.self) private var authManager
     @Environment(PreloadedDataStore.self) private var dataStore
@@ -50,14 +51,17 @@ struct LibraryView: View {
                 }
                 // Data already loaded by AppDataPreloader
             }
-            .sheet(isPresented: $showingAccount) {
+            .sheet(isPresented: $showingAccount, onDismiss: {
+                accountSheetDetent = .medium
+            }) {
                 AccountBottomSheet(
                     isPresented: $showingAccount,
+                    selectedDetent: $accountSheetDetent,
                     userName: profileManager.displayName,
                     userEmail: nil,
                     profileImage: nil
                 )
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.medium, .large], selection: $accountSheetDetent)
                 .presentationDragIndicator(.hidden)
                 .interactiveDismissDisabled(false)
             }

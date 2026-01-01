@@ -18,6 +18,7 @@ struct AccountBottomSheet: View {
     private var profileManager = UserProfileManager.shared
     @State private var showFinalDeleteConfirmation = false
     @State private var isDeleting = false
+    @Binding var selectedDetent: PresentationDetent
 
     let userName: String
     let userEmail: String?
@@ -26,11 +27,13 @@ struct AccountBottomSheet: View {
     // MARK: - Initialization
     init(
         isPresented: Binding<Bool>,
+        selectedDetent: Binding<PresentationDetent>,
         userName: String = "User",
         userEmail: String? = nil,
         profileImage: String? = nil
     ) {
         self._isPresented = isPresented
+        self._selectedDetent = selectedDetent
         self.userName = userName
         self.userEmail = userEmail
         self.profileImage = profileImage
@@ -92,6 +95,11 @@ struct AccountBottomSheet: View {
                 Section {
                     NavigationLink {
                         AutomixSettingsView()
+                            .onAppear {
+                                withAnimation {
+                                    selectedDetent = .large
+                                }
+                            }
                     } label: {
                         HStack(spacing: 12) {
                             Text("Automix")
@@ -328,6 +336,7 @@ struct AccountBottomSheet: View {
 #Preview("Light Mode") {
     struct PreviewWrapper: View {
         @State private var showSheet = true
+        @State private var selectedDetent: PresentationDetent = .medium
 
         var body: some View {
             Color.gray
@@ -335,9 +344,11 @@ struct AccountBottomSheet: View {
                 .sheet(isPresented: $showSheet) {
                     AccountBottomSheet(
                         isPresented: $showSheet,
+                        selectedDetent: $selectedDetent,
                         userName: "Harivansh Rathi",
                         userEmail: "hari@phia.com"
                     )
+                    .presentationDetents([.medium, .large], selection: $selectedDetent)
                 }
         }
     }
@@ -349,6 +360,7 @@ struct AccountBottomSheet: View {
 #Preview("Dark Mode") {
     struct PreviewWrapper: View {
         @State private var showSheet = true
+        @State private var selectedDetent: PresentationDetent = .medium
 
         var body: some View {
             Color.gray
@@ -356,9 +368,11 @@ struct AccountBottomSheet: View {
                 .sheet(isPresented: $showSheet) {
                     AccountBottomSheet(
                         isPresented: $showSheet,
+                        selectedDetent: $selectedDetent,
                         userName: "Harivansh Rathi",
                         userEmail: "hari@phia.com"
                     )
+                    .presentationDetents([.medium, .large], selection: $selectedDetent)
                 }
         }
     }

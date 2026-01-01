@@ -9,6 +9,7 @@ import SwiftUI
 
 struct HomeView: View {
     @State private var showingAccount = false
+    @State private var accountSheetDetent: PresentationDetent = .medium
     @Environment(AuthManager.self) private var authManager
     @Environment(UserProfileManager.self) private var profileManager
     @Environment(QueueManager.self) private var queueManager
@@ -29,14 +30,17 @@ struct HomeView: View {
                         profileAvatar
                     }
                 }
-            .sheet(isPresented: $showingAccount) {
+            .sheet(isPresented: $showingAccount, onDismiss: {
+                accountSheetDetent = .medium
+            }) {
                 AccountBottomSheet(
                     isPresented: $showingAccount,
+                    selectedDetent: $accountSheetDetent,
                     userName: profileManager.displayName,
                     userEmail: nil,
                     profileImage: nil
                 )
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.medium, .large], selection: $accountSheetDetent)
                 .presentationDragIndicator(.hidden)
                 .interactiveDismissDisabled(false)
             }
