@@ -212,3 +212,28 @@ artwork: playerState.crossfadeNextTrack?.artwork ?? playerState.currentTrack.art
 - **Context**: Using Metal for blurred background effects
 - **Learning**: For heavily blurred backgrounds, consider using SwiftUI opacity crossfade instead of Metal - simpler, more reliable, and the blur hides most detail anyway. Reserve Metal for where the effect is clearly visible.
 - **Session**: Metal artwork crossfade morph implementation (2026-01-01)
+
+### Always Add Solid Base Layer in Background ZStacks
+- **Context**: Multi-layer blurred backgrounds with crossfade transitions
+- **Learning**: When compositing multiple semi-transparent or blurred layers (especially with dark artwork), always add a solid `Color.black.ignoresSafeArea()` as the bottommost layer. Without it, when all layers have low opacity (dark artwork + crossfade), uninitialized GPU memory (red/magenta garbage) bleeds through. This is especially problematic during crossfade where opacity values interpolate through low values.
+- **Example**:
+```swift
+ZStack {
+    // CRITICAL: Solid base prevents GPU garbage from showing
+    Color.black
+        .ignoresSafeArea()
+
+    // Layer 1: Stable background (fades out during crossfade)
+    PlayerBackgroundView(artwork: currentArtwork)
+        .blur(radius: 60)
+        .opacity(isCrossfading ? 1.0 - crossfadeProgress : 1.0)
+
+    // Layer 2: Incoming background (fades in during crossfade)
+    if isCrossfading {
+        PlayerBackgroundView(artwork: nextArtwork)
+            .blur(radius: 60)
+            .opacity(crossfadeProgress)
+    }
+}
+```
+- **Session**: Dark artwork crossfade red flash fix (2026-01-01)

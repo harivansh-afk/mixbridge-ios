@@ -30,6 +30,23 @@ log "Transcript: $TRANSCRIPT"
 log "Session ID: $SESSION_ID"
 log "Project dir: $PROJECT_DIR"
 
+# Prevent duplicate triggers for the same session using a lock file
+LOCK_DIR="${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/locks"
+mkdir -p "$LOCK_DIR"
+LOCK_FILE="$LOCK_DIR/$SESSION_ID.lock"
+
+if [ -f "$LOCK_FILE" ]; then
+    log "Session already processed (lock exists) - skipping duplicate trigger"
+    exit 0
+fi
+
+# Create lock file immediately
+echo "$(date)" > "$LOCK_FILE"
+log "Lock file created"
+
+# Clean up old lock files (older than 1 hour)
+find "$LOCK_DIR" -name "*.lock" -mmin +60 -delete 2>/dev/null
+
 # Validate transcript exists
 if [ -z "$TRANSCRIPT" ]; then
     log "ERROR: No transcript path in input"
@@ -46,6 +63,13 @@ LINE_COUNT=$(wc -l < "$TRANSCRIPT" 2>/dev/null || echo "0")
 log "Transcript line count: $LINE_COUNT"
 if [ "$LINE_COUNT" -lt 10 ]; then
     log "Session too short, skipping retrospective"
+    exit 0
+fi
+
+# CRITICAL: Detect if this session was itself a retrospective to prevent chain reaction
+# Check if the transcript contains /retrospective command (indicates this was a retrospective session)
+if grep -q '"/retrospective' "$TRANSCRIPT" 2>/dev/null || grep -q '"skill":"retrospective"' "$TRANSCRIPT" 2>/dev/null; then
+    log "Session was a retrospective - skipping to prevent chain reaction"
     exit 0
 fi
 
