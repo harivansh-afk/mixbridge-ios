@@ -566,25 +566,25 @@ struct ExpandedPlayerView: View {
 
                             Spacer()
 
-                            // Mix + Queue toolbar group
-                            GlassEffectContainer {
-                                HStack(spacing: 0) {
-                                    // Mix Mode toggle
-                                    Button {
-                                        playerState.mixEnabled.toggle()
-                                        HapticManager.selection()
-                                    } label: {
-                                        Image("wave-sine")
-                                            .renderingMode(.template)
-                                            .foregroundStyle(playerState.mixEnabled ? .blue : .secondary)
-                                            .padding(.leading, 8)
-                                            .animation(nil, value: playerState.mixEnabled)
-                                    }
-                                    .buttonStyle(.glass)
-                                    .glassEffectUnion(id: "playback-toolbar", namespace: toolbarUnionNamespace)
+                            // Mix + Queue toolbar group (only show if queue has items)
+                            if queueManager.hasQueue {
+                                GlassEffectContainer {
+                                    HStack(spacing: 0) {
+                                        // Mix Mode toggle
+                                        Button {
+                                            playerState.mixEnabled.toggle()
+                                            HapticManager.selection()
+                                        } label: {
+                                            Image("wave-sine")
+                                                .renderingMode(.template)
+                                                .foregroundStyle(playerState.mixEnabled ? .blue : .secondary)
+                                                .padding(.leading, 8)
+                                                .animation(nil, value: playerState.mixEnabled)
+                                        }
+                                        .buttonStyle(.glass)
+                                        .glassEffectUnion(id: "playback-toolbar", namespace: toolbarUnionNamespace)
 
-                                    // Queue button (only show if queue has items)
-                                    if queueManager.hasQueue {
+                                        // Queue button
                                         Button {
                                             confirmDeleteQueue = false
                                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
