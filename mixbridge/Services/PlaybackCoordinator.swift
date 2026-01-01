@@ -99,17 +99,51 @@ final class PlaybackCoordinator: NSObject {
     private struct RetryMetadata {
         var attemptCount: Int = 0
         var lastAttemptTime: Date = Date()
-        let maxAttempts = 5
+        let maxAttempts = 3
 
-        /// Exponential backoff: 1s, 2s, 4s, 8s, 16s
+        /// Exponential backoff: 2s, 4s, 8s
         var nextRetryDelay: TimeInterval {
-            pow(2, Double(attemptCount))
+            pow(2, Double(attemptCount + 1))
         }
 
         var canRetryNow: Bool {
             attemptCount < maxAttempts &&
             Date().timeIntervalSince(lastAttemptTime) >= nextRetryDelay
         }
+
+        var hasRetriesRemaining: Bool {
+            attemptCount < maxAttempts
+        }
+    }
+
+    /// Errors that should trigger an automatic retry with fresh URL
+    private func isRecoverableError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+
+        // Network timeout errors
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorTimedOut,           // -1001
+                 NSURLErrorNetworkConnectionLost, // -1005
+                 NSURLErrorNotConnectedToInternet, // -1009
+                 NSURLErrorCannotConnectToHost,   // -1004
+                 NSURLErrorSecureConnectionFailed: // -1200
+                return true
+            default:
+                break
+            }
+        }
+
+        // Server errors from Convex (expired URLs return server errors)
+        let errorString = error.localizedDescription.lowercased()
+        if errorString.contains("server error") ||
+           errorString.contains("expired") ||
+           errorString.contains("forbidden") ||
+           errorString.contains("unauthorized") {
+            return true
+        }
+
+        return false
     }
 
     /// Track user's playback intent (not transient player states)
@@ -300,7 +334,7 @@ final class PlaybackCoordinator: NSObject {
         }
     }
 
-    private func startPlayback(with context: PlaybackContext, startTime: Double? = nil) async {
+    private func startPlayback(with context: PlaybackContext, startTime: Double? = nil, forceRefreshURL: Bool = false) async {
         isPreparingPlayback = true
         defer { isPreparingPlayback = false }
 
@@ -308,8 +342,8 @@ final class PlaybackCoordinator: NSObject {
         status = .loading
 
         do {
-            logDebug("Fetching stream URL...")
-            let item = try await prepareItem(for: pendingContext)
+            logDebug("Fetching stream URL\(forceRefreshURL ? " (force refresh)" : "")...")
+            let item = try await prepareItem(for: pendingContext, forceRefresh: forceRefreshURL)
 
             // Clear old items
             player.removeAllItems()
@@ -372,30 +406,65 @@ final class PlaybackCoordinator: NSObject {
             }
 
         } catch {
-            // Update retry metadata with exponential backoff
-            var metadata = retryAttempts[pendingContext.track.id] ?? RetryMetadata()
-            metadata.attemptCount += 1
-            metadata.lastAttemptTime = Date()
-            retryAttempts[pendingContext.track.id] = metadata
+            // Check if this is a recoverable error (timeout, server error, expired URL)
+            let metadata = retryAttempts[pendingContext.track.id] ?? RetryMetadata()
+
+            if isRecoverableError(error) && metadata.hasRetriesRemaining && !forceRefreshURL {
+                // First failure with cached URL - retry immediately with fresh URL
+                logWarning("Recoverable error, retrying with fresh URL: \(error.localizedDescription)")
+
+                // Invalidate the cached URL
+                await streamCache.invalidate(trackId: pendingContext.track.id)
+
+                // Retry with force refresh (don't increment counter yet)
+                await startPlayback(with: pendingContext, startTime: startTime, forceRefreshURL: true)
+                return
+            }
+
+            // Update retry metadata - only count failures after fresh URL attempt
+            var updatedMetadata = metadata
+            updatedMetadata.attemptCount += 1
+            updatedMetadata.lastAttemptTime = Date()
+            retryAttempts[pendingContext.track.id] = updatedMetadata
 
             isIntendedToPlay = false
             delegate?.playbackCoordinator(self, didEncounter: error)
             status = .failed(error.localizedDescription)
-            logError("Playback failed (attempt \(metadata.attemptCount)/\(metadata.maxAttempts)): \(error)")
+            logError("Playback failed (attempt \(updatedMetadata.attemptCount)/\(updatedMetadata.maxAttempts)): \(error)")
         }
     }
 
     // MARK: - Mix Mode Playback
 
-    private func startMixPlayback(with context: PlaybackContext, startTime: Double? = nil) async {
+    private func startMixPlayback(with context: PlaybackContext, startTime: Double? = nil, forceRefreshURL: Bool = false) async {
         isPreparingPlayback = true
         defer { isPreparingPlayback = false }
 
         status = .loading
 
         do {
-            logDebug("[MixMode] Fetching stream URL...")
-            let stream = try await streamCache.ensureStream(for: context.track.id, priority: .userInitiated)
+            logDebug("[MixMode] Fetching stream URL\(forceRefreshURL ? " (force refresh)" : "")...")
+
+            let stream: CachedStreamData
+            if forceRefreshURL {
+                guard let freshStream = await streamCache.forceRefresh(for: context.track.id) else {
+                    throw PlayerState.PlaybackError.invalidStreamURL
+                }
+                stream = freshStream
+            } else {
+                // Check if cached stream is expiring soon
+                let deadline = Date().addingTimeInterval(30)
+                let needsRefresh = await streamCache.isStreamExpiring(for: context.track.id, before: deadline)
+
+                if needsRefresh {
+                    guard let refreshedStream = await streamCache.forceRefresh(for: context.track.id) else {
+                        throw PlayerState.PlaybackError.invalidStreamURL
+                    }
+                    stream = refreshedStream
+                } else {
+                    stream = try await streamCache.ensureStream(for: context.track.id, priority: .userInitiated)
+                }
+            }
 
             // Stop regular playback and switch to mix mode
             player.pause()
@@ -449,21 +518,54 @@ final class PlaybackCoordinator: NSObject {
             status = .playing
 
         } catch {
-            var metadata = retryAttempts[context.track.id] ?? RetryMetadata()
-            metadata.attemptCount += 1
-            metadata.lastAttemptTime = Date()
-            retryAttempts[context.track.id] = metadata
+            // Check if this is a recoverable error
+            let metadata = retryAttempts[context.track.id] ?? RetryMetadata()
+
+            if isRecoverableError(error) && metadata.hasRetriesRemaining && !forceRefreshURL {
+                logWarning("[MixMode] Recoverable error, retrying with fresh URL: \(error.localizedDescription)")
+                await streamCache.invalidate(trackId: context.track.id)
+                await startMixPlayback(with: context, startTime: startTime, forceRefreshURL: true)
+                return
+            }
+
+            var updatedMetadata = metadata
+            updatedMetadata.attemptCount += 1
+            updatedMetadata.lastAttemptTime = Date()
+            retryAttempts[context.track.id] = updatedMetadata
 
             isIntendedToPlay = false
             isUsingMixMode = false
             delegate?.playbackCoordinator(self, didEncounter: error)
             status = .failed(error.localizedDescription)
-            logError("[MixMode] Playback failed: \(error)")
+            logError("[MixMode] Playback failed (attempt \(updatedMetadata.attemptCount)/\(updatedMetadata.maxAttempts)): \(error)")
         }
     }
 
-    private func prepareItem(for context: PlaybackContext) async throws -> AVPlayerItem {
-        let stream = try await streamCache.ensureStream(for: context.track.id, priority: .userInitiated)
+    private func prepareItem(for context: PlaybackContext, forceRefresh: Bool = false) async throws -> AVPlayerItem {
+        let stream: CachedStreamData
+
+        if forceRefresh {
+            // Force refresh - invalidate cache and fetch fresh URL
+            guard let freshStream = await streamCache.forceRefresh(for: context.track.id) else {
+                throw PlayerState.PlaybackError.invalidStreamURL
+            }
+            stream = freshStream
+        } else {
+            // Check if cached stream is expiring soon (within 30 seconds)
+            // This mirrors what MixPlaybackEngine does for prewarm
+            let deadline = Date().addingTimeInterval(30)
+            let needsRefresh = await streamCache.isStreamExpiring(for: context.track.id, before: deadline)
+
+            if needsRefresh {
+                logDebug("Cached stream expiring soon, fetching fresh URL...")
+                guard let refreshedStream = await streamCache.forceRefresh(for: context.track.id) else {
+                    throw PlayerState.PlaybackError.invalidStreamURL
+                }
+                stream = refreshedStream
+            } else {
+                stream = try await streamCache.ensureStream(for: context.track.id, priority: .userInitiated)
+            }
+        }
 
         guard let url = URL(string: stream.url) else {
             throw PlayerState.PlaybackError.invalidStreamURL
