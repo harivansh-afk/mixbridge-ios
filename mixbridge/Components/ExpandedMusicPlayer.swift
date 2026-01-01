@@ -274,6 +274,10 @@ struct ExpandedPlayerView: View {
             ZStack(alignment: .top) {
                 // Multi-layer blended background
                 ZStack {
+                    // Layer 0: Solid black base - prevents GPU garbage from showing through
+                    Color.black
+                        .ignoresSafeArea()
+
                     // Layer 1: Previous track background (fades in when swiping right)
                     if let prevTrack = displayedPrevious, dragOffset > 0 {
                         PlayerBackgroundView(artwork: prevTrack.artwork)
@@ -612,7 +616,7 @@ struct ExpandedPlayerView: View {
                                 }
                             } label: {
                                 Image(systemName: confirmDeleteQueue ? "checkmark" : "trash")
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.system(size: 18, weight: .semibold))
                                     .foregroundStyle(confirmDeleteQueue ? .white : .secondary)
                                     .contentTransition(.symbolEffect(.replace))
                                     .frame(width: 44, height: 44)

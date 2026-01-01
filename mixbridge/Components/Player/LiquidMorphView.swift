@@ -36,14 +36,15 @@ struct LiquidMorphView: UIViewRepresentable {
         mtkView.device = device
         mtkView.colorPixelFormat = .bgra8Unorm
         mtkView.framebufferOnly = false  // Allow reading for transparency
-        mtkView.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-        mtkView.isOpaque = false  // Enable transparency
-        mtkView.backgroundColor = .clear
+        mtkView.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)  // Opaque black, not transparent
+        mtkView.isOpaque = false  // Enable transparency for SwiftUI compositing
+        mtkView.backgroundColor = .black  // Black fallback prevents red/magenta GPU garbage
         mtkView.layer.isOpaque = false
         mtkView.autoResizeDrawable = true
 
         // Start hidden until textures are ready (prevents red/garbage flash)
         mtkView.alpha = 0
+        mtkView.isHidden = true  // Double protection: hidden + alpha
 
         // Driven by progress changes, not continuous rendering
         mtkView.isPaused = true
@@ -80,7 +81,9 @@ struct LiquidMorphView: UIViewRepresentable {
 
         // Only show once we've presented at least one textured frame for this pair.
         // Until then, the regular SwiftUI artwork is visible behind this view.
+        // Use both isHidden and alpha for bulletproof prevention of GPU garbage flash.
         let shouldShow = renderer.texturesReady && renderer.hasPresentedTexturedFrame && progress > 0
+        mtkView.isHidden = !shouldShow
         mtkView.alpha = shouldShow ? 1.0 : 0.0
     }
 
