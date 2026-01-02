@@ -289,46 +289,24 @@ final class PlaybackCoordinator: NSObject {
     }
 
     func playNext(manual: Bool = false) {
-        guard let currentContext else {
-            if let first = queueManager.queueTracks.first {
-                play(track: first, soundCloudTrack: queueManager.soundCloudTrack(for: first.id), queueIndex: 0)
+        // Pop the next track from queue BEFORE playing
+        // This enforces the invariant: current track is never in the queue
+        guard let nextItem = queueManager.popNext() else {
+            // Queue empty - nothing to play next
+            if manual {
+                HapticManager.selection()
             }
             return
         }
 
-        // UX invariant: when a song is playing, "Next" should always play the top of the cue.
-        // If the current track somehow still exists at the top, skip it and take the next distinct track.
-        let desiredNext: (track: Track, index: Int)? = {
-            let tracks = queueManager.queueTracks
-            guard !tracks.isEmpty else { return nil }
-            if tracks.count >= 2, tracks[0].id == currentContext.track.id {
-                return (tracks[1], 1)
-            }
-            return (tracks[0], 0)
-        }()
-
-        if let desiredNext {
-            if isUsingMixMode {
-                // Stop mix audio immediately so manual skips never leave the previous track playing "in the background".
-                mixEngine.stop()
-                isUsingMixMode = false
-                play(track: desiredNext.track, soundCloudTrack: queueManager.soundCloudTrack(for: desiredNext.track.id), queueIndex: desiredNext.index)
-            } else if let preloaded = nextPreloadedContext,
-                      preloaded.track.id == desiredNext.track.id,
-                      player.items().count > 1 {
-                // Fast path: our already-preloaded next matches the cue top, so advance instantly.
-                player.advanceToNextItem()
-                adoptCurrentItemContext()
-            } else {
-                play(track: desiredNext.track, soundCloudTrack: queueManager.soundCloudTrack(for: desiredNext.track.id), queueIndex: desiredNext.index)
-            }
-        } else {
-            // No cue; fall back to internal queue player advancement if available.
-            if !isUsingMixMode, player.items().count > 1 {
-                player.advanceToNextItem()
-                adoptCurrentItemContext()
-            }
+        if isUsingMixMode {
+            // Stop mix audio immediately so manual skips never leave the previous track playing
+            mixEngine.stop()
+            isUsingMixMode = false
         }
+
+        // Play the popped track (it's already removed from queue)
+        play(track: nextItem.track, soundCloudTrack: nextItem.soundCloudTrack, queueIndex: nil)
 
         if manual {
             HapticManager.selection()
@@ -370,24 +348,11 @@ final class PlaybackCoordinator: NSObject {
 
     // MARK: - Playback Pipeline
 
-    /// Called when a track successfully starts playing. Removes it from queue and updates context.
+    /// Called when a track successfully starts playing. Updates context.
+    /// Note: Track removal from queue happens BEFORE play() is called (via popNext),
+    /// so we don't need to remove here.
     private func handleTrackStartedPlaying(context: PlaybackContext) {
-        let shouldRemove = queueManager.isInQueue(context.track.id)
-
-        // Set context with appropriate queue index (-1 if removed from queue)
-        currentContext = PlaybackContext(
-            track: context.track,
-            soundCloudTrack: context.soundCloudTrack,
-            queueIndex: shouldRemove ? -1 : context.queueIndex
-        )
-
-        // Remove from queue in background (silently, no haptic feedback)
-        if shouldRemove {
-            let trackToRemove = context.track
-            Task {
-                try? await queueManager.removeTrack(trackToRemove, silent: true)
-            }
-        }
+        currentContext = context
     }
 
     private func startPlayback(with context: PlaybackContext, startTime: Double? = nil, forceRefreshURL: Bool = false) async {
@@ -676,29 +641,17 @@ final class PlaybackCoordinator: NSObject {
     }
 
     private func nextContext(after context: PlaybackContext) -> PlaybackContext? {
-        // Policy: "next" is always the top of the cue.
-        // If the current track still exists at the top (should be rare), skip it.
-        if let first = queueManager.queueTracks.first {
-            let nextTrack: Track
-            let nextIndex: Int
-
-            if first.id == context.track.id, queueManager.queueTracks.count >= 2 {
-                nextTrack = queueManager.queueTracks[1]
-                nextIndex = 1
-            } else {
-                nextTrack = first
-                nextIndex = 0
-            }
-
-            return PlaybackContext(
-                track: nextTrack,
-                soundCloudTrack: queueManager.soundCloudTrack(for: nextTrack.id),
-                queueIndex: nextIndex
-            )
+        // Next is always queue.peek() - no index arithmetic needed
+        // The current track is never in the queue (invariant)
+        guard let nextItem = queueManager.queue.peek() else {
+            return nil
         }
 
-        // No cue.
-        return nil
+        return PlaybackContext(
+            track: nextItem.track,
+            soundCloudTrack: nextItem.soundCloudTrack,
+            queueIndex: 0
+        )
     }
 
     // MARK: - Observers
@@ -802,6 +755,9 @@ final class PlaybackCoordinator: NSObject {
            preloadedContext == nextContext(after: finishedContext) {
 
             if preloadedItem.status == .readyToPlay {
+                // Pop from queue since this track is now playing
+                queueManager.popNext()
+
                 handleTrackStartedPlaying(context: preloadedContext)
                 nextPreloadedContext = nil
                 nextPreloadedItem = nil
@@ -840,6 +796,9 @@ final class PlaybackCoordinator: NSObject {
 
             } else {
                 // Preloaded item not ready, play fresh
+                // Pop from queue since this track is about to play
+                queueManager.popNext()
+
                 player.remove(preloadedItem)
                 nextPreloadedContext = nil
                 nextPreloadedItem = nil
@@ -858,6 +817,9 @@ final class PlaybackCoordinator: NSObject {
     private func adoptCurrentItemContext() {
         if let currentItem = player.currentItem,
            let context = itemContextMap[currentItem] {
+            // Pop from queue since this track is now playing
+            queueManager.popNext()
+
             handleTrackStartedPlaying(context: context)
             hasPreloadedForCurrentTrack = false
             nextPreloadedContext = nil
@@ -964,6 +926,9 @@ extension PlaybackCoordinator: MixPlaybackEngineDelegate {
     func mixEngine(_ engine: MixPlaybackEngine, didCompleteTransitionTo track: Track, context: PlaybackContext) {
         // End position tracking for previous track
         positionTracker.endSession()
+
+        // Pop from queue since this track is now playing
+        queueManager.popNext()
 
         // Update current context
         currentContext = context

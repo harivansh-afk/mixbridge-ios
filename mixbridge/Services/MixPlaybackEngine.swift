@@ -284,30 +284,15 @@ final class MixPlaybackEngine {
     private func startPrewarm(schedule: MixScheduleInfo) {
         guard let currentCtx = currentContext else { return }
 
-        // Get next track from queue
-        // Note: The currently playing track may have been removed from queue,
-        // so we check if it's still there to determine the correct "next" track
-        let next: (track: Track, index: Int)?
-        if let trackIndex = queueManager.indexOfTrack(withId: currentCtx.track.id) {
-            // Current track is still in queue, get the one after it
-            next = queueManager.nextTrack(after: trackIndex)
-        } else {
-            // Current track was removed from queue, first track in queue is the "next"
-            if let firstTrack = queueManager.queueTracks.first {
-                next = (firstTrack, 0)
-            } else {
-                next = nil
-            }
-        }
-
-        guard let next = next else {
+        // Get next track from queue - always queue.peek()
+        // The current track is never in the queue (invariant)
+        guard let nextItem = queueManager.queue.peek() else {
             // No next track - no prewarm needed
             return
         }
 
-        let nextTrack = next.track
-        let nextSCTrack = queueManager.soundCloudTrack(for: nextTrack.id)
-        nextContext = MixTrackContext(track: nextTrack, soundCloudTrack: nextSCTrack, queueIndex: next.index)
+        let nextTrack = nextItem.track
+        nextContext = MixTrackContext(track: nextTrack, soundCloudTrack: nextItem.soundCloudTrack, queueIndex: 0)
 
         state = .prewarmingNext
         isNextReady = false
