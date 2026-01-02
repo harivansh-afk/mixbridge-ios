@@ -217,7 +217,8 @@ final class MixPlaybackEngine {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.handleTimeUpdate()
+                guard let self else { return }
+                self.handleTimeUpdate()
             }
         }
     }
@@ -339,7 +340,7 @@ final class MixPlaybackEngine {
                     streamData = try await streamCache.ensureStream(for: nextTrack.id, priority: .userInitiated)
                 }
 
-                await prepareNextPlayer(with: streamData)
+                prepareNextPlayer(with: streamData)
             } catch {
                 logError("[MixEngine] Prewarm failed: \(error)")
                 // Prewarm failures should not abruptly skip tracks; just cancel the transition.
@@ -364,7 +365,8 @@ final class MixPlaybackEngine {
         nextItemObservation?.invalidate()
         nextItemObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             Task { @MainActor in
-                self?.handleNextItemStatusChange(item)
+                guard let self else { return }
+                self.handleNextItemStatusChange(item)
             }
         }
 
@@ -372,7 +374,8 @@ final class MixPlaybackEngine {
         nextReadinessObservation = item.observe(\.isPlaybackLikelyToKeepUp, options: [.new]) { [weak self] item, _ in
             Task { @MainActor in
                 if item.isPlaybackLikelyToKeepUp {
-                    self?.handleNextReady()
+                    guard let self else { return }
+                    self.handleNextReady()
                 }
             }
         }
@@ -416,7 +419,7 @@ final class MixPlaybackEngine {
         guard let currentCtx = currentContext,
               let nextCtx = nextContext,
               let nextPlayer = nextPlayer else {
-            abortMixTransition(reason: "not_ready")
+            abortMixTransition(reason: "not_ready", shouldFallbackToNext: false)
             return
         }
 
