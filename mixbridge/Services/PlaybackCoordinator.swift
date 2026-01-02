@@ -46,7 +46,16 @@ final class PlaybackCoordinator: NSObject {
     // MARK: - Mix Mode Settings
 
     /// Enable automatic crossfade between tracks
-    var mixEnabled: Bool = false
+    var mixEnabled: Bool = false {
+        didSet {
+            // If mix mode is disabled while active, stop the mix engine immediately to prevent
+            // overlapping audio if we later start the AVQueuePlayer.
+            if !mixEnabled && isUsingMixMode {
+                mixEngine.stop()
+                isUsingMixMode = false
+            }
+        }
+    }
 
     /// Crossfade duration in seconds
     var crossfadeSeconds: Double = 6
@@ -337,6 +346,14 @@ final class PlaybackCoordinator: NSObject {
     private func startPlayback(with context: PlaybackContext, startTime: Double? = nil, forceRefreshURL: Bool = false) async {
         isPreparingPlayback = true
         defer { isPreparingPlayback = false }
+
+        // Ensure mix engine is fully stopped before starting AVQueuePlayer playback.
+        // Without this, it's possible to end up with mixEngine still playing while the queue player starts,
+        // which sounds like "previous song playing latently in the background".
+        if isUsingMixMode {
+            mixEngine.stop()
+            isUsingMixMode = false
+        }
 
         let pendingContext = context
         status = .loading
@@ -933,6 +950,9 @@ extension PlaybackCoordinator: MixPlaybackEngineDelegate {
     func mixEngine(_ engine: MixPlaybackEngine, didAbortWithFallback track: Track?, context: PlaybackContext?) {
         // Mix transition aborted - fallback to normal playback
         logWarning("[MixMode] Transition aborted, falling back to normal playback")
+
+        // Stop mix audio immediately before starting AVQueuePlayer playback to avoid overlap.
+        engine.stop()
 
         // Reset crossfade visual state
         PlayerState.shared.crossfadeFromArtwork = ""
