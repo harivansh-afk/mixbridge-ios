@@ -27,6 +27,7 @@ protocol MixPlaybackEngineDelegate: AnyObject {
     func mixEngine(_ engine: MixPlaybackEngine, didEmit event: MixObservabilityEvent)
     func mixEngine(_ engine: MixPlaybackEngine, didCompleteTransitionTo track: Track, context: PlaybackContext)
     func mixEngine(_ engine: MixPlaybackEngine, didAbortWithFallback track: Track?, context: PlaybackContext?)
+    func mixEngineDidFinishTrack(_ engine: MixPlaybackEngine, track: Track, context: PlaybackContext)
     func mixEngineDidUpdateTime(_ engine: MixPlaybackEngine, currentTime: Double, duration: Double)
     func mixEngineDidUpdateCrossfadeProgress(_ engine: MixPlaybackEngine, progress: Double, nextTrack: Track?)
 }
@@ -156,7 +157,7 @@ final class MixPlaybackEngine {
         if state != .singlePlaying {
             let schedule = computeSchedule()
             if let schedule = schedule, time < schedule.prewarmStartTime {
-                abortMixTransition(reason: "seek_cancelled")
+                abortMixTransition(reason: "seek_cancelled", shouldFallbackToNext: false)
             }
         }
 
@@ -194,13 +195,13 @@ final class MixPlaybackEngine {
 
     func handleQueueChanged() {
         if state != .singlePlaying {
-            abortMixTransition(reason: "queue_changed")
+            abortMixTransition(reason: "queue_changed", shouldFallbackToNext: false)
         }
     }
 
     func handleMixDisabled() {
         if state != .singlePlaying {
-            abortMixTransition(reason: "disabled")
+            abortMixTransition(reason: "disabled", shouldFallbackToNext: false)
         }
     }
 
@@ -341,7 +342,8 @@ final class MixPlaybackEngine {
                 await prepareNextPlayer(with: streamData)
             } catch {
                 logError("[MixEngine] Prewarm failed: \(error)")
-                abortMixTransition(reason: "stream_refresh_failed")
+                // Prewarm failures should not abruptly skip tracks; just cancel the transition.
+                abortMixTransition(reason: "stream_refresh_failed", shouldFallbackToNext: false)
             }
         }
     }
@@ -384,7 +386,8 @@ final class MixPlaybackEngine {
             }
         case .failed:
             logError("[MixEngine] Next item failed: \(item.error?.localizedDescription ?? "unknown")")
-            abortMixTransition(reason: "not_ready")
+            // Don't skip; keep current playing and let coordinator advance at end.
+            abortMixTransition(reason: "not_ready", shouldFallbackToNext: false)
         case .unknown:
             break
         @unknown default:
@@ -533,7 +536,7 @@ final class MixPlaybackEngine {
         state = .singlePlaying
     }
 
-    private func abortMixTransition(reason: String) {
+    private func abortMixTransition(reason: String, shouldFallbackToNext: Bool) {
         guard state != .singlePlaying else { return }
 
         fadeDisplayLink?.invalidate()
@@ -563,13 +566,10 @@ final class MixPlaybackEngine {
 
         logInfo("[MixEngine] mix_fade_abort(\(reason))")
 
-        // Notify delegate for fallback handling
-        if let nextCtx = nextContext {
-            let playbackContext = PlaybackContext(
-                track: nextCtx.track,
-                soundCloudTrack: nextCtx.soundCloudTrack,
-                queueIndex: nextCtx.queueIndex
-            )
+        // Optionally notify delegate for fallback handling.
+        // Most aborts (queue changes, seeks, user toggles) should *not* change tracks.
+        if shouldFallbackToNext, let nextCtx = nextContext {
+            let playbackContext = PlaybackContext(track: nextCtx.track, soundCloudTrack: nextCtx.soundCloudTrack, queueIndex: nextCtx.queueIndex)
             delegate?.mixEngine(self, didAbortWithFallback: nextCtx.track, context: playbackContext)
         }
 
@@ -623,9 +623,10 @@ final class MixPlaybackEngine {
         guard let item = notification.object as? AVPlayerItem,
               item == currentPlayer.currentItem else { return }
 
-        // If we're not crossfading and track ended, the coordinator handles next
-        if state == .singlePlaying {
-            // Normal end - coordinator will handle
+        // If we're not crossfading and the track ended, ask the coordinator to advance.
+        if state == .singlePlaying, let ctx = currentContext {
+            let playbackContext = PlaybackContext(track: ctx.track, soundCloudTrack: ctx.soundCloudTrack, queueIndex: ctx.queueIndex)
+            delegate?.mixEngineDidFinishTrack(self, track: ctx.track, context: playbackContext)
         }
     }
 

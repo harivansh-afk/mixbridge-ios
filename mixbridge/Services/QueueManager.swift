@@ -25,6 +25,7 @@ class QueueManager {
             prefetchTask = Task {
                 try? await Task.sleep(for: .milliseconds(100))  // Debounce rapid changes
                 guard !Task.isCancelled else { return }
+                PlaybackCoordinator.shared.handleQueueChanged()
                 await TrackPrefetcher.shared.prefetchForQueue(queueTracks, currentIndex: 0)
                 PlaybackCoordinator.shared.prefetchQueue()
             }
