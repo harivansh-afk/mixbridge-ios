@@ -28,7 +28,7 @@ struct LiquidMorphView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> MTKView {
         guard let device = MTLCreateSystemDefaultDevice() else {
-            logError("[LiquidMorphView] Metal not available")
+            logError(.rendering, "[LiquidMorphView] Metal not available")
             return MTKView()
         }
 

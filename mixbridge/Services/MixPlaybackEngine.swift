@@ -303,7 +303,7 @@ final class MixPlaybackEngine {
             crossfadeSeconds: crossfadeSeconds
         ))
 
-        logInfo("[MixEngine] mix_prewarm_start: \(nextTrack.title)")
+        logInfo(.playback, "[MixEngine] mix_prewarm_start: \(nextTrack.title)")
 
         // Check if we need to refresh the stream
         let deadline = Date().addingTimeInterval(crossfadeSeconds + 15)
@@ -327,7 +327,7 @@ final class MixPlaybackEngine {
 
                 prepareNextPlayer(with: streamData)
             } catch {
-                logError("[MixEngine] Prewarm failed: \(error)")
+                logError(.playback, "[MixEngine] Prewarm failed: \(error)")
                 // Prewarm failures should not abruptly skip tracks; just cancel the transition.
                 abortMixTransition(reason: "stream_refresh_failed", shouldFallbackToNext: false)
             }
@@ -373,7 +373,7 @@ final class MixPlaybackEngine {
                 handleNextReady()
             }
         case .failed:
-            logError("[MixEngine] Next item failed: \(item.error?.localizedDescription ?? "unknown")")
+            logError(.playback, "[MixEngine] Next item failed: \(item.error?.localizedDescription ?? "unknown")")
             // Don't skip; keep current playing and let coordinator advance at end.
             abortMixTransition(reason: "not_ready", shouldFallbackToNext: false)
         case .unknown:
@@ -395,7 +395,7 @@ final class MixPlaybackEngine {
             crossfadeSeconds: crossfadeSeconds
         ))
 
-        logInfo("[MixEngine] mix_prewarm_ready: \(nextCtx.track.title)")
+        logInfo(.playback, "[MixEngine] mix_prewarm_ready: \(nextCtx.track.title)")
     }
 
     // MARK: - Crossfade
@@ -421,7 +421,7 @@ final class MixPlaybackEngine {
             crossfadeSeconds: crossfadeSeconds
         ))
 
-        logInfo("[MixEngine] mix_fade_start: crossfading to \(nextCtx.track.title)")
+        logInfo(.playback, "[MixEngine] mix_fade_start: crossfading to \(nextCtx.track.title)")
 
         // Initialize crossfade progress for visual transition
         delegate?.mixEngineDidUpdateCrossfadeProgress(self, progress: 0, nextTrack: nextCtx.track)
@@ -478,7 +478,7 @@ final class MixPlaybackEngine {
             crossfadeSeconds: crossfadeSeconds
         ))
 
-        logInfo("[MixEngine] mix_fade_complete: now playing \(nextCtx.track.title)")
+        logInfo(.playback, "[MixEngine] mix_fade_complete: now playing \(nextCtx.track.title)")
 
         promotNextToCurrent()
     }
@@ -552,7 +552,7 @@ final class MixPlaybackEngine {
             reason: reason
         ))
 
-        logInfo("[MixEngine] mix_fade_abort(\(reason))")
+        logInfo(.playback, "[MixEngine] mix_fade_abort(\(reason))")
 
         // Optionally notify delegate for fallback handling.
         // Most aborts (queue changes, seeks, user toggles) should *not* change tracks.
@@ -593,7 +593,7 @@ final class MixPlaybackEngine {
         currentItemObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             Task { @MainActor in
                 if item.status == .failed {
-                    logError("[MixEngine] Current item failed: \(item.error?.localizedDescription ?? "unknown")")
+                    logError(.playback, "[MixEngine] Current item failed: \(item.error?.localizedDescription ?? "unknown")")
                 }
             }
         }

@@ -41,9 +41,7 @@ final class PlaybackPositionTracker {
         lastDuration = duration
         lastFlushTime = Date()
 
-        #if DEBUG
-        print("📍 Position tracking started: session=\(sessionId.prefix(8)), track=\(trackId), queueIndex=\(queueIndex ?? -1)")
-        #endif
+        logDebug(.playback, "Position tracking started: session=\(sessionId.prefix(8)), track=\(trackId), queueIndex=\(queueIndex ?? -1)")
 
         return sessionId
     }
@@ -74,10 +72,8 @@ final class PlaybackPositionTracker {
         let position = lastPosition
         let duration = lastDuration
 
-        #if DEBUG
         let percentage = duration > 0 ? (position / duration) * 100 : 0
-        print("💾 Flushing position: \(String(format: "%.1f", position))s / \(String(format: "%.1f", duration))s (\(String(format: "%.0f", percentage))%)")
-        #endif
+        logDebug(.playback, "Flushing position: \(String(format: "%.1f", position))s / \(String(format: "%.1f", duration))s (\(String(format: "%.0f", percentage))%)")
 
         Task {
             try? await convexService.updatePlayPosition(
@@ -93,9 +89,7 @@ final class PlaybackPositionTracker {
     func endSession() {
         guard currentSessionId != nil else { return }
 
-        #if DEBUG
-        print("📍 Position tracking ended: session=\(currentSessionId?.prefix(8) ?? "none")")
-        #endif
+        logDebug(.playback, "Position tracking ended: session=\(currentSessionId?.prefix(8) ?? "none")")
 
         flush()
         currentSessionId = nil

@@ -9,17 +9,27 @@ import SwiftUI
 
 struct DevLogsView: View {
     @State private var logManager = LogManager.shared
-    @State private var selectedLevel: LogLevel? = nil
+    @State private var minimumLevel: LogLevel = .info
+    @State private var selectedCategory: LogCategory? = nil
     @State private var searchText = ""
     @State private var showingExportSheet = false
     @State private var showingClearConfirmation = false
     @State private var autoScroll = true
 
     private var filteredLogs: [LogEntry] {
-        var logs = logManager.filteredLogs(level: selectedLevel)
+        var logs = logManager.filteredLogs(minimumLevel: minimumLevel)
+
+        if let selectedCategory {
+            logs = logs.filter { $0.category == selectedCategory }
+        }
 
         if !searchText.isEmpty {
-            logs = logs.filter { $0.message.localizedCaseInsensitiveContains(searchText) }
+            logs = logs.filter {
+                $0.message.localizedCaseInsensitiveContains(searchText) ||
+                $0.file.localizedCaseInsensitiveContains(searchText) ||
+                $0.function.localizedCaseInsensitiveContains(searchText) ||
+                $0.category.label.localizedCaseInsensitiveContains(searchText)
+            }
         }
 
         // Show latest logs first
@@ -81,28 +91,72 @@ struct DevLogsView: View {
     // MARK: - Filter Bar
 
     private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                FilterChip(
-                    title: "All",
-                    isSelected: selectedLevel == nil,
-                    color: .blue
-                ) {
-                    selectedLevel = nil
-                }
-
-                ForEach(LogLevel.allCases, id: \.self) { level in
+        VStack(spacing: 0) {
+            // Level filter (threshold)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
                     FilterChip(
-                        title: "\(level.emoji) \(level.rawValue)",
-                        isSelected: selectedLevel == level,
-                        color: level.color
+                        title: "All",
+                        isSelected: minimumLevel == .debug,
+                        color: .blue
                     ) {
-                        selectedLevel = level
+                        minimumLevel = .debug
+                    }
+
+                    FilterChip(
+                        title: "✅ INFO+",
+                        isSelected: minimumLevel == .info,
+                        color: LogLevel.info.color
+                    ) {
+                        minimumLevel = .info
+                    }
+
+                    FilterChip(
+                        title: "⚠️ WARNING+",
+                        isSelected: minimumLevel == .warning,
+                        color: LogLevel.warning.color
+                    ) {
+                        minimumLevel = .warning
+                    }
+
+                    FilterChip(
+                        title: "❌ ERROR",
+                        isSelected: minimumLevel == .error,
+                        color: LogLevel.error.color
+                    ) {
+                        minimumLevel = .error
                     }
                 }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
+
+            Divider()
+
+            // Category filter
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    FilterChip(
+                        title: "All Categories",
+                        isSelected: selectedCategory == nil,
+                        color: .blue
+                    ) {
+                        selectedCategory = nil
+                    }
+
+                    ForEach(LogCategory.allCases) { category in
+                        FilterChip(
+                            title: category.label,
+                            isSelected: selectedCategory == category,
+                            color: .secondary
+                        ) {
+                            selectedCategory = category
+                        }
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+            }
         }
         .background(Color(UIColor.secondarySystemBackground))
     }
@@ -140,8 +194,8 @@ struct DevLogsView: View {
             Text("No Logs")
                 .font(.headline)
 
-            Text(selectedLevel != nil || !searchText.isEmpty
-                 ? "No logs match the current filter"
+            Text(selectedCategory != nil || !searchText.isEmpty || minimumLevel != .debug
+                 ? "No logs match the current filters"
                  : "Logs will appear here as the app runs")
             .font(.subheadline)
             .foregroundColor(.secondary)
@@ -172,6 +226,10 @@ private struct LogEntryRow: View {
                 Text(entry.level.rawValue)
                     .font(.caption.bold())
                     .foregroundColor(entry.level.color)
+
+                Text(entry.category.label)
+                    .font(.caption2.monospaced())
+                    .foregroundColor(.secondary)
 
                 Spacer()
 
@@ -266,12 +324,12 @@ private struct ShareSheet: UIViewControllerRepresentable {
     }
     .onAppear {
         // Add sample logs for preview
-        LogManager.shared.debug("App launched")
+        LogManager.shared.info("App launched", category: .app)
         LogManager.shared.info("User authenticated successfully")
         LogManager.shared.warning("Network request took longer than expected")
         LogManager.shared.error("Failed to load artwork: URL was nil")
-        LogManager.shared.info("Playing track: Some Artist - Some Track")
-        LogManager.shared.debug("Cache hit for stream URL")
+        LogManager.shared.info("Playing track: Some Artist - Some Track", category: .playback)
+        LogManager.shared.info("Cache hit for stream URL", category: .cache)
     }
 }
 #endif

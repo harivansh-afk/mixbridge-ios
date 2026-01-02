@@ -59,7 +59,7 @@ final class LiquidMorphRenderer: NSObject, MTKViewDelegate {
         self.device = device
 
         guard let queue = device.makeCommandQueue() else {
-            logError("[LiquidMorph] Failed to create command queue")
+            logError(.rendering, "[LiquidMorph] Failed to create command queue")
             return nil
         }
         self.commandQueue = queue
@@ -68,13 +68,13 @@ final class LiquidMorphRenderer: NSObject, MTKViewDelegate {
 
         // Load shader library
         guard let library = device.makeDefaultLibrary() else {
-            logError("[LiquidMorph] Failed to load default Metal library")
+            logError(.rendering, "[LiquidMorph] Failed to load default Metal library")
             return nil
         }
 
         guard let vertexFunction = library.makeFunction(name: "liquidMorphVertex"),
               let fragmentFunction = library.makeFunction(name: "liquidMorphFragment") else {
-            logError("[LiquidMorph] Failed to load shader functions")
+            logError(.rendering, "[LiquidMorph] Failed to load shader functions")
             return nil
         }
 
@@ -87,7 +87,7 @@ final class LiquidMorphRenderer: NSObject, MTKViewDelegate {
         do {
             self.pipelineState = try device.makeRenderPipelineState(descriptor: pipelineDescriptor)
         } catch {
-            logError("[LiquidMorph] Failed to create pipeline state: \(error)")
+            logError(.rendering, "[LiquidMorph] Failed to create pipeline state: \(error)")
             return nil
         }
 
@@ -131,13 +131,13 @@ final class LiquidMorphRenderer: NSObject, MTKViewDelegate {
 
         // Get UIImage from memory cache
         guard let image = getImageFromCache(artworkURL) else {
-            logWarning("[LiquidMorph] Image not in cache: \(artworkURL)")
+            logWarning(.rendering, "[LiquidMorph] Image not in cache: \(artworkURL)")
             return nil
         }
 
         // Convert to texture
         guard let cgImage = image.cgImage else {
-            logWarning("[LiquidMorph] Failed to get CGImage")
+            logWarning(.rendering, "[LiquidMorph] Failed to get CGImage")
             return nil
         }
 
@@ -153,7 +153,7 @@ final class LiquidMorphRenderer: NSObject, MTKViewDelegate {
             textureCache[artworkURL] = texture
             return texture
         } catch {
-            logError("[LiquidMorph] Failed to create texture: \(error)")
+            logError(.rendering, "[LiquidMorph] Failed to create texture: \(error)")
             return nil
         }
     }
