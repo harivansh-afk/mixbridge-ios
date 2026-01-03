@@ -366,23 +366,27 @@ struct ExpandedPlayerView: View {
                         // Sync carousel when player changes externally (buttons, auto-advance)
                         if displayedTrack.id != newValue {
                             withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.8)) {
+                                displayedPrevious = displayedTrack  // Old current becomes previous
                                 displayedTrack = currentTrack
-                                displayedQueueIndex = currentQueueIndex
-                                displayedNext = nextTrack
-                                displayedPrevious = previousTrack
+                                displayedQueueIndex = 0
+                                displayedNext = queueManager.queue.peek()?.track  // Read from queue directly
                                 dragOffset = 0
                                 isDraggingArtwork = false
                             }
                         }
                     }
-                    .onChange(of: currentQueueIndex) { oldValue, newValue in
-                        // Sync queue index when it changes (handles edge cases like queue reorder)
-                        // Only sync if the track ID matches but index differs
-                        if displayedTrack.id == currentTrack.id && displayedQueueIndex != newValue {
-                            displayedQueueIndex = newValue
-                            // Recalculate adjacent tracks based on new index
-                            displayedNext = getNextTrackByIndex(newValue)
-                            displayedPrevious = getPreviousTrackByIndex(newValue)
+                    .onChange(of: queueManager.queue.items.first?.id) { oldValue, newValue in
+                        // Sync displayedNext when queue changes (reorder, remove, etc.)
+                        let newNext = queueManager.queue.peek()?.track
+                        if displayedNext?.id != newNext?.id {
+                            displayedNext = newNext
+
+                            // Prefetch new next track artwork for smooth carousel
+                            if let nextItem = queueManager.queue.peek() {
+                                Task {
+                                    await TrackPrefetcher.shared.preloadTrackImmediately(nextItem.track)
+                                }
+                            }
                         }
                     }
                     .clipped()
@@ -391,11 +395,11 @@ struct ExpandedPlayerView: View {
                         lightHaptic.prepare()
                         heavyHaptic.prepare()
 
-                        // Initialize carousel with current tracks and explicit queue index
+                        // Initialize carousel with current tracks
                         displayedTrack = currentTrack
-                        displayedQueueIndex = currentQueueIndex
-                        displayedNext = nextTrack
-                        displayedPrevious = previousTrack
+                        displayedQueueIndex = 0
+                        displayedNext = queueManager.queue.peek()?.track  // Read from queue directly
+                        displayedPrevious = nil  // No previous initially
 
                         // Crossfade-safe background: start from the current track artwork.
                         backgroundStableArtwork = currentTrack.artwork
@@ -403,6 +407,13 @@ struct ExpandedPlayerView: View {
                         // Show queue sheet if queue has items
                         if queueManager.hasQueue {
                             showQueueSheet = true
+                        }
+
+                        // Prefetch next track artwork for smooth carousel
+                        if let nextItem = queueManager.queue.peek() {
+                            Task {
+                                await TrackPrefetcher.shared.preloadTrackImmediately(nextItem.track)
+                            }
                         }
                     }
                     .onChange(of: playerState.crossfadeNextTrack?.artwork) { _, newArtwork in
@@ -762,23 +773,22 @@ struct ExpandedPlayerView: View {
                 // Swipe left → next
                 heavyHaptic.impactOccurred(intensity: 1.0) // Final heavy haptic on commit
 
-                // Snappy spring for hexagon "click into place" feel
+                // Capture current display state before queue changes
+                let trackBecomingCurrent = displayedNext!
+                let trackBecomingPrevious = displayedTrack
+
+                // Pop from queue FIRST (synchronous) - this updates queue.peek()
+                // We need to tell playback to advance, which pops from queue
+                onNext()
+
+                // Now update display state - queue.peek() returns correct next track
                 withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.8, blendDuration: 0)) {
-                    // Commit changes instantly
-                    let newCurrent = displayedNext!
-                    let newIndex = displayedQueueIndex + 1
-                    displayedPrevious = displayedTrack
-                    displayedTrack = newCurrent
-                    displayedQueueIndex = newIndex
-                    // Use explicit index to get next track (avoids firstIndex() ambiguity)
-                    displayedNext = getNextTrackByIndex(newIndex)
+                    displayedPrevious = trackBecomingPrevious
+                    displayedTrack = trackBecomingCurrent
+                    displayedQueueIndex = 0  // Index is always 0 in new model (current not in queue)
+                    displayedNext = queueManager.queue.peek()?.track  // Now correct!
                     dragOffset = 0
                     isDraggingArtwork = false
-                }
-
-                // Update player in background
-                Task.detached { @MainActor in
-                    onNext()
                 }
             } else {
                 // Invalid direction or no track available - snap back with bounce
@@ -812,41 +822,40 @@ struct ExpandedPlayerView: View {
         nil
     }
 
-    // Move queue item for reordering
+    // Move queue item for reordering - SYNCHRONOUS local update, async backend sync
     private func moveQueueItem(from source: IndexSet, to destination: Int) {
         guard let fromIndex = source.first else { return }
+        guard fromIndex != destination else { return }
 
+        // Immediate local mutation for instant UI feedback
+        queueManager.moveItemLocal(from: fromIndex, to: destination)
+
+        // Background sync to backend
         Task {
-            do {
-                try await queueManager.moveItem(from: fromIndex, to: destination)
-            } catch {
-                logError(.queue, "Failed to move queue item: \(error)")
-                HapticManager.error()
-            }
+            await queueManager.syncMoveToBackend(from: fromIndex, to: destination)
         }
     }
 
-    // Delete queue item (for swipe to delete)
+    // Delete queue item (for swipe to delete) - SYNCHRONOUS local update
     private func deleteQueueItem(at offsets: IndexSet) {
         for index in offsets {
-            Task {
-                do {
-                    try await queueManager.removeAt(index: index)
-                } catch {
-                    HapticManager.error()
+            // Immediate local mutation
+            if let removedItem = queueManager.removeAtLocal(index: index) {
+                // Background sync to backend
+                Task {
+                    await queueManager.syncRemoveToBackend(item: removedItem, originalIndex: index)
                 }
             }
         }
     }
 
-    // Remove single item from queue using item ID (not index)
+    // Remove single item from queue - SYNCHRONOUS local update
     private func removeFromQueue(item: QueueItem) {
-        Task {
-            do {
-                try await queueManager.removeTrack(item.track)
-            } catch {
-                // Removal failed - QueueManager handles rollback
-                HapticManager.error()
+        // Immediate local mutation
+        if let originalIndex = queueManager.removeItemLocal(item) {
+            // Background sync to backend
+            Task {
+                await queueManager.syncRemoveToBackend(item: item, originalIndex: originalIndex)
             }
         }
     }
