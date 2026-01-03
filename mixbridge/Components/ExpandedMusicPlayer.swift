@@ -530,10 +530,21 @@ struct ExpandedPlayerView: View {
                                     .onEnded { value in
                                         queueDragStart = 0
 
+                                        let velocity = value.velocity.height
+
                                         // Swipe down to close
                                         if value.translation.height > 100 && queueExpansion < 100 {
                                             mediumHaptic.impactOccurred()
                                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                                showQueueSheet = false
+                                                queueExpansion = 0
+                                            }
+                                        }
+                                        // Swipe UP and release: fling up then gravity pulls it down to hide
+                                        else if value.translation.height < -30 && velocity < -300 {
+                                            mediumHaptic.impactOccurred()
+                                            // Gravity-like fall: slightly longer response, lower damping for natural drop
+                                            withAnimation(.spring(response: 0.45, dampingFraction: 0.65)) {
                                                 showQueueSheet = false
                                                 queueExpansion = 0
                                             }
