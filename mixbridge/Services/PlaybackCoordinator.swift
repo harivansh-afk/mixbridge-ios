@@ -296,11 +296,38 @@ final class PlaybackCoordinator: NSObject {
             return
         }
 
-        if player.items().count > 1 {
-            player.advanceToNextItem()
-            adoptCurrentItemContext()
-        } else if let next = queueManager.nextTrack(after: currentContext.queueIndex ?? queueManager.indexOfTrack(withId: currentContext.track.id) ?? -1) {
-            play(track: next.track, soundCloudTrack: queueManager.soundCloudTrack(for: next.track.id), queueIndex: next.index)
+        // UX invariant: when a song is playing, "Next" should always play the top of the cue.
+        // If the current track somehow still exists at the top, skip it and take the next distinct track.
+        let desiredNext: (track: Track, index: Int)? = {
+            let tracks = queueManager.queueTracks
+            guard !tracks.isEmpty else { return nil }
+            if tracks.count >= 2, tracks[0].id == currentContext.track.id {
+                return (tracks[1], 1)
+            }
+            return (tracks[0], 0)
+        }()
+
+        if let desiredNext {
+            if isUsingMixMode {
+                // Stop mix audio immediately so manual skips never leave the previous track playing "in the background".
+                mixEngine.stop()
+                isUsingMixMode = false
+                play(track: desiredNext.track, soundCloudTrack: queueManager.soundCloudTrack(for: desiredNext.track.id), queueIndex: desiredNext.index)
+            } else if let preloaded = nextPreloadedContext,
+                      preloaded.track.id == desiredNext.track.id,
+                      player.items().count > 1 {
+                // Fast path: our already-preloaded next matches the cue top, so advance instantly.
+                player.advanceToNextItem()
+                adoptCurrentItemContext()
+            } else {
+                play(track: desiredNext.track, soundCloudTrack: queueManager.soundCloudTrack(for: desiredNext.track.id), queueIndex: desiredNext.index)
+            }
+        } else {
+            // No cue; fall back to internal queue player advancement if available.
+            if !isUsingMixMode, player.items().count > 1 {
+                player.advanceToNextItem()
+                adoptCurrentItemContext()
+            }
         }
 
         if manual {
@@ -629,14 +656,29 @@ final class PlaybackCoordinator: NSObject {
     }
 
     private func nextContext(after context: PlaybackContext) -> PlaybackContext? {
-        let index = context.queueIndex ?? queueManager.indexOfTrack(withId: context.track.id)
-        guard let index, let next = queueManager.nextTrack(after: index) else { return nil }
+        // Policy: "next" is always the top of the cue.
+        // If the current track still exists at the top (should be rare), skip it.
+        if let first = queueManager.queueTracks.first {
+            let nextTrack: Track
+            let nextIndex: Int
 
-        return PlaybackContext(
-            track: next.track,
-            soundCloudTrack: queueManager.soundCloudTrack(for: next.track.id),
-            queueIndex: next.index
-        )
+            if first.id == context.track.id, queueManager.queueTracks.count >= 2 {
+                nextTrack = queueManager.queueTracks[1]
+                nextIndex = 1
+            } else {
+                nextTrack = first
+                nextIndex = 0
+            }
+
+            return PlaybackContext(
+                track: nextTrack,
+                soundCloudTrack: queueManager.soundCloudTrack(for: nextTrack.id),
+                queueIndex: nextIndex
+            )
+        }
+
+        // No cue.
+        return nil
     }
 
     // MARK: - Observers
