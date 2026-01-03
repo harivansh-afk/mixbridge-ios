@@ -121,7 +121,7 @@ class QueueManager {
                     try await ConvexService.shared.removeTrackFromQueue(queueTrackId: item.id)
                 }
             } catch {
-                logWarning("Failed to sync queue removal: \(error)")
+                logWarning(.queue, "Failed to sync queue removal: \(error)")
                 // Don't rollback - track already played
             }
         }

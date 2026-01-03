@@ -24,7 +24,7 @@ struct LiquidMorphBackgroundView: UIViewRepresentable {
         let mtkView = MTKView()
 
         guard let device = MTLCreateSystemDefaultDevice() else {
-            logError("[LiquidMorphBackgroundView] Metal not available")
+            logError(.rendering, "[LiquidMorphBackgroundView] Metal not available")
             return mtkView
         }
 

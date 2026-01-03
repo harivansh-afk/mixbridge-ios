@@ -820,7 +820,7 @@ struct ExpandedPlayerView: View {
             do {
                 try await queueManager.moveItem(from: fromIndex, to: destination)
             } catch {
-                logError("Failed to move queue item: \(error)")
+                logError(.queue, "Failed to move queue item: \(error)")
                 HapticManager.error()
             }
         }

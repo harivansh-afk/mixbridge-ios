@@ -181,7 +181,7 @@ final class PlaybackCoordinator: NSObject {
             object: nil
         )
 
-        logInfo("PlaybackCoordinator initialized")
+        logInfo(.playback, "PlaybackCoordinator initialized")
     }
 
     // MARK: - Public Controls
@@ -195,7 +195,7 @@ final class PlaybackCoordinator: NSObject {
 
     func play(track: Track, soundCloudTrack: SoundCloudTrack?, queueIndex: Int?, startTime: Double? = nil) {
         guard !isPreparingPlayback else {
-            logWarning("Playback already in progress, ignoring duplicate request")
+            logWarning(.playback, "Playback already in progress, ignoring duplicate request")
             return
         }
 
@@ -203,7 +203,7 @@ final class PlaybackCoordinator: NSObject {
         if let metadata = retryAttempts[track.id] {
             if !metadata.canRetryNow {
                 let waitTime = metadata.nextRetryDelay - Date().timeIntervalSince(metadata.lastAttemptTime)
-                logWarning("Track \(track.title) in backoff, retry in \(String(format: "%.1f", max(0, waitTime)))s")
+                logWarning(.playback, "Track \(track.title) in backoff, retry in \(String(format: "%.1f", max(0, waitTime)))s")
                 return
             }
         }
@@ -371,7 +371,7 @@ final class PlaybackCoordinator: NSObject {
         status = .loading
 
         do {
-            logDebug("Fetching stream URL\(forceRefreshURL ? " (force refresh)" : "")...")
+            logDebug(.playback, "Fetching stream URL\(forceRefreshURL ? " (force refresh)" : "")...")
             let item = try await prepareItem(for: pendingContext, forceRefresh: forceRefreshURL)
 
             // Clear old items
@@ -402,7 +402,7 @@ final class PlaybackCoordinator: NSObject {
             player.play()
             handleTrackStartedPlaying(context: pendingContext)
 
-            logInfo("Playback started: \(pendingContext.track.title)")
+            logInfo(.playback, "Playback started: \(pendingContext.track.title)")
 
             // Clear retry metadata on success
             retryAttempts.removeValue(forKey: pendingContext.track.id)
@@ -440,7 +440,7 @@ final class PlaybackCoordinator: NSObject {
 
             if isRecoverableError(error) && metadata.hasRetriesRemaining && !forceRefreshURL {
                 // First failure with cached URL - retry immediately with fresh URL
-                logWarning("Recoverable error, retrying with fresh URL: \(error.localizedDescription)")
+                logWarning(.playback, "Recoverable error, retrying with fresh URL: \(error.localizedDescription)")
 
                 // Invalidate the cached URL
                 await streamCache.invalidate(trackId: pendingContext.track.id)
@@ -459,7 +459,7 @@ final class PlaybackCoordinator: NSObject {
             isIntendedToPlay = false
             delegate?.playbackCoordinator(self, didEncounter: error)
             status = .failed(error.localizedDescription)
-            logError("Playback failed (attempt \(updatedMetadata.attemptCount)/\(updatedMetadata.maxAttempts)): \(error)")
+            logError(.playback, "Playback failed (attempt \(updatedMetadata.attemptCount)/\(updatedMetadata.maxAttempts)): \(error)")
         }
     }
 
@@ -472,7 +472,7 @@ final class PlaybackCoordinator: NSObject {
         status = .loading
 
         do {
-            logDebug("[MixMode] Fetching stream URL\(forceRefreshURL ? " (force refresh)" : "")...")
+            logDebug(.playback, "[MixMode] Fetching stream URL\(forceRefreshURL ? " (force refresh)" : "")...")
 
             let stream: CachedStreamData
             if forceRefreshURL {
@@ -513,7 +513,7 @@ final class PlaybackCoordinator: NSObject {
             currentContext = context
             handleTrackStartedPlaying(context: context)
 
-            logInfo("[MixMode] Playback started: \(context.track.title)")
+            logInfo(.playback, "[MixMode] Playback started: \(context.track.title)")
 
             // Clear retry metadata on success
             retryAttempts.removeValue(forKey: context.track.id)
@@ -551,7 +551,7 @@ final class PlaybackCoordinator: NSObject {
             let metadata = retryAttempts[context.track.id] ?? RetryMetadata()
 
             if isRecoverableError(error) && metadata.hasRetriesRemaining && !forceRefreshURL {
-                logWarning("[MixMode] Recoverable error, retrying with fresh URL: \(error.localizedDescription)")
+                logWarning(.playback, "[MixMode] Recoverable error, retrying with fresh URL: \(error.localizedDescription)")
                 await streamCache.invalidate(trackId: context.track.id)
                 await startMixPlayback(with: context, startTime: startTime, forceRefreshURL: true)
                 return
@@ -566,7 +566,7 @@ final class PlaybackCoordinator: NSObject {
             isUsingMixMode = false
             delegate?.playbackCoordinator(self, didEncounter: error)
             status = .failed(error.localizedDescription)
-            logError("[MixMode] Playback failed (attempt \(updatedMetadata.attemptCount)/\(updatedMetadata.maxAttempts)): \(error)")
+            logError(.playback, "[MixMode] Playback failed (attempt \(updatedMetadata.attemptCount)/\(updatedMetadata.maxAttempts)): \(error)")
         }
     }
 
@@ -586,7 +586,7 @@ final class PlaybackCoordinator: NSObject {
             let needsRefresh = await streamCache.isStreamExpiring(for: context.track.id, before: deadline)
 
             if needsRefresh {
-                logDebug("Cached stream expiring soon, fetching fresh URL...")
+                logDebug(.playback, "Cached stream expiring soon, fetching fresh URL...")
                 guard let refreshedStream = await streamCache.forceRefresh(for: context.track.id) else {
                     throw PlayerState.PlaybackError.invalidStreamURL
                 }
@@ -682,9 +682,7 @@ final class PlaybackCoordinator: NSObject {
                         break
                     }
 
-                    #if DEBUG
-                    print("⏳ Player waiting: \(reason.rawValue)")
-                    #endif
+                    logDebug(.playback, "Player waiting: \(reason.rawValue)")
                 } else if self.isIntendedToPlay && self.player.timeControlStatus == .playing {
                     // No longer waiting - update to playing
                     self.status = .playing
@@ -911,15 +909,15 @@ extension PlaybackCoordinator: MixPlaybackEngineDelegate {
         // Log observability events
         switch event {
         case .prewarmStart(let trackId, let nextTrackId, let crossfade):
-            logInfo("[MixObservability] mix_prewarm_start: \(trackId) -> \(nextTrackId), crossfade=\(crossfade)s")
+            logInfo(.playback, "[MixObservability] mix_prewarm_start: \(trackId) -> \(nextTrackId), crossfade=\(crossfade)s")
         case .prewarmReady(let trackId, let nextTrackId, let crossfade):
-            logInfo("[MixObservability] mix_prewarm_ready: \(trackId) -> \(nextTrackId), crossfade=\(crossfade)s")
+            logInfo(.playback, "[MixObservability] mix_prewarm_ready: \(trackId) -> \(nextTrackId), crossfade=\(crossfade)s")
         case .fadeStart(let trackId, let nextTrackId, let crossfade):
-            logInfo("[MixObservability] mix_fade_start: \(trackId) -> \(nextTrackId), crossfade=\(crossfade)s")
+            logInfo(.playback, "[MixObservability] mix_fade_start: \(trackId) -> \(nextTrackId), crossfade=\(crossfade)s")
         case .fadeComplete(let trackId, let nextTrackId, let crossfade):
-            logInfo("[MixObservability] mix_fade_complete: \(trackId) -> \(nextTrackId), crossfade=\(crossfade)s")
+            logInfo(.playback, "[MixObservability] mix_fade_complete: \(trackId) -> \(nextTrackId), crossfade=\(crossfade)s")
         case .fadeAbort(let trackId, let nextTrackId, let crossfade, let reason):
-            logWarning("[MixObservability] mix_fade_abort(\(reason)): \(trackId) -> \(nextTrackId ?? "nil"), crossfade=\(crossfade)s")
+            logWarning(.playback, "[MixObservability] mix_fade_abort(\(reason)): \(trackId) -> \(nextTrackId ?? "nil"), crossfade=\(crossfade)s")
         }
     }
 
@@ -934,7 +932,7 @@ extension PlaybackCoordinator: MixPlaybackEngineDelegate {
         currentContext = context
         handleTrackStartedPlaying(context: context)
 
-        logInfo("[MixMode] Transition complete: now playing \(track.title)")
+        logInfo(.playback, "[MixMode] Transition complete: now playing \(track.title)")
 
         // Optimistic UI update
         if let scTrack = context.soundCloudTrack {
@@ -976,7 +974,7 @@ extension PlaybackCoordinator: MixPlaybackEngineDelegate {
 
     func mixEngine(_ engine: MixPlaybackEngine, didAbortWithFallback track: Track?, context: PlaybackContext?) {
         // Mix transition aborted - fallback to normal playback
-        logWarning("[MixMode] Transition aborted, falling back to normal playback")
+        logWarning(.playback, "[MixMode] Transition aborted, falling back to normal playback")
 
         // Stop mix audio immediately before starting AVQueuePlayer playback to avoid overlap.
         engine.stop()

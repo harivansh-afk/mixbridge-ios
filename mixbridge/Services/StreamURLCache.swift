@@ -59,9 +59,7 @@ actor StreamURLCache {
     private let defaultExpiryInterval: TimeInterval = 180
 
     private init() {
-        #if DEBUG
-        print("🚀 StreamURLCache initialized - Ready for aggressive prefetching")
-        #endif
+        logDebug(.cache, "StreamURLCache initialized")
     }
 
     // MARK: - Public API
@@ -119,9 +117,7 @@ actor StreamURLCache {
     /// Aggressively prefetch stream URLs for multiple tracks
     /// Spotify-style: prefetch next 3-5 tracks in queue
     func prefetchBatch(trackIds: [String], priority: TaskPriority = .utility) {
-        #if DEBUG
-        print("🔥 Batch prefetching \(trackIds.count) tracks")
-        #endif
+        logDebug(.cache, "Batch prefetching \(trackIds.count) tracks")
 
         for trackId in trackIds {
             enqueuePrefetch(trackId: trackId)
@@ -161,11 +157,9 @@ actor StreamURLCache {
         cache = cache.filter { !$0.value.isExpired }
         let removed = before - cache.count
 
-        #if DEBUG
         if removed > 0 {
-            print("🧹 Cleaned up \(removed) expired cache entries")
+            logDebug(.cache, "Cleaned up \(removed) expired cache entries")
         }
-        #endif
     }
 
     /// Clear all cached URLs (useful on memory warning or logout)
@@ -177,9 +171,7 @@ actor StreamURLCache {
         prefetchWorker?.cancel()
         prefetchWorker = nil
 
-        #if DEBUG
-        print("🗑️ Cleared all cached stream URLs")
-        #endif
+        logDebug(.cache, "Cleared all cached stream URLs")
     }
 
     /// Force refresh stream URL for a track (bypasses cache)
@@ -193,22 +185,16 @@ actor StreamURLCache {
         pendingPrefetchSet.remove(trackId)
         pendingPrefetch.removeAll { $0 == trackId }
 
-        #if DEBUG
-        print("🔄 Force refreshing stream URL for track: \(trackId)")
-        #endif
+        logDebug(.cache, "Force refreshing stream URL for track: \(trackId)")
 
         do {
             let stream = try await ensureStream(for: trackId, priority: .userInitiated, forceRefresh: true)
 
-            #if DEBUG
-            print("✅ Force refresh successful for track: \(trackId)")
-            #endif
+            logDebug(.cache, "Force refresh successful for track: \(trackId)")
 
             return stream
         } catch {
-            #if DEBUG
-            print("❌ Force refresh failed for track \(trackId): \(error)")
-            #endif
+            logError(.cache, "Force refresh failed for track \(trackId): \(error)")
             return nil
         }
     }
@@ -217,9 +203,7 @@ actor StreamURLCache {
     func invalidate(trackId: String) {
         cache.removeValue(forKey: trackId)
 
-        #if DEBUG
-        print("🗑️ Invalidated cache for track: \(trackId)")
-        #endif
+        logDebug(.cache, "Invalidated cache for track: \(trackId)")
     }
 
     /// Ensure a stream is available (used by actual playback start).
@@ -302,13 +286,9 @@ actor StreamURLCache {
 
             do {
                 _ = try await ensureStream(for: trackId, priority: .utility)
-                #if DEBUG
-                print("✅ Prefetched stream URL for track: \(trackId)")
-                #endif
+                logDebug(.cache, "Prefetched stream URL for track: \(trackId)")
             } catch {
-                #if DEBUG
-                print("❌ Prefetch failed for track \(trackId): \(error)")
-                #endif
+                logError(.cache, "Prefetch failed for track \(trackId): \(error)")
             }
         }
     }

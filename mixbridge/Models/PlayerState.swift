@@ -300,7 +300,7 @@ final class PlayerState: NSObject {
                 return
             }
         } catch {
-            logError("Failed to fetch play history: \(error)")
+            logError(.network, "Failed to fetch play history: \(error)")
         }
 
         // Fallback: Get most recently liked song
@@ -312,7 +312,7 @@ final class PlayerState: NSObject {
                     return
                 }
             } catch {
-                logError("Failed to fetch liked tracks: \(error)")
+                logError(.network, "Failed to fetch liked tracks: \(error)")
             }
         }
     }
@@ -410,7 +410,7 @@ final class PlayerState: NSObject {
                 try await queueManager.setQueue(items: queueItems, startIndex: 0)
             }
         } catch {
-            logError("Failed to update queue: \(error)")
+            logError(.queue, "Failed to update queue: \(error)")
             // Continue to play even if queue update fails
         }
 
@@ -472,7 +472,7 @@ final class PlayerState: NSObject {
             try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
             self.isSeeking = false
 
-            logDebug("Seeking flag cleared, time observer resumed")
+            logDebug(.playback, "Seeking flag cleared, time observer resumed")
         }
 
         // Update Now Playing info with new position
@@ -502,7 +502,7 @@ final class PlayerState: NSObject {
         // Try to find current track in queue
         if let inferredIndex = queueManager.indexOfTrack(withId: currentTrack.id) {
             _currentQueueIndex = inferredIndex
-            logDebug("Synced queue index to \(inferredIndex) for track: \(currentTrack.title)")
+            logDebug(.playback, "Synced queue index to \(inferredIndex) for track: \(self.currentTrack.title)")
         } else {
             _currentQueueIndex = -1
         }
@@ -530,13 +530,13 @@ final class PlayerState: NSObject {
                 try audioSession.setActive(true)
             }
 
-            logInfo("Audio session configured successfully")
+            logInfo(.playback, "Audio session configured successfully")
         } catch let error as NSError {
             // OSStatus -50 means invalid parameter, but often non-fatal
             if error.code == -50 {
-                logWarning("Audio session configuration warning (non-fatal): \(error.localizedDescription)")
+                logWarning(.playback, "Audio session configuration warning (non-fatal): \(error.localizedDescription)")
             } else {
-                logError("Failed to configure audio session: \(error.localizedDescription)")
+                logError(.playback, "Failed to configure audio session: \(error.localizedDescription)")
             }
         }
     }
@@ -662,10 +662,10 @@ final class PlayerState: NSObject {
             // Remember if we were playing before interruption
             wasPlayingBeforeInterruption = isPlaying
             pause()
-            logInfo("Audio interruption began (was playing: \(wasPlayingBeforeInterruption))")
+            logInfo(.playback, "Audio interruption began (was playing: \(self.wasPlayingBeforeInterruption))")
 
         case .ended:
-            logInfo("Audio interruption ended")
+            logInfo(.playback, "Audio interruption ended")
 
             let optionsRaw = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsRaw)
@@ -682,13 +682,13 @@ final class PlayerState: NSObject {
                     do {
                         try self.activateAudioSession()
                     } catch {
-                        logWarning("Failed to reactivate audio session: \(error)")
+                        logWarning(.playback, "Failed to reactivate audio session: \(error)")
                     }
 
                     // Resume playback
                     if self.wasPlayingBeforeInterruption {
                         self.resume()
-                        logInfo("Resumed playback after interruption")
+                        logInfo(.playback, "Resumed playback after interruption")
                     }
                 }
             }
@@ -708,7 +708,7 @@ final class PlayerState: NSObject {
             let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
         else { return }
 
-        logInfo("Audio route changed: \(reason.rawValue)")
+        logInfo(.playback, "Audio route changed: \(reason.rawValue)")
 
         switch reason {
         case .oldDeviceUnavailable:
@@ -718,7 +718,7 @@ final class PlayerState: NSObject {
         case .newDeviceAvailable:
             // New device connected - could auto-resume if we were interrupted
             // But generally safer to let user manually resume
-            logInfo("New audio device available")
+            logInfo(.playback, "New audio device available")
 
         case .categoryChange:
             // Audio category changed by another app
@@ -781,10 +781,10 @@ final class PlayerState: NSObject {
                     await MainActor.run {
                         self.nowPlayingArtwork = artwork
                         self.updateNowPlayingInfo()
-                        logDebug("Artwork loaded: \(track.title)")
+                        logDebug(.playback, "Artwork loaded: \(track.title)")
                     }
                 } else {
-                    logWarning("Artwork load failed: \(track.title)")
+                    logWarning(.playback, "Artwork load failed: \(track.title)")
                 }
             }
         } else if let image = UIImage(named: track.artwork) {
@@ -838,7 +838,7 @@ extension PlayerState: PlaybackCoordinatorDelegate {
                 // This ensures navigation works even when track was played from outside the queue
                 if let inferredIndex = queueManager.indexOfTrack(withId: track.id) {
                     _currentQueueIndex = inferredIndex
-                    logDebug("Inferred queue index \(inferredIndex) for track: \(track.title)")
+                    logDebug(.playback, "Inferred queue index \(inferredIndex) for track: \(track.title)")
                 } else {
                     _currentQueueIndex = -1
                 }
@@ -883,7 +883,7 @@ extension PlayerState: PlaybackCoordinatorDelegate {
         // Only update Now Playing when something meaningful changed
         if needsNowPlayingUpdate {
             updateNowPlayingInfo()
-            logDebug("Now Playing updated: \(currentTrack.title) [\(playbackStatus)]")
+            logDebug(.playback, "Now Playing updated: \(self.currentTrack.title) [\(self.playbackStatus)]")
         } else {
             // Just update the elapsed time (lightweight operation)
             var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]

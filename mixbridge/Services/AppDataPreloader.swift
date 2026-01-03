@@ -34,30 +34,24 @@ actor AppDataPreloader {
         guard !isPreloading else { return }
         isPreloading = true
 
-        #if DEBUG
-        print("🚀 AppDataPreloader: Starting preload for user \(userId)")
         let startTime = CFAbsoluteTimeGetCurrent()
-        #endif
+        logDebug(.preload, "Starting preload for user \(userId)")
 
         // Tier 1: Critical data - load in parallel with high priority
         await loadTier1CriticalData(userId: userId)
 
         criticalDataReady = true
 
-        #if DEBUG
         let tier1Time = CFAbsoluteTimeGetCurrent() - startTime
-        print("✅ AppDataPreloader: Tier 1 complete in \(String(format: "%.2f", tier1Time))s")
-        #endif
+        logDebug(.preload, "Tier 1 complete in \(String(format: "%.2f", tier1Time))s")
 
         // Tier 2 & 3: Continue in background after splash
         Task(priority: .utility) {
             await self.loadTier2SecondaryData(userId: userId)
             await self.loadTier3SpeculativeData(userId: userId)
 
-            #if DEBUG
             let totalTime = CFAbsoluteTimeGetCurrent() - startTime
-            print("✅ AppDataPreloader: All tiers complete in \(String(format: "%.2f", totalTime))s")
-            #endif
+            logDebug(.preload, "All tiers complete in \(String(format: "%.2f", totalTime))s")
         }
     }
 
@@ -149,9 +143,7 @@ actor AppDataPreloader {
     // MARK: - Tier 2: Secondary Data
 
     private func loadTier2SecondaryData(userId: String) async {
-        #if DEBUG
-        print("📦 AppDataPreloader: Starting Tier 2 (Secondary)")
-        #endif
+        logDebug(.preload, "Starting Tier 2 (Secondary)")
 
         // Liked tracks
         await loadLikedTracks(userId: userId)
@@ -169,9 +161,7 @@ actor AppDataPreloader {
     // MARK: - Tier 3: Speculative Data
 
     private func loadTier3SpeculativeData(userId: String) async {
-        #if DEBUG
-        print("📦 AppDataPreloader: Starting Tier 3 (Speculative)")
-        #endif
+        logDebug(.preload, "Starting Tier 3 (Speculative)")
 
         // Preload remaining playlist tracks (6-10)
         let remainingPlaylists = await MainActor.run {
@@ -202,14 +192,10 @@ actor AppDataPreloader {
                 _ = await imageCache.getImage(for: url)
             }
 
-            #if DEBUG
-            print("✅ Loaded profile: \(profile.username)")
-            #endif
+            logDebug(.preload, "Loaded profile: \(profile.username)")
         } catch {
             await MainActor.run { store.setProfileFailed(error) }
-            #if DEBUG
-            print("❌ Failed to load profile: \(error)")
-            #endif
+            logError(.preload, "Failed to load profile: \(error)")
         }
     }
 
@@ -245,14 +231,10 @@ actor AppDataPreloader {
             // Prefetch artwork for first 20 tracks
             await prefetchTrackArtwork(Array(items.prefix(20)))
 
-            #if DEBUG
-            print("✅ Loaded play history: \(items.count) items")
-            #endif
+            logDebug(.preload, "Loaded play history: \(items.count) items")
         } catch {
             await MainActor.run { store.setPlayHistoryFailed(error) }
-            #if DEBUG
-            print("❌ Failed to load play history: \(error)")
-            #endif
+            logError(.preload, "Failed to load play history: \(error)")
         }
     }
 
@@ -278,14 +260,10 @@ actor AppDataPreloader {
             // Prefetch artwork for all playlists
             await prefetchPlaylistArtwork(playlists)
 
-            #if DEBUG
-            print("✅ Loaded playlists: \(playlists.count) items")
-            #endif
+            logDebug(.preload, "Loaded playlists: \(playlists.count) items")
         } catch {
             await MainActor.run { store.setPlaylistsFailed(error) }
-            #if DEBUG
-            print("❌ Failed to load playlists: \(error)")
-            #endif
+            logError(.preload, "Failed to load playlists: \(error)")
         }
     }
 
@@ -301,14 +279,10 @@ actor AppDataPreloader {
             // Prefetch artwork for first 30 tracks
             await prefetchTrackArtwork(Array(items.prefix(30)))
 
-            #if DEBUG
-            print("✅ Loaded liked tracks: \(items.count) items")
-            #endif
+            logDebug(.preload, "Loaded liked tracks: \(items.count) items")
         } catch {
             await MainActor.run { store.setLikedTracksFailed(error) }
-            #if DEBUG
-            print("❌ Failed to load liked tracks: \(error)")
-            #endif
+            logError(.preload, "Failed to load liked tracks: \(error)")
         }
     }
 
@@ -324,14 +298,10 @@ actor AppDataPreloader {
             // Prefetch artwork for first 20 tracks
             await prefetchTrackArtwork(Array(items.prefix(20)))
 
-            #if DEBUG
-            print("✅ Loaded playlist \(playlistId) tracks: \(items.count) items")
-            #endif
+            logDebug(.preload, "Loaded playlist \(playlistId) tracks: \(items.count) items")
         } catch {
             await MainActor.run { store.setPlaylistTracksFailed(playlistId, error) }
-            #if DEBUG
-            print("❌ Failed to load playlist \(playlistId) tracks: \(error)")
-            #endif
+            logError(.preload, "Failed to load playlist \(playlistId) tracks: \(error)")
         }
     }
 

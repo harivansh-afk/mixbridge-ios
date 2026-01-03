@@ -50,9 +50,7 @@ final class PreloadedItemCache {
     private var readinessObservers: [String: NSKeyValueObservation] = [:]
 
     private init() {
-        #if DEBUG
-        print("🚀 PreloadedItemCache initialized - Ready for instant playback")
-        #endif
+        logDebug(.cache, "PreloadedItemCache initialized")
 
         // Clean up on memory warnings
         NotificationCenter.default.addObserver(
@@ -80,9 +78,7 @@ final class PreloadedItemCache {
 
         preloadingTracks.insert(track.id)
 
-        #if DEBUG
-        print("⬇️ Preloading AVPlayerItem for track: \(track.title)")
-        #endif
+        logDebug(.cache, "Preloading AVPlayerItem for track: \(track.title)")
 
         do {
             guard let url = URL(string: streamURL) else {
@@ -102,9 +98,7 @@ final class PreloadedItemCache {
             try await asset.load(.isPlayable, .tracks, .duration)
 
             guard asset.isPlayable else {
-                #if DEBUG
-                print("❌ Asset not playable for track: \(track.title)")
-                #endif
+                logWarning(.cache, "Asset not playable for track: \(track.title)")
                 preloadingTracks.remove(track.id)
                 return false
             }
@@ -133,17 +127,13 @@ final class PreloadedItemCache {
             // Enforce cache size limit
             enforceMaxCacheSize()
 
-            #if DEBUG
-            print("✅ Preloaded AVPlayerItem for track: \(track.title)")
-            #endif
+            logDebug(.cache, "Preloaded AVPlayerItem for track: \(track.title)")
 
             preloadingTracks.remove(track.id)
             return true
 
         } catch {
-            #if DEBUG
-            print("❌ Failed to preload item for track \(track.title): \(error)")
-            #endif
+            logError(.cache, "Failed to preload item for track \(track.title): \(error)")
             preloadingTracks.remove(track.id)
             return false
         }
@@ -155,9 +145,7 @@ final class PreloadedItemCache {
         readinessObservers.removeAll()
         preloadingTracks.removeAll()
 
-        #if DEBUG
-        print("🗑️ Cleared all preloaded items")
-        #endif
+        logDebug(.cache, "Cleared all preloaded items")
     }
 
     // MARK: - Private Helpers
@@ -174,16 +162,12 @@ final class PreloadedItemCache {
             cache.removeValue(forKey: trackId)
             readinessObservers.removeValue(forKey: trackId)
 
-            #if DEBUG
-            print("🗑️ Evicted preloaded item (cache full): \(trackId)")
-            #endif
+            logDebug(.cache, "Evicted preloaded item (cache full): \(trackId)")
         }
     }
 
     @objc private func handleMemoryWarning() {
-        #if DEBUG
-        print("⚠️ Memory warning - clearing preloaded items cache")
-        #endif
+        logWarning(.cache, "Memory warning - clearing preloaded items cache")
         clearAll()
     }
 
