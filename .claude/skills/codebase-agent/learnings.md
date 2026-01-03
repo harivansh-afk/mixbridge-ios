@@ -69,6 +69,8 @@ Tricky scenarios and non-obvious behaviors discovered during development.
 - Tracks are removed from queue when they start playing (see `handleTrackStartedPlaying`)
 - Queue index becomes -1 after track is removed from queue
 - Use `QueueManager.indexOfTrack(withId:)` to find current position
+- Queue removal is async - track may still be in queue briefly after playback starts
+- "Next" always means top of queue (`queue.peek()`), not queue index + 1
 
 ---
 
@@ -199,6 +201,28 @@ artwork: playerState.crossfadeNextTrack?.artwork ?? playerState.currentTrack.art
 - **Learning**: Interpolate both position and duration during crossfade to create smooth progress bar transition. Formula: `displayedPosition = outgoingPosition * (1 - progress) + incomingPosition * progress`
 - **Session**: Metal artwork crossfade morph implementation (2026-01-01)
 
+### Carousel State Order of Operations
+- **Context**: Swipeable carousel with displayedNext/displayedPrevious mirroring queue state
+- **Learning**: When swiping to next track, update `displayedNext` AFTER popping from queue, not before. Reading queue.peek() before the pop returns the current item (about to be removed) instead of the true next item.
+- **Example**:
+```swift
+// BAD - reads queue before mutation
+let newCurrent = displayedNext
+displayedNext = queue.peek()  // Still returns old value!
+onNext()  // Queue mutated here
+
+// GOOD - read from queue after mutation
+let newCurrent = displayedNext
+onNext()  // Queue mutated first
+displayedNext = queue.peek()  // Now returns correct next
+```
+- **Session**: Queue carousel sync fix (2026-01-03)
+
+### Direct Queue Access vs Passed Props
+- **Context**: UI components receiving `nextTrack`/`previousTrack` as props vs reading from QueueManager
+- **Learning**: Props passed from parent may be stale during rapid interactions. For carousel/gesture-driven UI that needs real-time queue state, read directly from `queueManager.queue.peek()` rather than relying on props that may be one render cycle behind.
+- **Session**: Queue carousel sync fix (2026-01-03)
+
 ---
 
 ## Metal Shader Tips
@@ -237,3 +261,17 @@ ZStack {
 }
 ```
 - **Session**: Dark artwork crossfade red flash fix (2026-01-01)
+
+---
+
+## Architecture Insights
+
+### PlaybackCoordinator "Top of Cue" Policy
+- **Context**: Determining which track to play next in queue-based playback
+- **Learning**: `playNext()` always selects `queueManager.queueTracks.first` (top of queue), NOT the next index after current. The currently playing track is removed from queue, so "next" is always index 0. Contains defensive check: if current track somehow still at index 0, skip to index 1.
+- **Session**: Queue architecture research (2026-01-03)
+
+### Parallel Subagent Research Pattern
+- **Context**: Understanding complex multi-repo systems (iOS + Convex backend)
+- **Learning**: Launch 5+ subagents in parallel with specific focus areas (QueueManager, PlaybackCoordinator, UI mutations, Convex mutations, Convex schema) to build comprehensive understanding quickly. Each agent returns detailed documentation that can be synthesized.
+- **Session**: Queue architecture research (2026-01-03)
