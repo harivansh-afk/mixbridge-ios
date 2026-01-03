@@ -30,41 +30,6 @@ struct ConvexQueueTrack: Codable {
     let position: Double
 }
 
-// MARK: - Cached Data Models
-
-struct ConvexUserProfile: Codable {
-    let _id: ConvexId
-    let _creationTime: Double
-    let userId: String
-    let profile: SoundCloudProfile
-    let updatedAt: Double
-}
-
-struct ConvexCachedLikedTracks: Codable {
-    let _id: ConvexId
-    let _creationTime: Double
-    let userId: String
-    let tracks: [SoundCloudTrack]
-    let updatedAt: Double
-}
-
-struct ConvexCachedPlaylists: Codable {
-    let _id: ConvexId
-    let _creationTime: Double
-    let userId: String
-    let playlists: [SoundCloudPlaylist]
-    let updatedAt: Double
-}
-
-struct ConvexPlaylistTracks: Codable {
-    let _id: ConvexId
-    let _creationTime: Double
-    let userId: String
-    let playlistId: String
-    let tracks: [SoundCloudTrack]
-    let updatedAt: Double
-}
-
 // MARK: - Play History Models
 
 struct ConvexPlayHistory: Codable {
@@ -98,26 +63,6 @@ struct ConvexDiscovery: Codable {
     let qualityScore: Double
     let discoveredAt: Double
     let addedToQueue: Bool?
-}
-
-// MARK: - Track Analysis Models
-
-struct ConvexTrackAnalysis: Codable {
-    let _id: ConvexId
-    let _creationTime: Double
-    let trackId: String
-    let source: String
-    let bpm: Double?
-    let key: String?
-    let mode: String?
-    let energy: Double?
-    let danceability: Double?
-    let loudness: Double?
-    let valence: Double?
-    let acousticness: Double?
-    let instrumentalness: Double?
-    let timeSignature: Double?
-    let error: String?
 }
 
 // MARK: - Queue Response

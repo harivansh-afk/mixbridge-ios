@@ -59,42 +59,6 @@ struct ProfileCircleView: View {
     }
 }
 
-// MARK: - Liquid Glass Profile Button
-struct LiquidGlassProfileButton: View {
-    let profileImage: String?
-    let userName: String
-    let size: CGFloat
-    let action: () -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        Button(action: action) {
-            ProfileCircleView(
-                profileImage: profileImage,
-                userName: userName,
-                size: size
-            )
-        }
-        .background(.ultraThinMaterial)
-        .clipShape(Circle())
-        .overlay(
-            Circle()
-        )
-        .shadow(
-            color: colorScheme == .dark
-                ? .black.opacity(0.3)
-                : .black.opacity(0.1),
-            radius: 2,
-            x: 0,
-            y: 1
-        )
-
-    }
-}
-
-
-
 // MARK: - Preview
 #Preview("Light Mode") {
     NavigationStack {
@@ -107,13 +71,6 @@ struct LiquidGlassProfileButton: View {
             ProfileCircleView(
                 userName: "Alex Morgan",
                 size: 60
-            )
-
-            LiquidGlassProfileButton(
-                profileImage: nil,
-                userName: "Harivansh Rathi",
-                size: 35,
-                action: {}
             )
         }
         .navigationTitle("Profiles")
@@ -132,13 +89,6 @@ struct LiquidGlassProfileButton: View {
             ProfileCircleView(
                 userName: "Alex Morgan",
                 size: 60
-            )
-
-            LiquidGlassProfileButton(
-                profileImage: nil,
-                userName: "Harivansh Rathi",
-                size: 44,
-                action: {}
             )
         }
         .navigationTitle("Profiles")
