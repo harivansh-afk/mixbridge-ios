@@ -71,3 +71,6 @@ docs/design
 docs/ios
 docs/swiftui
 docs/syntax
+
+# Claude Code session locks
+.claude/hooks/locks/

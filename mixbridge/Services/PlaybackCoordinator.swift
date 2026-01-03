@@ -289,23 +289,25 @@ final class PlaybackCoordinator: NSObject {
     }
 
     func playNext(manual: Bool = false) {
+        logInfo(.queue, "playNext called (manual=\(manual))")
+
         // Pop the next track from queue BEFORE playing
         // This enforces the invariant: current track is never in the queue
         guard let nextItem = queueManager.popNext() else {
-            // Queue empty - nothing to play next
+            logWarning(.queue, "playNext: queue empty, nothing to play")
             if manual {
                 HapticManager.selection()
             }
             return
         }
 
+        logInfo(.queue, "playNext: playing '\(nextItem.track.title)'")
+
         if isUsingMixMode {
-            // Stop mix audio immediately so manual skips never leave the previous track playing
             mixEngine.stop()
             isUsingMixMode = false
         }
 
-        // Play the popped track (it's already removed from queue)
         play(track: nextItem.track, soundCloudTrack: nextItem.soundCloudTrack, queueIndex: nil)
 
         if manual {
@@ -329,6 +331,7 @@ final class PlaybackCoordinator: NSObject {
     /// Called when the app queue changes (reorder/insert/remove).
     /// Keeps internal preloads/prewarms from diverging from the queue's "top of cue" policy.
     func handleQueueChanged() {
+        logDebug(.queue, "handleQueueChanged: mixMode=\(isUsingMixMode)")
         if isUsingMixMode {
             mixEngine.handleQueueChanged()
             return
