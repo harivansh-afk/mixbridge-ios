@@ -141,6 +141,9 @@ final class LiquidMorphRenderer: NSObject, MTKViewDelegate {
             return nil
         }
 
+        // Convert to sRGB color space to prevent color distortion on P3/wide-gamut images
+        let srgbImage = convertToSRGB(cgImage) ?? cgImage
+
         let options: [MTKTextureLoader.Option: Any] = [
             .SRGB: false,
             .generateMipmaps: false,
@@ -149,13 +152,43 @@ final class LiquidMorphRenderer: NSObject, MTKViewDelegate {
         ]
 
         do {
-            let texture = try textureLoader.newTexture(cgImage: cgImage, options: options)
+            let texture = try textureLoader.newTexture(cgImage: srgbImage, options: options)
             textureCache[artworkURL] = texture
             return texture
         } catch {
             logError(.rendering, "[LiquidMorph] Failed to create texture: \(error)")
             return nil
         }
+    }
+
+    /// Convert CGImage to sRGB color space to prevent color distortion
+    /// Images in Display P3 or other wide-gamut spaces can appear with red tint when sampled as raw bytes
+    private func convertToSRGB(_ cgImage: CGImage) -> CGImage? {
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+
+        // If already sRGB, return as-is
+        if let imageColorSpace = cgImage.colorSpace,
+           imageColorSpace.name == CGColorSpace.sRGB {
+            return cgImage
+        }
+
+        let width = cgImage.width
+        let height = cgImage.height
+        let bitsPerComponent = 8
+        let bytesPerRow = width * 4
+
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: bitsPerComponent,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage()
     }
 
     private func getImageFromCache(_ artworkURL: String) -> UIImage? {
@@ -181,8 +214,11 @@ final class LiquidMorphRenderer: NSObject, MTKViewDelegate {
     }
 
     func draw(in view: MTKView) {
+        logDebug(.rendering, "[LiquidMorph] draw called, texturesReady: \(texturesReady), hasPresentedTexturedFrame: \(hasPresentedTexturedFrame)")
+
         guard let drawable = view.currentDrawable,
               let renderPassDescriptor = view.currentRenderPassDescriptor else {
+            logDebug(.rendering, "[LiquidMorph] No drawable or render pass descriptor")
             return
         }
 
