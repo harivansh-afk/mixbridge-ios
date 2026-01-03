@@ -348,6 +348,26 @@ final class PlaybackCoordinator: NSObject {
         }
     }
 
+    /// Called when the app queue changes (reorder/insert/remove).
+    /// Keeps internal preloads/prewarms from diverging from the queue's "top of cue" policy.
+    func handleQueueChanged() {
+        if isUsingMixMode {
+            mixEngine.handleQueueChanged()
+            return
+        }
+
+        // Non-mix: drop any stale preloaded "next" item so Next/autoplay always reflects the latest queue.
+        if let item = nextPreloadedItem {
+            if player.items().contains(item) {
+                player.remove(item)
+            }
+            itemContextMap.removeValue(forKey: item)
+        }
+        nextPreloadedItem = nil
+        nextPreloadedContext = nil
+        hasPreloadedForCurrentTrack = false
+    }
+
     // MARK: - Playback Pipeline
 
     /// Called when a track successfully starts playing. Removes it from queue and updates context.
@@ -1012,6 +1032,21 @@ extension PlaybackCoordinator: MixPlaybackEngineDelegate {
                 await startPlayback(with: context)
             }
         }
+    }
+
+    func mixEngineDidFinishTrack(_ engine: MixPlaybackEngine, track: Track, context: PlaybackContext) {
+        // End position tracking for finished track
+        positionTracker.endSession()
+
+        guard autoplayEnabled else {
+            isIntendedToPlay = false
+            status = .ready
+            publishSnapshot()
+            return
+        }
+
+        // Advance using the same "top of cue" logic as manual Next.
+        playNext(manual: false)
     }
 
     func mixEngineDidUpdateTime(_ engine: MixPlaybackEngine, currentTime: Double, duration: Double) {
