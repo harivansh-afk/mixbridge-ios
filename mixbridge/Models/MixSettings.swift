@@ -87,32 +87,3 @@ enum FadeCurve: String, CaseIterable, Codable {
         }
     }
 }
-
-// MARK: - Crossfade Presets
-
-/// Quick duration presets for users who don't want to use a slider
-enum CrossfadePreset: String, CaseIterable {
-    case off = "Off"
-    case short = "Short"
-    case medium = "Medium"
-    case long = "Long"
-
-    var seconds: Double {
-        switch self {
-        case .off: return 0
-        case .short: return 3
-        case .medium: return 6
-        case .long: return 10
-        }
-    }
-
-    /// Find the closest preset for a given duration
-    static func closest(to seconds: Double) -> CrossfadePreset? {
-        if seconds == 0 { return .off }
-        if seconds <= 2 { return .short }
-        if seconds <= 4 { return .short }
-        if seconds <= 7 { return .medium }
-        if seconds <= 12 { return .long }
-        return nil
-    }
-}
