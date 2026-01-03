@@ -57,46 +57,25 @@ struct ExpandedMusicPlayer: View {
         return playerState.playbackPosition
     }
 
-    // Get queue index for any track
-    private func getQueueIndex(for track: Track) -> Int? {
-        return queueManager.queueTracks.firstIndex(where: { $0.id == track.id })
-    }
-
-    // Get current queue index
-    private func getCurrentIndex() -> Int? {
-        return getQueueIndex(for: playerState.currentTrack)
-    }
-
-    // Get next and previous tracks from queue based on PlayerState
+    // Get next track - always queue.peek() since current track is never in queue
     private func getNextTrack() -> Track? {
-        guard let currentIndex = getCurrentIndex() else {
-            return queueManager.queueTracks.first
-        }
-        let nextIndex = currentIndex + 1
-        return nextIndex < queueManager.queueTracks.count ? queueManager.queueTracks[nextIndex] : nil
+        queueManager.queue.peek()?.track
     }
 
+    // Get previous track - not applicable in the new model
+    // (current track is not in queue, so there's no "previous" in queue terms)
     private func getPreviousTrack() -> Track? {
-        guard let currentIndex = getCurrentIndex() else {
-            return nil
-        }
-        let prevIndex = currentIndex - 1
-        return prevIndex >= 0 ? queueManager.queueTracks[prevIndex] : nil
+        nil
     }
 
-    // Prefetch tracks around current position
+    // Prefetch tracks for carousel
     private func prefetchSurroundingTracks() {
-        guard let currentIndex = getCurrentIndex() else { return }
-
         Task {
-            await TrackPrefetcher.shared.prefetchForQueue(queueManager.queueTracks, currentIndex: currentIndex)
+            await TrackPrefetcher.shared.prefetchForQueue(queueManager.queueTracks, currentIndex: 0)
 
-            // Immediately preload next/previous for instant carousel
+            // Immediately preload next for instant carousel
             if let next = getNextTrack() {
                 await TrackPrefetcher.shared.preloadTrackImmediately(next)
-            }
-            if let previous = getPreviousTrack() {
-                await TrackPrefetcher.shared.preloadTrackImmediately(previous)
             }
         }
     }
@@ -557,14 +536,14 @@ struct ExpandedPlayerView: View {
                             )
 
                             List {
-                                ForEach(Array((previewQueueTracks ?? queueManager.queueTracks).enumerated()), id: \.element.id) { index, track in
+                                ForEach(Array(queueManager.queue.items.enumerated()), id: \.element.id) { index, item in
                                     TrackRow(
-                                        track,
+                                        item.track,
                                         number: index + 1,
                                         showCover: true,
                                         isQueueContext: true,
                                         onRemoveFromQueue: {
-                                            removeFromQueue(at: index)
+                                            removeFromQueue(item: item)
                                         }
                                     )
                                     .listRowSeparator(.hidden)
@@ -823,39 +802,26 @@ struct ExpandedPlayerView: View {
 
     // MARK: - Helper Functions
 
-    // Get next track based on explicit queue index (avoids firstIndex() ambiguity with duplicates)
+    // Get next track - always queue.peek() in the new model
     private func getNextTrackByIndex(_ index: Int) -> Track? {
-        let queueTracks = previewQueueTracks ?? queueManager.queueTracks
-        let nextIndex = index + 1
-        return nextIndex < queueTracks.count ? queueTracks[nextIndex] : nil
+        queueManager.queue.peek()?.track
     }
 
-    // Get previous track based on explicit queue index (avoids firstIndex() ambiguity with duplicates)
+    // Get previous track - not supported in new model (no history)
     private func getPreviousTrackByIndex(_ index: Int) -> Track? {
-        let queueTracks = previewQueueTracks ?? queueManager.queueTracks
-        let prevIndex = index - 1
-        return prevIndex >= 0 ? queueTracks[prevIndex] : nil
+        nil
     }
 
     // Move queue item for reordering
     private func moveQueueItem(from source: IndexSet, to destination: Int) {
         guard let fromIndex = source.first else { return }
 
-        // Calculate actual destination (List.onMove destination adjusts for removal)
-        let toIndex = destination > fromIndex ? destination - 1 : destination
-
-        // Skip if no actual movement
-        guard fromIndex != toIndex else { return }
-
-        // Local move
-        queueManager.queueTracks.move(fromOffsets: source, toOffset: destination)
-
-        // Sync to backend
         Task {
             do {
-                try await ConvexService.shared.reorderQueue(fromIndex: fromIndex, toIndex: toIndex)
+                try await queueManager.moveItem(from: fromIndex, to: destination)
             } catch {
-                logError("Failed to sync queue reorder: \(error)")
+                logError("Failed to move queue item: \(error)")
+                HapticManager.error()
             }
         }
     }
@@ -863,18 +829,21 @@ struct ExpandedPlayerView: View {
     // Delete queue item (for swipe to delete)
     private func deleteQueueItem(at offsets: IndexSet) {
         for index in offsets {
-            removeFromQueue(at: index)
+            Task {
+                do {
+                    try await queueManager.removeAt(index: index)
+                } catch {
+                    HapticManager.error()
+                }
+            }
         }
     }
 
-    // Remove single item from queue with backend sync
-    private func removeFromQueue(at index: Int) {
-        guard index >= 0 && index < queueManager.queueTracks.count else { return }
-        let track = queueManager.queueTracks[index]
-
+    // Remove single item from queue using item ID (not index)
+    private func removeFromQueue(item: QueueItem) {
         Task {
             do {
-                try await queueManager.removeTrack(track)
+                try await queueManager.removeTrack(item.track)
             } catch {
                 // Removal failed - QueueManager handles rollback
                 HapticManager.error()

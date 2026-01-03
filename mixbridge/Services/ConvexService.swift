@@ -82,6 +82,12 @@ final class ConvexService {
 
     @discardableResult
     private func mutation(_ path: String, args: [String: Any] = [:]) async throws -> String? {
+        try await mutationGeneric(path, args: args)
+    }
+
+    /// Generic mutation that can decode any Codable return type
+    @discardableResult
+    private func mutationGeneric<T: Codable>(_ path: String, args: [String: Any] = [:]) async throws -> T? {
         let url = URL(string: "\(deploymentUrl)/api/mutation")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -102,7 +108,7 @@ final class ConvexService {
             throw ConvexError.requestFailed
         }
 
-        let convexResponse = try JSONDecoder().decode(ConvexResponse<String>.self, from: data)
+        let convexResponse = try JSONDecoder().decode(ConvexResponse<T>.self, from: data)
 
         guard convexResponse.status == "success" else {
             throw ConvexError.mutationFailed(convexResponse.errorMessage ?? "Unknown error")
@@ -303,8 +309,8 @@ final class ConvexService {
     }
 
     /// Replace entire queue with new tracks (clears existing and sets new)
-    /// Uses direct Convex mutations - no REST API intermediary
-    func setQueue(tracks: [SoundCloudTrack]) async throws {
+    /// Returns array of inserted queue track documents with Convex IDs
+    func setQueue(tracks: [SoundCloudTrack]) async throws -> [QueueBatchResult] {
         guard let userId = KeychainManager.shared.getUserId() else {
             throw ConvexError.unauthorized
         }
@@ -316,32 +322,34 @@ final class ConvexService {
         try await mutation("queues:clearTracks", args: ["queueId": queueId])
 
         // Add new tracks in batch
-        if !tracks.isEmpty {
-            let trackData = try tracks.map { track -> [String: Any] in
-                let data = try JSONEncoder().encode(track)
-                let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
-                return [
-                    "trackId": String(track.id),
-                    "source": "soundcloud",
-                    "title": track.title,
-                    "artist": track.user.username,
-                    "duration": track.duration,
-                    "artworkUrl": track.artwork_url as Any,
-                    "trackData": dict
-                ]
-            }
+        guard !tracks.isEmpty else { return [] }
 
-            try await mutation("queues:addTracksBatch", args: [
-                "queueId": queueId,
-                "tracks": trackData,
-                "startPosition": 0
-            ])
+        let trackData = try tracks.map { track -> [String: Any] in
+            let data = try JSONEncoder().encode(track)
+            let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+            return [
+                "trackId": String(track.id),
+                "source": "soundcloud",
+                "title": track.title,
+                "artist": track.user.username,
+                "duration": track.duration,
+                "artworkUrl": track.artwork_url as Any,
+                "trackData": dict
+            ]
         }
+
+        let results: [QueueBatchResult]? = try await mutationGeneric("queues:addTracksBatch", args: [
+            "queueId": queueId,
+            "tracks": trackData,
+            "startPosition": 0
+        ])
+
+        return results ?? []
     }
 
     /// Add multiple tracks to queue at once (appends to end)
-    /// Uses direct Convex mutations - no REST API intermediary
-    func addTracksToQueueBatch(tracks: [SoundCloudTrack]) async throws {
+    /// Returns array of inserted queue track documents with Convex IDs
+    func addTracksToQueueBatch(tracks: [SoundCloudTrack]) async throws -> [QueueBatchResult] {
         guard let userId = KeychainManager.shared.getUserId() else {
             throw ConvexError.unauthorized
         }
@@ -354,7 +362,7 @@ final class ConvexService {
         let existingTrackIds = Set(currentQueue.map { $0.trackId })
         let newTracks = tracks.filter { !existingTrackIds.contains(String($0.id)) }
 
-        guard !newTracks.isEmpty else { return }
+        guard !newTracks.isEmpty else { return [] }
 
         let startPosition = currentQueue.count
 
@@ -372,11 +380,13 @@ final class ConvexService {
             ]
         }
 
-        try await mutation("queues:addTracksBatch", args: [
+        let results: [QueueBatchResult]? = try await mutationGeneric("queues:addTracksBatch", args: [
             "queueId": queueId,
             "tracks": trackData,
             "startPosition": startPosition
         ])
+
+        return results ?? []
     }
 
     /// Clear entire queue
@@ -543,6 +553,13 @@ struct SearchResult: Codable {
     let tracks: [SoundCloudTrack]
     let playlists: [SoundCloudPlaylist]
     let users: [SoundCloudUser]
+}
+
+/// Result from addTracksBatch mutation - contains Convex IDs for each inserted track
+struct QueueBatchResult: Codable {
+    let _id: String      // Convex queueTracks document ID
+    let trackId: String  // SoundCloud track ID
+    let position: Int    // Position in queue
 }
 
 // MARK: - Errors
