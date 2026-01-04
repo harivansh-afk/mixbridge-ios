@@ -20,8 +20,13 @@ struct LibraryView: View {
         NavigationStack {
             Group {
                 if viewModel.isLoading && viewModel.playlists.isEmpty && !isRefreshing {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    VStack {
+                        Spacer()
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     RefreshableScrollView(isRefreshing: $isRefreshing) {
                         await loadPlaylists(forceRefresh: true)
@@ -35,6 +40,7 @@ struct LibraryView: View {
                                 recentlyAddedGridSection
                             }
                         }
+                        .padding(.top, 8)
                     }
                 }
             }

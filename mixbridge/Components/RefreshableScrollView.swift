@@ -15,7 +15,7 @@ struct RefreshableScrollView<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     @State private var contentInsetDifference: CGFloat = 0.0
-    private let indicatorHeight: CGFloat = 28.0
+    private let indicatorHeight: CGFloat = 42.0
 
     private let displayIndicatorThreshold: CGFloat = 0.5
 
@@ -40,10 +40,10 @@ struct RefreshableScrollView<Content: View>: View {
     }
 
     private var scaleFactor: CGFloat {
-        if isRefreshing { return 1.0 }
-        guard displayIndicatorThreshold < 1 else { return 1.0 }
+        if isRefreshing { return 1.5 }
+        guard displayIndicatorThreshold < 1 else { return 1.5 }
         let factor = 1 / (1 - displayIndicatorThreshold) * pullProgress + (1 - 1 / (1 - displayIndicatorThreshold))
-        return min(max(factor, 0), 1.0)
+        return min(max(factor, 0), 1.0) * 1.5
     }
 
     var body: some View {

@@ -40,7 +40,13 @@ struct AllArtistsView: View {
     var body: some View {
         Group {
             if viewModel.isLoading && viewModel.likedTracks.isEmpty {
-                ProgressView()
+                VStack {
+                    Spacer()
+                    ProgressView()
+                        .scaleEffect(1.5)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = viewModel.error, viewModel.likedTracks.isEmpty {
                 errorView(error)
             } else if artists.isEmpty {
@@ -51,7 +57,7 @@ struct AllArtistsView: View {
                 )
             } else {
                 List {
-                    ForEach(artists) { artist in
+                    ForEach(Array(artists.enumerated()), id: \.element.id) { index, artist in
                         HStack(spacing: 12) {
                             if let avatarUrl = artist.avatarUrl,
                                let url = URL(string: avatarUrl) {
@@ -86,6 +92,8 @@ struct AllArtistsView: View {
                             HapticManager.selection()
                             selectedArtist = artist
                         }
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                        .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
                     }
                 }
                 .listStyle(.plain)

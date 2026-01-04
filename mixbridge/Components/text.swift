@@ -356,33 +356,32 @@ struct TextSegment {
 
 extension String {
     /// Splits string into segments of regular text and emojis
+    /// Only excludes actual emojis from liquid glass - punctuation and symbols render fine
     func splitByEmoji() -> [TextSegment] {
         var segments: [TextSegment] = []
         var currentText = ""
         var currentIsEmoji = false
 
-        for scalar in unicodeScalars {
-            let isEmoji = scalar.properties.isEmoji && scalar.properties.isEmojiPresentation
-                || scalar.value >= 0x1F600 && scalar.value <= 0x1F64F // Emoticons
-                || scalar.value >= 0x1F300 && scalar.value <= 0x1F5FF // Misc Symbols
-                || scalar.value >= 0x1F680 && scalar.value <= 0x1F6FF // Transport
-                || scalar.value >= 0x1F1E0 && scalar.value <= 0x1F1FF // Flags
-                || scalar.value >= 0x2600 && scalar.value <= 0x26FF   // Misc symbols
-                || scalar.value >= 0x2700 && scalar.value <= 0x27BF   // Dingbats
-                || scalar.value >= 0xFE00 && scalar.value <= 0xFE0F   // Variation selectors
-                || scalar.value >= 0x1F900 && scalar.value <= 0x1F9FF // Supplemental
+        for character in self {
+            // Use Swift's built-in emoji detection on the full character (handles multi-scalar emojis)
+            let isEmoji = character.unicodeScalars.first.map { scalar in
+                // Only treat as emoji if it has emoji presentation (actual pictographic emoji)
+                // This excludes punctuation, symbols, and other characters that render fine in glass
+                scalar.properties.isEmojiPresentation
+                    || (scalar.properties.isEmoji && character.unicodeScalars.contains { $0.value == 0xFE0F })
+            } ?? false
 
             if currentText.isEmpty {
                 currentIsEmoji = isEmoji
-                currentText.unicodeScalars.append(scalar)
+                currentText.append(character)
             } else if isEmoji == currentIsEmoji {
-                currentText.unicodeScalars.append(scalar)
+                currentText.append(character)
             } else {
                 // Switch type - save current and start new
                 if !currentText.isEmpty {
                     segments.append(TextSegment(text: currentText, isEmoji: currentIsEmoji))
                 }
-                currentText = String(scalar)
+                currentText = String(character)
                 currentIsEmoji = isEmoji
             }
         }
