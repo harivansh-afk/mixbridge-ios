@@ -1,7 +1,8 @@
 import Foundation
 import SwiftUI
 
-/// Manages user profile data from Convex, shared across the app
+/// Manages user profile data with offline-first loading.
+/// Loads from local database first, then syncs from Convex in the background.
 @Observable
 @MainActor
 class UserProfileManager {
@@ -13,9 +14,11 @@ class UserProfileManager {
     var isLoading = false
     var errorMessage: String?
 
+    private let profileSync = UserProfileSync.shared
+
     private init() {}
 
-    // MARK: - Load Profile
+    // MARK: - Load Profile (Offline-First)
 
     func loadProfile(userId: String) async {
         guard !isLoading else { return }
@@ -23,13 +26,31 @@ class UserProfileManager {
         isLoading = true
         errorMessage = nil
 
+        // 1. Load from local database first (instant)
         do {
-            let fetchedProfile = try await BackgroundExecutor.run {
-                try await ConvexService.shared.getUserProfile(userId: userId)
+            let localProfile = try await BackgroundExecutor.run {
+                try await self.profileSync.getLocalSoundCloudProfile(userId: userId)
             }
-            self.profile = fetchedProfile
+            if let localProfile {
+                self.profile = localProfile
+            }
         } catch {
-            errorMessage = error.localizedDescription
+            logError(.sync, "Failed to load local profile: \(error)")
+        }
+
+        // 2. Sync from backend (updates local DB)
+        do {
+            let freshProfile = try await BackgroundExecutor.run {
+                try await self.profileSync.syncProfile(userId: userId)
+            }
+            if let freshProfile {
+                self.profile = freshProfile
+            }
+        } catch {
+            if profile == nil {
+                errorMessage = error.localizedDescription
+            }
+            logError(.sync, "Failed to sync profile: \(error)")
         }
 
         isLoading = false

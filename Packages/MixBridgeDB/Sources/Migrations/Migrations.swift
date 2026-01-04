@@ -76,6 +76,13 @@ extension MixBridgeDB {
                     .references(PersistedTrack.databaseTableName, onDelete: .cascade)
                 t.column("likedAt", .datetime).notNull().indexed()
             }
+
+            // User profiles table
+            try db.create(table: PersistedUserProfile.databaseTableName) { t in
+                t.column("id", .text).primaryKey()
+                t.column("updatedAt", .datetime).notNull()
+                t.column("soundCloudData", .blob).notNull()
+            }
         }
 
         return migrator
