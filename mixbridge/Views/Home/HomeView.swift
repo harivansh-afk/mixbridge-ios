@@ -8,14 +8,12 @@
 import SwiftUI
 
 struct HomeView: View {
+    @State private var viewModel = HomeViewModel()
     @State private var showingAccount = false
     @State private var accountSheetDetent: PresentationDetent = .medium
     @Environment(AuthManager.self) private var authManager
     @Environment(UserProfileManager.self) private var profileManager
     @Environment(QueueManager.self) private var queueManager
-    @Environment(PreloadedDataStore.self) private var dataStore
-
-    @State private var isRefreshing = false
 
     var body: some View {
         NavigationStack {
@@ -23,7 +21,9 @@ struct HomeView: View {
                 .navigationTitle("Home")
                 .navigationBarTitleDisplayMode(.large)
                 .refreshable {
-                    await loadHomeData(forceRefresh: true)
+                    if let userId = authManager.currentUserId {
+                        await viewModel.refresh(userId: userId)
+                    }
                 }
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -44,22 +44,27 @@ struct HomeView: View {
                 .presentationDragIndicator(.hidden)
                 .interactiveDismissDisabled(false)
             }
+            // Start database observation
+            .task {
+                await viewModel.observeDatabase()
+            }
+            // Fetch fresh data
             .task {
                 if let userId = authManager.currentUserId {
                     await profileManager.loadProfile(userId: userId)
+                    await viewModel.refresh(userId: userId)
                 }
-                // Data already loaded by AppDataPreloader
             }
         }
     }
 
     @ViewBuilder
     private var content: some View {
-        if dataStore.playHistoryState == .loading && dataStore.playHistory.isEmpty {
+        if viewModel.isLoading && viewModel.playHistory.isEmpty {
             skeletonLoadingView
-        } else if case .failed(let error) = dataStore.playHistoryState, dataStore.playHistory.isEmpty {
+        } else if let error = viewModel.error, viewModel.playHistory.isEmpty {
             errorView(error)
-        } else if queueManager.queueTracks.isEmpty && dataStore.playHistory.isEmpty {
+        } else if queueManager.queueTracks.isEmpty && viewModel.playHistory.isEmpty {
             emptyState
         } else {
             homeList
@@ -83,7 +88,11 @@ struct HomeView: View {
             Text(error.localizedDescription)
         } actions: {
             Button("Try Again") {
-                Task { await loadHomeData() }
+                Task {
+                    if let userId = authManager.currentUserId {
+                        await viewModel.refresh(userId: userId)
+                    }
+                }
             }
             .buttonStyle(.bordered)
         }
@@ -128,7 +137,7 @@ struct HomeView: View {
     }
 
     private var homeList: some View {
-        let listContext = Array(dataStore.playHistory.prefix(100))
+        let listContext = Array(viewModel.playHistory.prefix(100))
 
         return List {
             if !listContext.isEmpty {
@@ -154,19 +163,6 @@ struct HomeView: View {
         }
         .listStyle(.plain)
     }
-
-    private func loadHomeData(forceRefresh: Bool = false) async {
-        guard let userId = authManager.currentUserId else { return }
-
-        if forceRefresh {
-            isRefreshing = true
-        }
-
-        // Background refresh - data already shown from dataStore
-        await AppDataPreloader.shared.refreshIfStale(userId: userId, dataType: .playHistory)
-
-        isRefreshing = false
-    }
 }
 
 #Preview("Light Mode") {
@@ -174,7 +170,6 @@ struct HomeView: View {
         .environment(AuthManager.shared)
         .environment(UserProfileManager.shared)
         .environment(QueueManager.shared)
-        .environment(PreloadedDataStore.shared)
         .preferredColorScheme(.light)
 }
 
@@ -183,6 +178,5 @@ struct HomeView: View {
         .environment(AuthManager.shared)
         .environment(UserProfileManager.shared)
         .environment(QueueManager.shared)
-        .environment(PreloadedDataStore.shared)
         .preferredColorScheme(.dark)
 }

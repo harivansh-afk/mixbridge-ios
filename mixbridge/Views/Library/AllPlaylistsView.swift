@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct AllPlaylistsView: View {
+    @State private var viewModel = LibraryViewModel()
     @Environment(AuthManager.self) private var authManager
-    @Environment(PreloadedDataStore.self) private var dataStore
 
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
     @State private var selectedPlaylist: Playlist?
@@ -10,11 +10,11 @@ struct AllPlaylistsView: View {
 
     var body: some View {
         Group {
-            if dataStore.playlistsState == .loading && dataStore.playlists.isEmpty {
+            if viewModel.isLoading && viewModel.playlists.isEmpty {
                 ProgressView()
-            } else if case .failed(let error) = dataStore.playlistsState, dataStore.playlists.isEmpty {
+            } else if let error = viewModel.error, viewModel.playlists.isEmpty {
                 errorView(error)
-            } else if dataStore.playlists.isEmpty {
+            } else if viewModel.playlists.isEmpty {
                 ContentUnavailableView(
                     "No Playlists",
                     systemImage: "music.note.list",
@@ -22,7 +22,7 @@ struct AllPlaylistsView: View {
                 )
             } else {
                 List {
-                    ForEach(dataStore.playlists) { playlist in
+                    ForEach(viewModel.playlists) { playlist in
                         HStack(spacing: 12) {
                             if playlist.artwork.starts(with: "http"),
                                let url = URL(string: playlist.artwork) {
@@ -66,7 +66,7 @@ struct AllPlaylistsView: View {
                             // Preload when row becomes visible
                             if let userId = authManager.currentUserId {
                                 Task(priority: .background) {
-                                    await AppDataPreloader.shared.preloadPlaylistTracks(userId: userId, playlistId: playlist.id)
+                                    await viewModel.preloadPlaylistTracks(userId: userId, playlistId: playlist.id)
                                 }
                             }
                         }
@@ -81,12 +81,24 @@ struct AllPlaylistsView: View {
             PlaylistDetailView(playlist: playlist)
                 .navigationTransition(.zoom(sourceID: "all-\(playlist.id)", in: namespace))
         }
+        // Start database observation
+        .task {
+            await viewModel.observeDatabase()
+        }
+        // Fetch fresh data
+        .task {
+            if let userId = authManager.currentUserId {
+                await viewModel.refresh(userId: userId)
+            }
+        }
         .task {
             try? await Task.sleep(for: .seconds(1))
             allowDismissalGesture = .all
         }
         .refreshable {
-            await loadPlaylists(forceRefresh: true)
+            if let userId = authManager.currentUserId {
+                await viewModel.refresh(userId: userId, forceRefresh: true)
+            }
         }
     }
 
@@ -97,15 +109,14 @@ struct AllPlaylistsView: View {
             Text(error.localizedDescription)
         } actions: {
             Button("Try Again") {
-                Task { await loadPlaylists(forceRefresh: true) }
+                Task {
+                    if let userId = authManager.currentUserId {
+                        await viewModel.refresh(userId: userId, forceRefresh: true)
+                    }
+                }
             }
             .buttonStyle(.bordered)
         }
-    }
-
-    private func loadPlaylists(forceRefresh: Bool = false) async {
-        guard let userId = authManager.currentUserId else { return }
-        await AppDataPreloader.shared.refreshIfStale(userId: userId, dataType: .playlists)
     }
 }
 
@@ -114,6 +125,5 @@ struct AllPlaylistsView: View {
         AllPlaylistsView()
             .environment(AuthManager.shared)
             .environment(QueueManager.shared)
-            .environment(PreloadedDataStore.shared)
     }
 }

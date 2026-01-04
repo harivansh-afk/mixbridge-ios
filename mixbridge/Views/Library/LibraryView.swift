@@ -8,18 +8,18 @@
 import SwiftUI
 
 struct LibraryView: View {
+    @State private var viewModel = LibraryViewModel()
     @State private var showingAccount = false
     @State private var accountSheetDetent: PresentationDetent = .medium
     @Environment(UserProfileManager.self) private var profileManager
     @Environment(AuthManager.self) private var authManager
-    @Environment(PreloadedDataStore.self) private var dataStore
     @State private var isRefreshing = false
     @Namespace private var namespace
 
     var body: some View {
         NavigationStack {
             Group {
-                if dataStore.playlistsState == .loading && dataStore.playlists.isEmpty && !isRefreshing {
+                if viewModel.isLoading && viewModel.playlists.isEmpty && !isRefreshing {
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -27,11 +27,11 @@ struct LibraryView: View {
                         await loadPlaylists(forceRefresh: true)
                     } content: {
                         VStack(alignment: .leading, spacing: 24) {
-                            if !dataStore.playlists.isEmpty {
+                            if !viewModel.playlists.isEmpty {
                                 playlistGridSection
                             }
                             navigationSection
-                            if dataStore.playlists.count > 6 {
+                            if viewModel.playlists.count > 6 {
                                 recentlyAddedGridSection
                             }
                         }
@@ -45,11 +45,16 @@ struct LibraryView: View {
                     profileAvatar
                 }
             }
+            // Start database observation
+            .task {
+                await viewModel.observeDatabase()
+            }
+            // Fetch fresh data
             .task {
                 if let userId = authManager.currentUserId {
                     await profileManager.loadProfile(userId: userId)
+                    await viewModel.refresh(userId: userId)
                 }
-                // Data already loaded by AppDataPreloader
             }
             .sheet(isPresented: $showingAccount, onDismiss: {
                 accountSheetDetent = .medium
@@ -105,13 +110,13 @@ struct LibraryView: View {
             isRefreshing = true
         }
 
-        await AppDataPreloader.shared.refreshIfStale(userId: userId, dataType: .playlists)
+        await viewModel.refresh(userId: userId, forceRefresh: forceRefresh)
 
         isRefreshing = false
     }
 
     private var recentlyAddedPlaylists: [Playlist] {
-        let remaining = Array(dataStore.playlists.dropFirst(6))
+        let remaining = Array(viewModel.playlists.dropFirst(6))
         let evenCount = remaining.count - (remaining.count % 2)
         return Array(remaining.prefix(evenCount))
     }
@@ -126,7 +131,7 @@ struct LibraryView: View {
                 ],
                 spacing: 20
             ) {
-                ForEach(Array(dataStore.playlists.prefix(6).enumerated()), id: \.element.id) { index, playlist in
+                ForEach(Array(viewModel.playlists.prefix(6).enumerated()), id: \.element.id) { index, playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
                             .navigationTransition(.zoom(sourceID: "top-\(playlist.id)", in: namespace))
@@ -175,7 +180,7 @@ struct LibraryView: View {
                         // Preload when card becomes visible
                         if let userId = authManager.currentUserId {
                             Task(priority: .background) {
-                                await AppDataPreloader.shared.preloadPlaylistTracks(userId: userId, playlistId: playlist.id)
+                                await viewModel.preloadPlaylistTracks(userId: userId, playlistId: playlist.id)
                             }
                         }
                     }
@@ -323,7 +328,7 @@ struct LibraryView: View {
                         // Preload when card becomes visible
                         if let userId = authManager.currentUserId {
                             Task(priority: .background) {
-                                await AppDataPreloader.shared.preloadPlaylistTracks(userId: userId, playlistId: playlist.id)
+                                await viewModel.preloadPlaylistTracks(userId: userId, playlistId: playlist.id)
                             }
                         }
                     }
@@ -338,7 +343,6 @@ struct LibraryView: View {
     LibraryView()
         .environment(AuthManager.shared)
         .environment(UserProfileManager.shared)
-        .environment(PreloadedDataStore.shared)
         .preferredColorScheme(.light)
 }
 
@@ -346,6 +350,5 @@ struct LibraryView: View {
     LibraryView()
         .environment(AuthManager.shared)
         .environment(UserProfileManager.shared)
-        .environment(PreloadedDataStore.shared)
         .preferredColorScheme(.dark)
 }

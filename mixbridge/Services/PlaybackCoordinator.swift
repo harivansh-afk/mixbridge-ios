@@ -71,8 +71,7 @@ final class PlaybackCoordinator: NSObject {
     private let convexService = ConvexService.shared
     private let streamCache = StreamURLCache.shared
     private let positionTracker = PlaybackPositionTracker.shared
-    private let dataStore = PreloadedDataStore.shared
-    private let dataPreloader = AppDataPreloader.shared
+    private let historySync = HistorySync.shared
 
     // MARK: - Mix Mode Engine
 
@@ -410,13 +409,7 @@ final class PlaybackCoordinator: NSObject {
             // Clear retry metadata on success
             retryAttempts.removeValue(forKey: pendingContext.track.id)
 
-            // Optimistic UI update: add/move track to top of recently played
-            if let scTrack = pendingContext.soundCloudTrack {
-                let item = TrackItem(soundCloudTrack: scTrack)
-                dataStore.prependOrMovePlayHistoryTrack(item)
-            }
-
-            // Start position tracking session and log play to history
+            // Start position tracking session and add to history (optimistic update)
             if let userId = AuthManager.shared.currentUserId,
                autoplayEnabled,
                let scTrack = pendingContext.soundCloudTrack {
@@ -425,15 +418,14 @@ final class PlaybackCoordinator: NSObject {
                     queueIndex: pendingContext.queueIndex,
                     duration: Double(scTrack.duration) / 1000.0  // Convert ms to seconds
                 )
+                // Add to local history immediately (optimistic), sync to backend in background
                 Task {
-                    try? await convexService.addPlay(
+                    try? await historySync.addToHistory(
+                        scTrack,
                         userId: userId,
-                        track: scTrack,
                         sessionId: sessionId,
                         queueIndex: pendingContext.queueIndex
                     )
-                    // Background refresh to sync with Convex source of truth
-                    await dataPreloader.forceRefreshPlayHistory(userId: userId)
                 }
             }
 
@@ -521,13 +513,7 @@ final class PlaybackCoordinator: NSObject {
             // Clear retry metadata on success
             retryAttempts.removeValue(forKey: context.track.id)
 
-            // Optimistic UI update
-            if let scTrack = context.soundCloudTrack {
-                let item = TrackItem(soundCloudTrack: scTrack)
-                dataStore.prependOrMovePlayHistoryTrack(item)
-            }
-
-            // Start position tracking
+            // Start position tracking and add to history (optimistic update)
             if let userId = AuthManager.shared.currentUserId,
                autoplayEnabled,
                let scTrack = context.soundCloudTrack {
@@ -536,14 +522,14 @@ final class PlaybackCoordinator: NSObject {
                     queueIndex: context.queueIndex,
                     duration: Double(scTrack.duration) / 1000.0
                 )
+                // Add to local history immediately (optimistic), sync to backend in background
                 Task {
-                    try? await convexService.addPlay(
+                    try? await historySync.addToHistory(
+                        scTrack,
                         userId: userId,
-                        track: scTrack,
                         sessionId: sessionId,
                         queueIndex: context.queueIndex
                     )
-                    await dataPreloader.forceRefreshPlayHistory(userId: userId)
                 }
             }
 
@@ -765,12 +751,7 @@ final class PlaybackCoordinator: NSObject {
                 hasPreloadedForCurrentTrack = false
                 publishSnapshot()
 
-                // Optimistic UI update for autoplay transition
-                if let scTrack = preloadedContext.soundCloudTrack {
-                    let item = TrackItem(soundCloudTrack: scTrack)
-                    dataStore.prependOrMovePlayHistoryTrack(item)
-                }
-
+                // Add to history (optimistic update) for autoplay transition
                 if let userId = AuthManager.shared.currentUserId,
                    let scTrack = preloadedContext.soundCloudTrack {
                     let sessionId = positionTracker.startSession(
@@ -779,14 +760,12 @@ final class PlaybackCoordinator: NSObject {
                         duration: Double(scTrack.duration) / 1000.0
                     )
                     Task {
-                        try? await convexService.addPlay(
+                        try? await historySync.addToHistory(
+                            scTrack,
                             userId: userId,
-                            track: scTrack,
                             sessionId: sessionId,
                             queueIndex: preloadedContext.queueIndex
                         )
-                        // Background refresh to sync with Convex source of truth
-                        await dataPreloader.forceRefreshPlayHistory(userId: userId)
                     }
                 }
 
@@ -937,13 +916,7 @@ extension PlaybackCoordinator: MixPlaybackEngineDelegate {
 
         logInfo(.playback, "[MixMode] Transition complete: now playing \(track.title)")
 
-        // Optimistic UI update
-        if let scTrack = context.soundCloudTrack {
-            let item = TrackItem(soundCloudTrack: scTrack)
-            dataStore.prependOrMovePlayHistoryTrack(item)
-        }
-
-        // Start position tracking for new track
+        // Start position tracking and add to history (optimistic update)
         if let userId = AuthManager.shared.currentUserId,
            autoplayEnabled,
            let scTrack = context.soundCloudTrack {
@@ -953,13 +926,12 @@ extension PlaybackCoordinator: MixPlaybackEngineDelegate {
                 duration: Double(scTrack.duration) / 1000.0
             )
             Task {
-                try? await convexService.addPlay(
+                try? await historySync.addToHistory(
+                    scTrack,
                     userId: userId,
-                    track: scTrack,
                     sessionId: sessionId,
                     queueIndex: context.queueIndex
                 )
-                await dataPreloader.forceRefreshPlayHistory(userId: userId)
             }
         }
 

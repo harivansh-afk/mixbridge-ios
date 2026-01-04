@@ -1,19 +1,19 @@
 import SwiftUI
 
 struct AllSongsView: View {
+    @State private var viewModel = LikedViewModel()
     @Environment(AuthManager.self) private var authManager
     @Environment(QueueManager.self) private var queueManager
-    @Environment(PreloadedDataStore.self) private var dataStore
 
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
     var body: some View {
         Group {
-            if dataStore.likedTracksState == .loading && dataStore.likedTracks.isEmpty {
+            if viewModel.isLoading && viewModel.likedTracks.isEmpty {
                 ProgressView()
-            } else if case .failed(let error) = dataStore.likedTracksState, dataStore.likedTracks.isEmpty {
+            } else if let error = viewModel.error, viewModel.likedTracks.isEmpty {
                 errorView(error)
-            } else if dataStore.likedTracks.isEmpty {
+            } else if viewModel.likedTracks.isEmpty {
                 ContentUnavailableView(
                     "No Songs",
                     systemImage: "music.note",
@@ -22,13 +22,13 @@ struct AllSongsView: View {
             } else {
                 List {
                     Section {
-                        ForEach(Array(dataStore.likedTracks.enumerated()), id: \.element.id) { index, item in
+                        ForEach(Array(viewModel.likedTracks.enumerated()), id: \.element.id) { index, item in
                             TrackRow(
                                 item.track,
                                 number: index + 1,
                                 showCover: true,
                                 soundCloudTrack: item.soundCloudTrack,
-                                listContext: dataStore.likedTracks,
+                                listContext: viewModel.likedTracks,
                                 indexInList: index
                             )
                         }
@@ -39,12 +39,24 @@ struct AllSongsView: View {
             }
         }
         .navigationTitle("Songs")
+        // Start database observation
+        .task {
+            await viewModel.observeDatabase()
+        }
+        // Fetch fresh data
+        .task {
+            if let userId = authManager.currentUserId {
+                await viewModel.refresh(userId: userId)
+            }
+        }
         .task {
             try? await Task.sleep(for: .seconds(1))
             allowDismissalGesture = .all
         }
         .refreshable {
-            await loadSongs(forceRefresh: true)
+            if let userId = authManager.currentUserId {
+                await viewModel.refresh(userId: userId, forceRefresh: true)
+            }
         }
     }
 
@@ -55,15 +67,14 @@ struct AllSongsView: View {
             Text(error.localizedDescription)
         } actions: {
             Button("Try Again") {
-                Task { await loadSongs(forceRefresh: true) }
+                Task {
+                    if let userId = authManager.currentUserId {
+                        await viewModel.refresh(userId: userId, forceRefresh: true)
+                    }
+                }
             }
             .buttonStyle(.bordered)
         }
-    }
-
-    private func loadSongs(forceRefresh: Bool = false) async {
-        guard let userId = authManager.currentUserId else { return }
-        await AppDataPreloader.shared.refreshIfStale(userId: userId, dataType: .likedTracks)
     }
 }
 
@@ -72,6 +83,5 @@ struct AllSongsView: View {
         AllSongsView()
             .environment(AuthManager.shared)
             .environment(QueueManager.shared)
-            .environment(PreloadedDataStore.shared)
     }
 }

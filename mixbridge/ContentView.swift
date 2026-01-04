@@ -52,7 +52,7 @@ struct MiniPlayerModifier: ViewModifier {
             content
         }
     }
-    
+
     @ViewBuilder
     func MiniPlayerView() -> some View {
         HStack(spacing: 15){
@@ -145,7 +145,6 @@ struct NativeTabView: View {
         .environment(AuthManager.shared)
         .environment(UserProfileManager.shared)
         .environment(QueueManager.shared)
-        .environment(PreloadedDataStore.shared)
         .preferredColorScheme(.light)
 }
 
@@ -154,6 +153,5 @@ struct NativeTabView: View {
         .environment(AuthManager.shared)
         .environment(UserProfileManager.shared)
         .environment(QueueManager.shared)
-        .environment(PreloadedDataStore.shared)
         .preferredColorScheme(.dark)
 }

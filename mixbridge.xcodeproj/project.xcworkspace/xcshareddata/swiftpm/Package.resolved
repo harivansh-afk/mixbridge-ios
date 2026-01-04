@@ -1,6 +1,15 @@
 {
-  "originHash" : "2689f9e2586b55228eed3965e4be842c098dfc484978323bb9dc0de25d79665c",
+  "originHash" : "a99bf3c5fb3d107e1e7a4784eecb58f7ea610e826b500b293de2db6e73a6775c",
   "pins" : [
+    {
+      "identity" : "grdb.swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/groue/GRDB.swift",
+      "state" : {
+        "revision" : "aa0079aeb82a4bf00324561a40bffe68c6fe1c26",
+        "version" : "7.9.0"
+      }
+    },
     {
       "identity" : "lottie-spm",
       "kind" : "remoteSourceControl",
