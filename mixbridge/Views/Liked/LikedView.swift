@@ -38,8 +38,13 @@ struct LikedView: View {
     @ViewBuilder
     private var content: some View {
         if viewModel.isLoading && viewModel.likedTracks.isEmpty {
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack {
+                Spacer()
+                ProgressView()
+                    .scaleEffect(1.5)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let error = viewModel.error, viewModel.likedTracks.isEmpty {
             errorView(error)
         } else if viewModel.likedTracks.isEmpty {
@@ -86,6 +91,7 @@ struct LikedView: View {
                         listContext: viewModel.likedTracks,
                         indexInList: index
                     )
+                    .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
                 }
             }
         }

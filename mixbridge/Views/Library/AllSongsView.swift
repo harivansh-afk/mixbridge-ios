@@ -10,7 +10,13 @@ struct AllSongsView: View {
     var body: some View {
         Group {
             if viewModel.isLoading && viewModel.likedTracks.isEmpty {
-                ProgressView()
+                VStack {
+                    Spacer()
+                    ProgressView()
+                        .scaleEffect(1.5)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = viewModel.error, viewModel.likedTracks.isEmpty {
                 errorView(error)
             } else if viewModel.likedTracks.isEmpty {
@@ -31,6 +37,7 @@ struct AllSongsView: View {
                                 listContext: viewModel.likedTracks,
                                 indexInList: index
                             )
+                            .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
                         }
                     }
                 }
