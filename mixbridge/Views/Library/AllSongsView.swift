@@ -6,6 +6,18 @@ struct AllSongsView: View {
     @Environment(QueueManager.self) private var queueManager
 
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
+    @State private var searchText = ""
+    @State private var isSearchPresented = false
+
+    private let revealThreshold: CGFloat = 90
+
+    private var filteredTracks: [TrackItem] {
+        guard !searchText.isEmpty else { return viewModel.likedTracks }
+        return viewModel.likedTracks.filter {
+            $0.track.title.localizedCaseInsensitiveContains(searchText) ||
+            $0.track.artist.localizedCaseInsensitiveContains(searchText)
+        }
+    }
 
     var body: some View {
         Group {
@@ -26,22 +38,43 @@ struct AllSongsView: View {
                     description: Text("Your songs will appear here")
                 )
             } else {
-                List {
-                    Section {
-                        ForEach(Array(viewModel.likedTracks.enumerated()), id: \.element.id) { index, item in
-                            TrackRow(
-                                item.track,
-                                number: index + 1,
-                                showCover: true,
-                                soundCloudTrack: item.soundCloudTrack,
-                                listContext: viewModel.likedTracks,
-                                indexInList: index
-                            )
-                            .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+                ScrollView {
+                    if filteredTracks.isEmpty && !searchText.isEmpty {
+                        ContentUnavailableView.search(text: searchText)
+                            .frame(minHeight: 300)
+                    } else {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(filteredTracks.enumerated()), id: \.element.id) { index, item in
+                                TrackRow(
+                                    item.track,
+                                    number: index + 1,
+                                    showCover: true,
+                                    soundCloudTrack: item.soundCloudTrack,
+                                    listContext: filteredTracks,
+                                    indexInList: index
+                                )
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 4)
+
+                                if index < filteredTracks.count - 1 {
+                                    Divider()
+                                        .padding(.leading, 76)
+                                }
+                            }
                         }
                     }
                 }
-                .listStyle(.plain)
+                .onScrollPhaseChange { oldPhase, newPhase, context in
+                    guard oldPhase == .interacting, newPhase != .interacting else { return }
+                    let geometry = context.geometry
+                    let offset = geometry.contentOffset.y + geometry.contentInsets.top
+
+                    if offset < -revealThreshold && !isSearchPresented {
+                        isSearchPresented = true
+                        HapticManager.light()
+                    }
+                }
+                .searchable(text: $searchText, isPresented: $isSearchPresented, prompt: "Search Songs")
                 .navigationAllowDismissalGestures(allowDismissalGesture)
             }
         }
