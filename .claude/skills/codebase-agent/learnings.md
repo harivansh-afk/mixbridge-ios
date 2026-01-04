@@ -561,6 +561,27 @@ for (trackId, agg) in aggregated {
 ```
 - **Session**: Sync engine review (2026-01-04)
 
+### Sync Must Handle Deletions
+- **Context**: `PlaylistSync.syncPlaylists` only upserted, never deleted playlists removed from backend
+- **Learning**: Full sync operations must handle three cases: add new, update existing, AND delete removed. Compare local IDs vs backend IDs and remove the difference.
+- **Pattern**: Same as `LikedSync.syncLikedTracks` which correctly removes unliked tracks
+- **Example**:
+```swift
+let currentLocalIds = try Model.fetchAll(db).map(\.id)
+let newIds = Set(backendItems.map { $0.id })
+
+// Remove items no longer in backend
+for id in currentLocalIds where !newIds.contains(id) {
+    try Model.deleteOne(db, key: id)
+}
+
+// Add/update items
+for item in backendItems {
+    try item.upsert(db)
+}
+```
+- **Session**: Sync engine review (2026-01-04)
+
 ### Module Loading Pattern (Swift Package Manager)
 - **Context**: Organizing GRDB models to avoid circular references
 - **Learning**: Use two-package pattern: Domain (pure Swift models) + DB (GRDB extensions with `@retroactive` conformances). Re-export both from DB package for convenience.

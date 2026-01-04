@@ -24,8 +24,19 @@ final class PlaylistSync: Sendable {
             // 1. Fetch from API
             let scPlaylists = try await convex.getPlaylists(userId: userId, forceRefresh: forceRefresh)
 
-            // 2. Convert and save to DB
+            // 2. Sync to DB (add/update + remove deleted)
             try await db.writer.write { db in
+                // Get current local playlist IDs
+                let currentLocalIds = try PersistedPlaylist.fetchAll(db).map(\.id)
+                let newPlaylistIds = Set(scPlaylists.map { String($0.id) })
+
+                // Remove playlists no longer in backend (unfollowed/deleted)
+                for playlistId in currentLocalIds where !newPlaylistIds.contains(playlistId) {
+                    // Junction records cascade delete via foreign key
+                    try PersistedPlaylist.deleteOne(db, key: playlistId)
+                }
+
+                // Add/update playlists
                 for scPlaylist in scPlaylists {
                     var persisted = PersistedPlaylist(from: scPlaylist)
                     try persisted.upsert(db)
