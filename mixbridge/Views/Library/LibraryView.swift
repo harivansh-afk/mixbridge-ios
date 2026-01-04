@@ -13,13 +13,12 @@ struct LibraryView: View {
     @State private var accountSheetDetent: PresentationDetent = .medium
     @Environment(UserProfileManager.self) private var profileManager
     @Environment(AuthManager.self) private var authManager
-    @State private var isRefreshing = false
     @Namespace private var namespace
 
     var body: some View {
         NavigationStack {
             Group {
-                if viewModel.isLoading && viewModel.playlists.isEmpty && !isRefreshing {
+                if viewModel.isLoading && viewModel.playlists.isEmpty {
                     VStack {
                         Spacer()
                         ProgressView()
@@ -28,9 +27,7 @@ struct LibraryView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    RefreshableScrollView(isRefreshing: $isRefreshing) {
-                        await loadPlaylists(forceRefresh: true)
-                    } content: {
+                    ScrollView {
                         VStack(alignment: .leading, spacing: 24) {
                             if !viewModel.playlists.isEmpty {
                                 playlistGridSection
@@ -41,6 +38,9 @@ struct LibraryView: View {
                             }
                         }
                         .padding(.top, 8)
+                    }
+                    .refreshable {
+                        await loadPlaylists(forceRefresh: true)
                     }
                 }
             }
@@ -111,14 +111,7 @@ struct LibraryView: View {
 
     private func loadPlaylists(forceRefresh: Bool = false) async {
         guard let userId = authManager.currentUserId else { return }
-
-        if forceRefresh {
-            isRefreshing = true
-        }
-
         await viewModel.refresh(userId: userId, forceRefresh: forceRefresh)
-
-        isRefreshing = false
     }
 
     private var recentlyAddedPlaylists: [Playlist] {
