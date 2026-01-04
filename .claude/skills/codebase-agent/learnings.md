@@ -431,7 +431,7 @@ func toggleLike(track: Track) async throws {
 
 ### Swift Package Module Separation for GRDB Circular References
 - **Context**: When GRDB model types with protocol conformances cause Swift circular reference errors in a single module
-- **Learning**: Split models into two packages: Domain (pure Swift structs, no GRDB) and DB (GRDB extensions with `@retroactive` conformances). This mirrors Phia's architecture pattern. The `@retroactive` keyword tells Swift the conformance is being added to a type from another module.
+- **Learning**: Split models into two packages: Domain (pure Swift structs, no GRDB) and DB (GRDB extensions with `@retroactive` conformances). This mirrors the best architecture pattern. The `@retroactive` keyword tells Swift the conformance is being added to a type from another module.
 - **Example**:
 ```swift
 // MixBridgeDomain/Sources/Models/PersistedTrack.swift (no GRDB)

@@ -1,6 +1,6 @@
 //
 // NavigationDismissalGesture.swift
-// PhiaSwift
+// MixBridge
 //
 // Created by Etienne Grey on 10/7/25.
 //

@@ -4,7 +4,6 @@
 //
 //  Serial async operation queue for sync operations.
 //  Ensures operations are executed in order, preventing race conditions.
-//  Pattern adapted from Phia.
 //
 
 import Foundation

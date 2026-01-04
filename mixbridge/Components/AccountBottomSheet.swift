@@ -346,7 +346,7 @@ struct AccountBottomSheet: View {
                         isPresented: $showSheet,
                         selectedDetent: $selectedDetent,
                         userName: "Harivansh Rathi",
-                        userEmail: "hari@phia.com"
+                        userEmail: "hari@gmail.com"
                     )
                     .presentationDetents([.medium, .large], selection: $selectedDetent)
                 }
@@ -370,7 +370,7 @@ struct AccountBottomSheet: View {
                         isPresented: $showSheet,
                         selectedDetent: $selectedDetent,
                         userName: "Harivansh Rathi",
-                        userEmail: "hari@phia.com"
+                        userEmail: "hari@gmail.com"
                     )
                     .presentationDetents([.medium, .large], selection: $selectedDetent)
                 }
