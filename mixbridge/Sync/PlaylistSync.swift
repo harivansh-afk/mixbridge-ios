@@ -96,11 +96,19 @@ final class PlaylistSync: Sendable {
     /// Get tracks for a playlist from local database
     func getLocalPlaylistTracks(playlistId: String) async throws -> [PersistedTrack] {
         try await db.reader.read { db in
-            try PersistedTrack
-                .joining(required: PersistedTrack.playlistTracks
-                    .filter(PlaylistTrack.Columns.playlistId == playlistId))
+            // Fetch tracks via the junction table, ordered by position
+            let playlistTracks = try PlaylistTrack
+                .filter(PlaylistTrack.Columns.playlistId == playlistId)
                 .order(PlaylistTrack.Columns.position)
                 .fetchAll(db)
+
+            let trackIds = playlistTracks.map(\.trackId)
+            let tracksDict = try PersistedTrack
+                .filter(trackIds.contains(PersistedTrack.Columns.id))
+                .fetchAll(db)
+                .reduce(into: [String: PersistedTrack]()) { $0[$1.id] = $1 }
+
+            return trackIds.compactMap { tracksDict[$0] }
         }
     }
 }

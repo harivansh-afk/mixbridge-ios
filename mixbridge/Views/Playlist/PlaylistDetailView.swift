@@ -59,17 +59,13 @@ struct PlaylistDetailView: View {
         }
         .navigationAllowDismissalGestures(allowDismissalGesture)
         .navigationBarBackButtonHidden(true)
-        // Start database observation
+        // Start database observation and fetch fresh data
         .task {
-            await viewModel.observeDatabase()
-        }
-        // Fetch fresh data if not loaded
-        .task {
-            if !viewModel.hasLoaded {
-                if let userId = authManager.currentUserId {
-                    await viewModel.refresh(userId: userId)
-                }
+            async let observe: () = viewModel.observeDatabase()
+            if !viewModel.hasAttemptedLoad, let userId = authManager.currentUserId {
+                await viewModel.refresh(userId: userId)
             }
+            await observe
         }
         .task {
             try? await Task.sleep(for: .seconds(1))
