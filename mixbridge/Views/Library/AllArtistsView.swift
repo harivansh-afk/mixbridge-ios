@@ -6,13 +6,14 @@ struct AllArtistsView: View {
 
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
     @State private var selectedArtist: ArtistInfo?
+    @State private var artists: [ArtistInfo] = []
     @Namespace private var namespace
 
-    // Computed artists from liked tracks
-    private var artists: [ArtistInfo] {
+    // Build artists list from liked tracks
+    private func buildArtists(from tracks: [TrackItem]) -> [ArtistInfo] {
         var artistsDict: [String: ArtistInfo] = [:]
 
-        for item in viewModel.likedTracks {
+        for item in tracks {
             let artistName = item.track.artist
             let artistId = String(item.soundCloudTrack.user.id)
             let avatarUrl = item.soundCloudTrack.user.avatar_url?.upgradeArtworkQuality()
@@ -96,15 +97,17 @@ struct AllArtistsView: View {
             ArtistDetailView(artist: artist)
                 .navigationTransition(.zoom(sourceID: "artist-\(artist.id)", in: namespace))
         }
-        // Start database observation
+        // Start database observation and fetch fresh data
         .task {
-            await viewModel.observeDatabase()
-        }
-        // Fetch fresh data
-        .task {
+            async let observe: () = viewModel.observeDatabase()
             if let userId = authManager.currentUserId {
                 await viewModel.refresh(userId: userId)
             }
+            await observe
+        }
+        // Update artists when likedTracks changes
+        .onChange(of: viewModel.likedTracks) { _, newTracks in
+            artists = buildArtists(from: newTracks)
         }
         .task {
             try? await Task.sleep(for: .seconds(1))

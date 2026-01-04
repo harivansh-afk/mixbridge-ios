@@ -12,7 +12,6 @@ index.noindex/
 
 # Swift Package Manager / Xcode SPM checkouts
 SourcePackages/
-Packages/
 .swiftpm/
 .build/
 
