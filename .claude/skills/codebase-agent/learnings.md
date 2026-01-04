@@ -428,3 +428,119 @@ func toggleLike(track: Track) async throws {
 - **Context**: Eliminating PreloadedDataStore and in-memory caching
 - **Learning**: With GRDB, the database becomes the single source of truth. Network syncs write to the database, and ValueObservation automatically updates all observing views. This eliminates complex cache invalidation logic and provides offline support for free.
 - **Session**: Local-first refactor (2026-01-04)
+
+### Swift Package Module Separation for GRDB Circular References
+- **Context**: When GRDB model types with protocol conformances cause Swift circular reference errors in a single module
+- **Learning**: Split models into two packages: Domain (pure Swift structs, no GRDB) and DB (GRDB extensions with `@retroactive` conformances). This mirrors Phia's architecture pattern. The `@retroactive` keyword tells Swift the conformance is being added to a type from another module.
+- **Example**:
+```swift
+// MixBridgeDomain/Sources/Models/PersistedTrack.swift (no GRDB)
+public struct PersistedTrack: Codable, Equatable, Sendable { ... }
+
+// MixBridgeDB/Sources/Models/PersistedTrack+GRDB.swift
+extension PersistedTrack: @retroactive TableRecord {}
+extension PersistedTrack: @retroactive FetchableRecord, @retroactive MutablePersistableRecord { ... }
+```
+- **Session**: MixBridge GRDB refactor (2026-01-04)
+
+### Explicit Foreign Keys in GRDB Associations
+- **Context**: GRDB associations between tables with non-standard column names
+- **Learning**: Always specify explicit ForeignKey when column names don't match GRDB's expected conventions (e.g., `trackId` vs `persistedTrackId`). Without this, GRDB generates incorrect SQL.
+- **Example**:
+```swift
+// Wrong - GRDB expects "persistedTrackId"
+public static let track = belongsTo(PersistedTrack.self)
+
+// Correct - explicit foreign key
+public static let track = belongsTo(PersistedTrack.self, using: ForeignKey(["trackId"]))
+```
+- **Session**: MixBridge playlist tracks fix (2026-01-04)
+
+### Two-Step Query Pattern for Ordered Junction Tables
+- **Context**: Fetching records through a junction table with ordering on the junction table column
+- **Learning**: When ordering by a junction table column (like `position`), don't use `.joining().order()` as it creates incorrect SQL referencing the wrong table. Instead, fetch junction records first, then fetch main records and reorder in memory.
+- **Example**:
+```swift
+// Wrong - creates "ORDER BY tracks.position" error
+try PersistedTrack
+    .joining(required: PersistedTrack.playlistTracks.filter(...))
+    .order(PlaylistTrack.Columns.position)
+
+// Correct - two-step fetch
+let playlistTracks = try PlaylistTrack
+    .filter(PlaylistTrack.Columns.playlistId == playlistId)
+    .order(PlaylistTrack.Columns.position)
+    .fetchAll(db)
+let trackIds = playlistTracks.map(\.trackId)
+let tracksDict = try PersistedTrack
+    .filter(trackIds.contains(PersistedTrack.Columns.id))
+    .fetchAll(db)
+    .reduce(into: [:]) { $0[$1.id] = $1 }
+return trackIds.compactMap { tracksDict[$0] }
+```
+- **Session**: MixBridge playlist ordering fix (2026-01-04)
+
+### Public CodingKeys Required for Cross-Package GRDB
+- **Context**: Swift packages with models used by GRDB extensions in another package
+- **Learning**: Auto-synthesized CodingKeys are private. When GRDB extensions in another package need to reference CodingKeys for Column definitions, you must add explicit `public enum CodingKeys` to the model in the Domain package.
+- **Session**: MixBridge package build errors (2026-01-04)
+
+---
+
+## Failures (What to Avoid) - GRDB Specific
+
+### Don't Try Random Protocol Conformance Patterns for Circular References
+- **Context**: Swift circular reference errors with GRDB protocol conformances in a single module
+- **Learning**: When circular references occur with GRDB models in a single module, the ONLY fix is module separation. Failed approaches that wasted significant time:
+  - Consolidating extensions into single extension
+  - Using computed properties for associations
+  - Making `allTables` a computed var instead of let
+  - Removing Sendable conformance
+  - Various extension orderings
+  - Moving associations to separate file (within same module)
+- **Session**: MixBridge GRDB refactor (2026-01-04)
+
+### Don't Use hasLoaded with Empty Check Logic
+- **Context**: ViewModel state management for data loading
+- **Learning**: Logic like `var hasLoaded: Bool { !items.isEmpty || (!isLoading && error == nil) }` is flawed - it returns true initially when items is empty, preventing first load from ever triggering. Use explicit `hasAttemptedLoad` flag set after first attempt.
+- **Session**: MixBridge playlist loading bug (2026-01-04)
+
+### Don't Use Multiple .task Modifiers for Related Operations
+- **Context**: SwiftUI views needing to start observation and fetch data
+- **Learning**: Multiple `.task` modifiers can cause race conditions. Combine related async operations in a single `.task` using `async let` for concurrent execution.
+- **Example**:
+```swift
+// Bad - race conditions between observation and fetch
+.task { await viewModel.observeDatabase() }
+.task { await viewModel.refresh() }
+
+// Good - combined with proper ordering
+.task {
+    async let observe: () = viewModel.observeDatabase()
+    await viewModel.refresh()
+    await observe
+}
+```
+- **Session**: MixBridge view loading fixes (2026-01-04)
+
+---
+
+## SwiftUI Performance
+
+### State vs Computed Properties for Expensive Derived Data
+- **Context**: SwiftUI views with expensive computed properties that recalculate on every render
+- **Learning**: Use `@State` with `.onChange` instead of computed properties for derived data that's expensive to compute. Computed properties run on every body evaluation.
+- **Example**:
+```swift
+// Bad - recalculates on every render, causes glitching
+private var artists: [ArtistInfo] {
+    viewModel.likedTracks.map { ... } // expensive grouping operation
+}
+
+// Good - only updates when source changes
+@State private var artists: [ArtistInfo] = []
+.onChange(of: viewModel.likedTracks) { _, newTracks in
+    artists = buildArtists(from: newTracks)
+}
+```
+- **Session**: MixBridge artists view fix (2026-01-04)
