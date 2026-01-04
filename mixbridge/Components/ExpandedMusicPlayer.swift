@@ -242,8 +242,9 @@ struct ExpandedPlayerView: View {
             let horizontalPadding = screenWidth * 0.075 // 7.5% of screen width
             let artworkMaxWidth = screenWidth
             let cornerRadius = screenWidth * 0.12
-            let contentSpacing = screenHeight * 0.04 // 4% of screen height
-            let progressTopSpacing = screenHeight * -0.05 // 2.5% of screen height
+
+            // Consistent spacing - single value for visual rhythm
+            let contentGap: CGFloat = 20  // Equal gap: artwork-title, artist-progress, progress-controls
             // If SwiftUI carousel state lags behind playback state, prefer playback-derived values
             // so we never briefly show the previous track at the end of a crossfade.
             let shouldPreferPlaybackTrack = !isDraggingArtwork && abs(dragOffset) < 0.5 && displayedTrack.id != currentTrack.id
@@ -465,7 +466,7 @@ struct ExpandedPlayerView: View {
                     }
 
                     // 3. Controls Section
-                    VStack(spacing: 0) {
+                    VStack(spacing: 20) {
                         PlayerProgressView(
                             value: $playbackPosition,
                             duration: duration,
@@ -473,7 +474,6 @@ struct ExpandedPlayerView: View {
                             onEditingChanged: onSeek
                         )
                         .padding(.horizontal, horizontalPadding)
-                        .padding(.top, progressTopSpacing)
 
                         PlayerControlsView(
                             isPlaying: isPlaying,
@@ -482,8 +482,8 @@ struct ExpandedPlayerView: View {
                             onPrevious: onPrevious
                         )
                         .padding(.horizontal, horizontalPadding)
-                        .padding(.top, 20)
                     }
+                    .padding(.top, -30)
                     }
                     // Apply offset to entire top section (artwork + controls) when queue expands
                     .offset(y: showQueueSheet ? -queueExpansion : 0)
@@ -500,7 +500,7 @@ struct ExpandedPlayerView: View {
                                     .frame(width: 60, height: 5)
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.top, 40)
+                            .padding(.top, 35)
                             .padding(.bottom, 8)
                             .background(Color.clear)
                             .contentShape(Rectangle())
@@ -1007,6 +1007,7 @@ struct HexagonArtworkFace: View {
     var scale: CGFloat = 1.0
     var isPlaying: Bool = true
     var isCurrentTrack: Bool = false // Whether this is the center/current track
+    var contentSpacing: CGFloat = 25 // Spacing between artwork and title
 
     // Access to PlayerState for crossfade visual state
     @Bindable private var playerState = PlayerState.shared
@@ -1017,7 +1018,7 @@ struct HexagonArtworkFace: View {
     @State private var crossfadeHandoffArtwork: String? = nil
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: contentSpacing) {
             // Artwork with 3D rotation applied
             // Layer the destination artwork behind Metal view to prevent flicker on transition end
             ZStack {
@@ -1076,7 +1077,7 @@ struct HexagonArtworkFace: View {
             .scaleEffect(scale)
 
             // Song info (doesn't rotate - stays flat)
-            VStack(spacing: 6) {
+            VStack(spacing: -2) {
                 MarqueeGlassText(
                     text: track.title,
                     font: UIFont.systemFont(ofSize: 30, weight: .bold),
