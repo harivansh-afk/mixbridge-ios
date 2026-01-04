@@ -13,6 +13,18 @@ struct LikedView: View {
     @Environment(QueueManager.self) private var queueManager
 
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
+    @State private var searchText = ""
+    @State private var isSearchPresented = false
+
+    private let revealThreshold: CGFloat = 90
+
+    private var filteredTracks: [TrackItem] {
+        guard !searchText.isEmpty else { return viewModel.likedTracks }
+        return viewModel.likedTracks.filter {
+            $0.track.title.localizedCaseInsensitiveContains(searchText) ||
+            $0.track.artist.localizedCaseInsensitiveContains(searchText)
+        }
+    }
 
     var body: some View {
         content
@@ -81,22 +93,37 @@ struct LikedView: View {
 
     private var likedList: some View {
         List {
-            Section {
-                ForEach(Array(viewModel.likedTracks.enumerated()), id: \.element.id) { index, item in
+            if filteredTracks.isEmpty && !searchText.isEmpty {
+                ContentUnavailableView.search(text: searchText)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
+            } else {
+                ForEach(Array(filteredTracks.enumerated()), id: \.element.id) { index, item in
                     TrackRow(
                         item.track,
                         number: index + 1,
                         showCover: true,
                         soundCloudTrack: item.soundCloudTrack,
-                        listContext: viewModel.likedTracks,
+                        listContext: filteredTracks,
                         indexInList: index
                     )
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
                 }
             }
         }
         .listStyle(.plain)
-        .listSectionSpacing(0)
+        .onScrollPhaseChange { oldPhase, newPhase, context in
+            guard oldPhase == .interacting, newPhase != .interacting else { return }
+            let geometry = context.geometry
+            let offset = geometry.contentOffset.y + geometry.contentInsets.top
+
+            if offset < -revealThreshold && !isSearchPresented {
+                isSearchPresented = true
+                HapticManager.light()
+            }
+        }
+        .searchable(text: $searchText, isPresented: $isSearchPresented, prompt: "Search Liked")
         .navigationAllowDismissalGestures(allowDismissalGesture)
         .task {
             try? await Task.sleep(for: .seconds(1))
