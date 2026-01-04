@@ -52,6 +52,7 @@ struct ArtistDetailView: View {
                         HStack {
                             Spacer()
                             ProgressView()
+                                .scaleEffect(1.5)
                             Spacer()
                         }
                         .padding(.vertical, 40)

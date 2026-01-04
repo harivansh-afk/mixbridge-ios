@@ -50,8 +50,13 @@ struct SearchView: View {
         if searchText.isEmpty {
             emptyState
         } else if isSearching {
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack {
+                Spacer()
+                ProgressView()
+                    .scaleEffect(1.5)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let error {
             errorView(error)
         } else if let results = searchResult {
