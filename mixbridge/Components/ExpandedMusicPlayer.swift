@@ -244,6 +244,11 @@ struct ExpandedPlayerView: View {
 
             // Target visual rhythm.
             let rhythm: CGFloat = 20
+            let queueHandleTopPadding: CGFloat = 20
+            let queueHandleBottomPadding: CGFloat = 6
+            let queueTopFadeHeight: CGFloat = 30
+            let queueListTopInset: CGFloat = 5 
+            let queueSectionVisualLift: CGFloat = 44
             // If SwiftUI carousel state lags behind playback state, prefer playback-derived values
             // so we never briefly show the previous track at the end of a crossfade.
             let shouldPreferPlaybackTrack = !isDraggingArtwork && abs(dragOffset) < 0.5 && displayedTrack.id != currentTrack.id
@@ -500,8 +505,8 @@ struct ExpandedPlayerView: View {
                                     .frame(width: 60, height: 5)
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.top, 35)
-                            .padding(.bottom, 8)
+                            .padding(.top, queueHandleTopPadding)
+                            .padding(.bottom, queueHandleBottomPadding)
                             .background(Color.clear)
                             .contentShape(Rectangle())
                             .highPriorityGesture(
@@ -575,6 +580,9 @@ struct ExpandedPlayerView: View {
                             }
                             .listStyle(.plain)
                             .scrollContentBackground(.hidden)
+                            // Keep the original top fade, but start rows slightly below it so the first row
+                            // doesn't look "cut off" when the queue is lifted closer to the controls.
+                            .contentMargins(.top, queueListTopInset, for: .scrollContent)
                             .contentMargins(.bottom, 60, for: .scrollContent)
                             .mask(
                                 VStack(spacing: 0) {
@@ -583,13 +591,13 @@ struct ExpandedPlayerView: View {
                                         startPoint: .top,
                                         endPoint: .bottom
                                     )
-                                    .frame(height: 30)
+                                    .frame(height: queueTopFadeHeight)
                                     Color.black
                                 }
                             )
                         }
                         .frame(height: 280 + queueExpansion)
-                        .offset(y: -queueExpansion)
+                        .offset(y: -queueExpansion - queueSectionVisualLift)
                         .layoutPriority(1)
                         .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.8), value: queueExpansion)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -1018,7 +1026,7 @@ struct HexagonArtworkFace: View {
     @State private var crossfadeHandoffArtwork: String? = nil
 
     var body: some View {
-        VStack(spacing: contentSpacing) {
+        VStack(spacing: contentSpacing + 5) {
             // Artwork with 3D rotation applied
             // Layer the destination artwork behind Metal view to prevent flicker on transition end
             ZStack {
@@ -1166,8 +1174,8 @@ struct HexagonArtworkFace: View {
                 .padding(.horizontal, 30)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 16)
-        .padding(.bottom, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
 
         List {
             ForEach(Array(Track.sampleTracks.enumerated()), id: \.element.id) { index, track in
