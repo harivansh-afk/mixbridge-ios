@@ -154,31 +154,27 @@ struct PlayerProgressView: View {
     @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
-        VStack(spacing: 10) {
+        CustomSlider(
+            value: $value,
+            bounds: 0...max(duration, 1),
+            isDragging: $isDragging,
+            onEditingChanged: onEditingChanged,
+            progressColor: colorScheme == .dark ? .white.opacity(0.85) : .primary,
+            trackColor: colorScheme == .dark ? .white.opacity(0.2) : .gray.opacity(0.3)
+        )
+        .overlay(alignment: .top) {
             HStack {
                 Text(formatTime(value))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
-                
+
                 Spacer()
-                
-                Text("\(formatTime(max(duration - value, 0)))")
+
+                Text(formatTime(max(duration - value, 0)))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
-            CustomSlider(
-                value: $value,
-                bounds: 0...max(duration, 1),
-                isDragging: $isDragging,
-                onEditingChanged: onEditingChanged,
-                progressColor: colorScheme == .dark ? .white.opacity(0.85) : .primary,
-                trackColor: colorScheme == .dark ? .white.opacity(0.2) : .gray.opacity(0.3),
-                verticalAlignment: .top // Align flush to the top
-            )
-            .clipped()
-            .padding(.top, -25)
-            
-            
+            .allowsHitTesting(false)
         }
     }
     

@@ -24,6 +24,15 @@ import SwiftUI
 /// )
 /// ```
 struct CustomSlider: View {
+    static let touchTargetHeight: CGFloat = 44
+    static let trackHeight: CGFloat = 7
+
+    /// When the track is centered within the touch target, this is the distance
+    /// from the view's top edge to the track's top edge.
+    static var centeredTrackTopInset: CGFloat {
+        (touchTargetHeight - trackHeight) / 2
+    }
+
     // MARK: - Properties
 
     /// The current value of the slider
@@ -62,13 +71,11 @@ struct CustomSlider: View {
     
     var body: some View {
         GeometryReader { geometry in
-            let sliderHeight: CGFloat = 7 // Fixed thicker height for "solid" vibe
-            
             ZStack(alignment: Alignment(horizontal: .leading, vertical: verticalAlignment)) {
                 // Background track
                 Capsule() // Changed from Capsule to Rectangle
                     .fill(trackColor)
-                    .frame(height: sliderHeight)
+                    .frame(height: Self.trackHeight)
                 
                 // Progress indicator
                 Group {
@@ -77,14 +84,14 @@ struct CustomSlider: View {
                             .fill(progressColor)
                             .frame(
                                 width: progressWidth(for: geometry),
-                                height: isDragging ? 7 : 7
+                                height: Self.trackHeight
                             )
                         Spacer(minLength: 0)
                     }
                     .modifier(ConditionalGlassEffect(isDragging: isDragging))
                 }
             }
-            .frame(height: 44) // Touch target size
+            .frame(height: Self.touchTargetHeight) // Touch target size
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -98,7 +105,7 @@ struct CustomSlider: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isDragging)
             .animation(.linear(duration: 0.1), value: value)
         }
-        .frame(height: 44)
+        .frame(height: Self.touchTargetHeight)
         .onAppear {
             hapticGenerator.prepare()
         }

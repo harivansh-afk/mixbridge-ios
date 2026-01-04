@@ -236,15 +236,19 @@ struct ExpandedPlayerView: View {
     var body: some View {
         GeometryReader { geometry in
             let screenWidth = geometry.size.width
-            let screenHeight = geometry.size.height
 
             // Responsive sizing
             let horizontalPadding = screenWidth * 0.075 // 7.5% of screen width
             let artworkMaxWidth = screenWidth
             let cornerRadius = screenWidth * 0.12
 
-            // Consistent spacing - single value for visual rhythm
-            let contentGap: CGFloat = 20  // Equal gap: artwork-title, artist-progress, progress-controls
+            // Target visual rhythm.
+            let rhythm: CGFloat = 20
+            let queueHandleTopPadding: CGFloat = 20
+            let queueHandleBottomPadding: CGFloat = 6
+            let queueTopFadeHeight: CGFloat = 30
+            let queueListTopInset: CGFloat = 5 
+            let queueSectionVisualLift: CGFloat = 44
             // If SwiftUI carousel state lags behind playback state, prefer playback-derived values
             // so we never briefly show the previous track at the end of a crossfade.
             let shouldPreferPlaybackTrack = !isDraggingArtwork && abs(dragOffset) < 0.5 && displayedTrack.id != currentTrack.id
@@ -299,191 +303,192 @@ struct ExpandedPlayerView: View {
                 VStack(spacing: 0) {
                     // Top section (artwork + controls) - moves up when queue expands
                     Group {
-                    // 2. Artwork + Title Carousel (grouped together)
-                    ZStack(alignment: .top) {
-                        // Previous artwork (left hexagon face)
-                        if let prevTrack = displayedPrevious {
-                            HexagonArtworkFace(
-                                track: prevTrack,
-                                artworkWidth: artworkMaxWidth,
-                                cornerRadius: cornerRadius,
-                                rotation: calculate3DRotation(offset: dragOffset, direction: .left, screenWidth: screenWidth),
-                                anchor: .trailing, // Hinge at right edge
-                                opacity: calculateOpacity(offset: dragOffset, direction: .left, screenWidth: screenWidth),
-                                isPlaying: false
-                            )
-                            .offset(x: -artworkMaxWidth + dragOffset)
-                            .zIndex(0)
-                            .id("prev-\(prevTrack.id)")
-                        }
+                        VStack(spacing: rhythm) {
+                            // 2. Artwork + Title Carousel (grouped together)
+                            ZStack(alignment: .top) {
+                                // Previous artwork (left hexagon face)
+                                if let prevTrack = displayedPrevious {
+                                    HexagonArtworkFace(
+                                        track: prevTrack,
+                                        artworkWidth: artworkMaxWidth,
+                                        cornerRadius: cornerRadius,
+                                        rotation: calculate3DRotation(offset: dragOffset, direction: .left, screenWidth: screenWidth),
+                                        anchor: .trailing, // Hinge at right edge
+                                        opacity: calculateOpacity(offset: dragOffset, direction: .left, screenWidth: screenWidth),
+                                        isPlaying: false,
+                                        contentSpacing: rhythm
+                                    )
+                                    .offset(x: -artworkMaxWidth + dragOffset)
+                                    .zIndex(0)
+                                    .id("prev-\(prevTrack.id)")
+                                }
 
-                        // Current artwork (center hexagon face - flat)
-	                        HexagonArtworkFace(
-	                            track: effectiveDisplayedTrack,
-	                            artworkWidth: artworkMaxWidth,
-	                            cornerRadius: cornerRadius,
-	                            rotation: calculate3DRotation(offset: dragOffset, direction: .center, screenWidth: screenWidth),
-	                            anchor: dragOffset > 0 ? .leading : .trailing,
-	                            opacity: 1.0,
-	                            scale: isDraggingArtwork ? 0.97 : 1.0,
-	                            isPlaying: isPlaying,
-	                            isCurrentTrack: true
-	                        )
-	                        .offset(x: dragOffset)
-	                        .zIndex(1)
+                                // Current artwork (center hexagon face - flat)
+                                HexagonArtworkFace(
+                                    track: effectiveDisplayedTrack,
+                                    artworkWidth: artworkMaxWidth,
+                                    cornerRadius: cornerRadius,
+                                    rotation: calculate3DRotation(offset: dragOffset, direction: .center, screenWidth: screenWidth),
+                                    anchor: dragOffset > 0 ? .leading : .trailing,
+                                    opacity: 1.0,
+                                    scale: isDraggingArtwork ? 0.97 : 1.0,
+                                    isPlaying: isPlaying,
+                                    isCurrentTrack: true,
+                                    contentSpacing: rhythm
+                                )
+                                .offset(x: dragOffset)
+                                .zIndex(1)
 
-	                        // Next artwork (right hexagon face)
-	                        if let nxtTrack = displayedNext {
-	                            HexagonArtworkFace(
-	                                track: nxtTrack,
-                                artworkWidth: artworkMaxWidth,
-                                cornerRadius: cornerRadius,
-                                rotation: calculate3DRotation(offset: dragOffset, direction: .right, screenWidth: screenWidth),
-                                anchor: .leading, // Hinge at left edge
-                                opacity: calculateOpacity(offset: dragOffset, direction: .right, screenWidth: screenWidth),
-                                isPlaying: false
-                            )
-                            .offset(x: artworkMaxWidth + dragOffset)
-                            .zIndex(0)
-                            .id("next-\(nxtTrack.id)")
-                        }
-                    }
-                    .frame(maxWidth: artworkMaxWidth)
-                    .contentShape(Rectangle())
-                    .animation(.interactiveSpring(response: 0.25, dampingFraction: 0.82), value: dragOffset)
-                    .animation(.interactiveSpring(response: 0.35, dampingFraction: 0.8), value: displayedTrack.id)
-                    // Use custom gesture recognizer to allow vertical swipes (dismissal) to pass through
-                    .overlay(
-                        HorizontalPanGesture(
-                            onChanged: { translation, velocity in
-                                handleDragChanged(translation: translation, screenWidth: screenWidth)
-                            },
-                            onEnded: { translation, velocity in
-                                handleDragEnded(translation: translation, velocity: velocity, screenWidth: screenWidth)
+                                // Next artwork (right hexagon face)
+                                if let nxtTrack = displayedNext {
+                                    HexagonArtworkFace(
+                                        track: nxtTrack,
+                                        artworkWidth: artworkMaxWidth,
+                                        cornerRadius: cornerRadius,
+                                        rotation: calculate3DRotation(offset: dragOffset, direction: .right, screenWidth: screenWidth),
+                                        anchor: .leading, // Hinge at left edge
+                                        opacity: calculateOpacity(offset: dragOffset, direction: .right, screenWidth: screenWidth),
+                                        isPlaying: false,
+                                        contentSpacing: rhythm
+                                    )
+                                    .offset(x: artworkMaxWidth + dragOffset)
+                                    .zIndex(0)
+                                    .id("next-\(nxtTrack.id)")
+                                }
                             }
-                        )
-                    )
-                    .onChange(of: currentTrack.id) { oldValue, newValue in
-                        // Sync carousel when player changes externally (buttons, auto-advance)
-                        if displayedTrack.id != newValue {
-                            withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.8)) {
-                                displayedPrevious = displayedTrack  // Old current becomes previous
+                            .frame(maxWidth: artworkMaxWidth)
+                            .contentShape(Rectangle())
+                            .animation(.interactiveSpring(response: 0.25, dampingFraction: 0.82), value: dragOffset)
+                            .animation(.interactiveSpring(response: 0.35, dampingFraction: 0.8), value: displayedTrack.id)
+                            // Use custom gesture recognizer to allow vertical swipes (dismissal) to pass through
+                            .overlay(
+                                HorizontalPanGesture(
+                                    onChanged: { translation, velocity in
+                                        handleDragChanged(translation: translation, screenWidth: screenWidth)
+                                    },
+                                    onEnded: { translation, velocity in
+                                        handleDragEnded(translation: translation, velocity: velocity, screenWidth: screenWidth)
+                                    }
+                                )
+                            )
+                            .onChange(of: currentTrack.id) { oldValue, newValue in
+                                // Sync carousel when player changes externally (buttons, auto-advance)
+                                if displayedTrack.id != newValue {
+                                    withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.8)) {
+                                        displayedPrevious = displayedTrack  // Old current becomes previous
+                                        displayedTrack = currentTrack
+                                        displayedQueueIndex = 0
+                                        displayedNext = queueManager.queue.peek()?.track  // Read from queue directly
+                                        dragOffset = 0
+                                        isDraggingArtwork = false
+                                    }
+                                }
+                            }
+                            .onChange(of: queueManager.queue.items.first?.id) { oldValue, newValue in
+                                // Sync displayedNext when queue changes (reorder, remove, etc.)
+                                let newNext = queueManager.queue.peek()?.track
+                                if displayedNext?.id != newNext?.id {
+                                    displayedNext = newNext
+
+                                    // Prefetch new next track artwork for smooth carousel
+                                    if let nextItem = queueManager.queue.peek() {
+                                        Task {
+                                            await TrackPrefetcher.shared.preloadTrackImmediately(nextItem.track)
+                                        }
+                                    }
+                                }
+                            }
+                            .clipped()
+                            .onAppear {
+                                // Prepare all haptic generators
+                                lightHaptic.prepare()
+                                heavyHaptic.prepare()
+
+                                // Initialize carousel with current tracks
                                 displayedTrack = currentTrack
                                 displayedQueueIndex = 0
                                 displayedNext = queueManager.queue.peek()?.track  // Read from queue directly
-                                dragOffset = 0
-                                isDraggingArtwork = false
-                            }
-                        }
-                    }
-                    .onChange(of: queueManager.queue.items.first?.id) { oldValue, newValue in
-                        // Sync displayedNext when queue changes (reorder, remove, etc.)
-                        let newNext = queueManager.queue.peek()?.track
-                        if displayedNext?.id != newNext?.id {
-                            displayedNext = newNext
+                                displayedPrevious = nil  // No previous initially
 
-                            // Prefetch new next track artwork for smooth carousel
-                            if let nextItem = queueManager.queue.peek() {
-                                Task {
-                                    await TrackPrefetcher.shared.preloadTrackImmediately(nextItem.track)
+                                // Crossfade-safe background: start from the current track artwork.
+                                backgroundStableArtwork = currentTrack.artwork
+
+                                // Show queue sheet if queue has items
+                                if queueManager.hasQueue {
+                                    showQueueSheet = true
+                                }
+
+                                // Prefetch next track artwork for smooth carousel
+                                if let nextItem = queueManager.queue.peek() {
+                                    Task {
+                                        await TrackPrefetcher.shared.preloadTrackImmediately(nextItem.track)
+                                    }
                                 }
                             }
-                        }
-                    }
-                    .clipped()
-                    .onAppear {
-                        // Prepare all haptic generators
-                        lightHaptic.prepare()
-                        heavyHaptic.prepare()
+                            .onChange(of: playerState.crossfadeNextTrack?.artwork) { _, newArtwork in
+                                // Important: don't clear pending artwork when `crossfadeNextTrack` becomes nil at
+                                // transition end; we commit/clear in the `isCrossfading` handoff below to avoid a
+                                // 1-frame fallback to the old stable background.
+                                guard let newArtwork, !newArtwork.isEmpty else { return }
 
-                        // Initialize carousel with current tracks
-                        displayedTrack = currentTrack
-                        displayedQueueIndex = 0
-                        displayedNext = queueManager.queue.peek()?.track  // Read from queue directly
-                        displayedPrevious = nil  // No previous initially
+                                backgroundPendingArtwork = newArtwork
+                                backgroundPendingReady = isArtworkReady(newArtwork)
+                                guard !backgroundPendingReady else { return }
 
-                        // Crossfade-safe background: start from the current track artwork.
-                        backgroundStableArtwork = currentTrack.artwork
-
-                        // Show queue sheet if queue has items
-                        if queueManager.hasQueue {
-                            showQueueSheet = true
-                        }
-
-                        // Prefetch next track artwork for smooth carousel
-                        if let nextItem = queueManager.queue.peek() {
-                            Task {
-                                await TrackPrefetcher.shared.preloadTrackImmediately(nextItem.track)
+                                let request = newArtwork
+                                Task { @MainActor in
+                                    let ok = await preloadArtwork(request)
+                                    if backgroundPendingArtwork == request {
+                                        backgroundPendingReady = ok
+                                    }
+                                }
                             }
-                        }
-                    }
-                    .onChange(of: playerState.crossfadeNextTrack?.artwork) { _, newArtwork in
-                        // Important: don't clear pending artwork when `crossfadeNextTrack` becomes nil at
-                        // transition end; we commit/clear in the `isCrossfading` handoff below to avoid a
-                        // 1-frame fallback to the old stable background.
-                        guard let newArtwork, !newArtwork.isEmpty else { return }
+                            .onChange(of: currentTrack.artwork) { _, newArtwork in
+                                guard backgroundStableArtwork != newArtwork else { return }
 
-                        backgroundPendingArtwork = newArtwork
-                        backgroundPendingReady = isArtworkReady(newArtwork)
-                        guard !backgroundPendingReady else { return }
+                                if isArtworkReady(newArtwork) {
+                                    backgroundStableArtwork = newArtwork
+                                    return
+                                }
 
-                        let request = newArtwork
-                        Task { @MainActor in
-                            let ok = await preloadArtwork(request)
-                            if backgroundPendingArtwork == request {
-                                backgroundPendingReady = ok
+                                let request = newArtwork
+                                Task { @MainActor in
+                                    let ok = await preloadArtwork(request)
+                                    if ok, currentTrack.artwork == request {
+                                        backgroundStableArtwork = request
+                                    }
+                                }
                             }
-                        }
-                    }
-                    .onChange(of: currentTrack.artwork) { _, newArtwork in
-                        guard backgroundStableArtwork != newArtwork else { return }
-
-                        if isArtworkReady(newArtwork) {
-                            backgroundStableArtwork = newArtwork
-                            return
-                        }
-
-                        let request = newArtwork
-                        Task { @MainActor in
-                            let ok = await preloadArtwork(request)
-                            if ok, currentTrack.artwork == request {
-                                backgroundStableArtwork = request
+                            .onChange(of: playerState.isCrossfading) { _, isCrossfading in
+                                // When crossfade ends, keep showing the stable background until the new
+                                // `currentTrack.artwork` is confirmed ready (handled by onChange above).
+                                if !isCrossfading {
+                                    // Commit the destination background before removing the overlay to prevent
+                                    // any one-frame flash back to the previous stable artwork.
+                                    if backgroundPendingReady, let pending = backgroundPendingArtwork {
+                                        backgroundStableArtwork = pending
+                                    }
+                                    backgroundPendingArtwork = nil
+                                    backgroundPendingReady = false
+                                }
                             }
-                        }
-                    }
-                    .onChange(of: playerState.isCrossfading) { _, isCrossfading in
-                        // When crossfade ends, keep showing the stable background until the new
-                        // `currentTrack.artwork` is confirmed ready (handled by onChange above).
-                        if !isCrossfading {
-                            // Commit the destination background before removing the overlay to prevent
-                            // any one-frame flash back to the previous stable artwork.
-                            if backgroundPendingReady, let pending = backgroundPendingArtwork {
-                                backgroundStableArtwork = pending
-                            }
-                            backgroundPendingArtwork = nil
-                            backgroundPendingReady = false
-                        }
-                    }
 
-                    // 3. Controls Section
-                    VStack(spacing: 20) {
-                        PlayerProgressView(
-                            value: $playbackPosition,
-                            duration: duration,
-                            isDragging: $isDraggingProgress,
-                            onEditingChanged: onSeek
-                        )
-                        .padding(.horizontal, horizontalPadding)
+                            PlayerProgressView(
+                                value: $playbackPosition,
+                                duration: duration,
+                                isDragging: $isDraggingProgress,
+                                onEditingChanged: onSeek
+                            )
+                            .padding(.horizontal, horizontalPadding)
 
-                        PlayerControlsView(
-                            isPlaying: isPlaying,
-                            onPlayPause: onPlayPause,
-                            onNext: onNext,
-                            onPrevious: onPrevious
-                        )
-                        .padding(.horizontal, horizontalPadding)
-                    }
-                    .padding(.top, -30)
+                            PlayerControlsView(
+                                isPlaying: isPlaying,
+                                onPlayPause: onPlayPause,
+                                onNext: onNext,
+                                onPrevious: onPrevious
+                            )
+                            .padding(.horizontal, horizontalPadding)
+                        }
                     }
                     // Apply offset to entire top section (artwork + controls) when queue expands
                     .offset(y: showQueueSheet ? -queueExpansion : 0)
@@ -500,8 +505,8 @@ struct ExpandedPlayerView: View {
                                     .frame(width: 60, height: 5)
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.top, 35)
-                            .padding(.bottom, 8)
+                            .padding(.top, queueHandleTopPadding)
+                            .padding(.bottom, queueHandleBottomPadding)
                             .background(Color.clear)
                             .contentShape(Rectangle())
                             .highPriorityGesture(
@@ -575,6 +580,9 @@ struct ExpandedPlayerView: View {
                             }
                             .listStyle(.plain)
                             .scrollContentBackground(.hidden)
+                            // Keep the original top fade, but start rows slightly below it so the first row
+                            // doesn't look "cut off" when the queue is lifted closer to the controls.
+                            .contentMargins(.top, queueListTopInset, for: .scrollContent)
                             .contentMargins(.bottom, 60, for: .scrollContent)
                             .mask(
                                 VStack(spacing: 0) {
@@ -583,13 +591,13 @@ struct ExpandedPlayerView: View {
                                         startPoint: .top,
                                         endPoint: .bottom
                                     )
-                                    .frame(height: 30)
+                                    .frame(height: queueTopFadeHeight)
                                     Color.black
                                 }
                             )
                         }
                         .frame(height: 280 + queueExpansion)
-                        .offset(y: -queueExpansion)
+                        .offset(y: -queueExpansion - queueSectionVisualLift)
                         .layoutPriority(1)
                         .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.8), value: queueExpansion)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -1007,7 +1015,7 @@ struct HexagonArtworkFace: View {
     var scale: CGFloat = 1.0
     var isPlaying: Bool = true
     var isCurrentTrack: Bool = false // Whether this is the center/current track
-    var contentSpacing: CGFloat = 25 // Spacing between artwork and title
+    var contentSpacing: CGFloat = 20 // Spacing between artwork and title
 
     // Access to PlayerState for crossfade visual state
     @Bindable private var playerState = PlayerState.shared
@@ -1018,7 +1026,7 @@ struct HexagonArtworkFace: View {
     @State private var crossfadeHandoffArtwork: String? = nil
 
     var body: some View {
-        VStack(spacing: contentSpacing) {
+        VStack(spacing: contentSpacing + 5) {
             // Artwork with 3D rotation applied
             // Layer the destination artwork behind Metal view to prevent flicker on transition end
             ZStack {
@@ -1166,8 +1174,8 @@ struct HexagonArtworkFace: View {
                 .padding(.horizontal, 30)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 16)
-        .padding(.bottom, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
 
         List {
             ForEach(Array(Track.sampleTracks.enumerated()), id: \.element.id) { index, track in
