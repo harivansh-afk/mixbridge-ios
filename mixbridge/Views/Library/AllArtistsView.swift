@@ -67,63 +67,58 @@ struct AllArtistsView: View {
                     description: Text("Your artists will appear here")
                 )
             } else {
-                ScrollView {
+                List {
                     if filteredArtists.isEmpty && !searchText.isEmpty {
                         ContentUnavailableView.search(text: searchText)
-                            .frame(minHeight: 300)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets())
                     } else {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(filteredArtists.enumerated()), id: \.element.id) { index, artist in
-                                HStack(spacing: 12) {
-                                    if let avatarUrl = artist.avatarUrl,
-                                       let url = URL(string: avatarUrl) {
-                                        CachedAsyncImage(url: url) { image in
-                                            image
-                                                .resizable()
-                                                .scaledToFill()
-                                        } placeholder: {
-                                            Color.clear
+                        ForEach(Array(filteredArtists.enumerated()), id: \.element.id) { index, artist in
+                            HStack(spacing: 12) {
+                                if let avatarUrl = artist.avatarUrl,
+                                   let url = URL(string: avatarUrl) {
+                                    CachedAsyncImage(url: url) { image in
+                                        image
+                                            .resizable()
+                                            .scaledToFill()
+                                    } placeholder: {
+                                        Color.clear
+                                    }
+                                    .frame(width: 44, height: 44)
+                                    .clipShape(Circle())
+                                } else {
+                                    Circle()
+                                        .fill(Color(.systemGray5))
+                                        .frame(width: 44, height: 44)
+                                        .overlay {
+                                            Image(systemName: "music.mic")
+                                                .foregroundStyle(.secondary)
                                         }
-                                        .frame(width: 50, height: 50)
-                                        .clipShape(Circle())
-                                    } else {
-                                        Circle()
-                                            .fill(Color(.systemGray5))
-                                            .frame(width: 50, height: 50)
-                                            .overlay {
-                                                Image(systemName: "music.mic")
-                                                    .foregroundStyle(.secondary)
-                                            }
-                                    }
-
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(artist.name)
-                                            .font(.body)
-                                    }
-
-                                    Spacer()
-
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption)
-                                        .foregroundStyle(.tertiary)
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .matchedTransitionSource(id: "artist-\(artist.id)", in: namespace)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    HapticManager.selection()
-                                    selectedArtist = artist
                                 }
 
-                                if index < filteredArtists.count - 1 {
-                                    Divider()
-                                        .padding(.leading, 78)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(artist.name)
+                                        .font(.body)
                                 }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                            .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+                            .matchedTransitionSource(id: "artist-\(artist.id)", in: namespace)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                HapticManager.selection()
+                                selectedArtist = artist
                             }
                         }
                     }
                 }
+                .listStyle(.plain)
                 .onScrollPhaseChange { oldPhase, newPhase, context in
                     guard oldPhase == .interacting, newPhase != .interacting else { return }
                     let geometry = context.geometry

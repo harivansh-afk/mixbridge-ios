@@ -92,32 +92,27 @@ struct LikedView: View {
     }
 
     private var likedList: some View {
-        ScrollView {
+        List {
             if filteredTracks.isEmpty && !searchText.isEmpty {
                 ContentUnavailableView.search(text: searchText)
-                    .frame(minHeight: 300)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
             } else {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(filteredTracks.enumerated()), id: \.element.id) { index, item in
-                        TrackRow(
-                            item.track,
-                            number: index + 1,
-                            showCover: true,
-                            soundCloudTrack: item.soundCloudTrack,
-                            listContext: filteredTracks,
-                            indexInList: index
-                        )
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 4)
-
-                        if index < filteredTracks.count - 1 {
-                            Divider()
-                                .padding(.leading, 76)
-                        }
-                    }
+                ForEach(Array(filteredTracks.enumerated()), id: \.element.id) { index, item in
+                    TrackRow(
+                        item.track,
+                        number: index + 1,
+                        showCover: true,
+                        soundCloudTrack: item.soundCloudTrack,
+                        listContext: filteredTracks,
+                        indexInList: index
+                    )
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
                 }
             }
         }
+        .listStyle(.plain)
         .onScrollPhaseChange { oldPhase, newPhase, context in
             guard oldPhase == .interacting, newPhase != .interacting else { return }
             let geometry = context.geometry
