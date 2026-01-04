@@ -165,6 +165,7 @@ struct PlaylistDetailView: View {
                 HStack {
                     Spacer()
                     ProgressView()
+                        .scaleEffect(1.5)
                     Spacer()
                 }
                 .padding()
