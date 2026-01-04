@@ -83,7 +83,7 @@ struct LibraryView: View {
         HStack {
             if let avatarUrl = profileManager.avatarUrl,
                let url = URL(string: avatarUrl) {
-                AsyncImage(url: url) { image in
+                CachedAsyncImage(url: url) { image in
                     image
                         .resizable()
                         .scaledToFill()
