@@ -275,3 +275,156 @@ ZStack {
 - **Context**: Understanding complex multi-repo systems (iOS + Convex backend)
 - **Learning**: Launch 5+ subagents in parallel with specific focus areas (QueueManager, PlaybackCoordinator, UI mutations, Convex mutations, Convex schema) to build comprehensive understanding quickly. Each agent returns detailed documentation that can be synthesized.
 - **Session**: Queue architecture research (2026-01-03)
+
+---
+
+## GRDB / Local-First Architecture
+
+### GRDB Associations Must Be in Separate File
+- **Context**: Defining GRDB associations like `hasMany`, `belongsTo`, `hasOne` between models
+- **Learning**: GRDB associations that reference other model types cause Swift circular reference compiler errors when defined in the same file as the model. Move ALL association definitions to a single `Associations.swift` file that imports all models.
+- **Example**:
+```swift
+// BAD - in PersistedTrack.swift
+extension PersistedTrack {
+    static let playHistory = hasOne(PlayHistory.self)  // Circular reference!
+}
+
+// GOOD - in Associations.swift
+extension PersistedTrack {
+    static let playlistTracks = hasMany(PlaylistTrack.self)
+    static let playHistory = hasOne(PlayHistory.self)
+    static let likedTrack = hasOne(LikedTrack.self)
+}
+```
+- **Session**: Local-first refactor (2026-01-04)
+
+### Helper Structs for GRDB Association Fetching
+- **Context**: Fetching records with their associations using GRDB's `.including(required:)`
+- **Learning**: GRDB requires explicit helper structs when fetching records with associations. The struct property names must match the association key path names exactly.
+- **Example**:
+```swift
+struct PlayHistoryWithTrack: Codable, FetchableRecord, Sendable {
+    var playHistory: PlayHistory   // Must match table name convention
+    var track: PersistedTrack      // Must match association name
+}
+
+// Usage in query
+let records = try PlayHistory
+    .including(required: PlayHistory.track)
+    .order(PlayHistory.Columns.updatedAt.desc)
+    .asRequest(of: PlayHistoryWithTrack.self)
+    .fetchAll(db)
+```
+- **Session**: Local-first refactor (2026-01-04)
+
+### MigratableTable Protocol Pattern
+- **Context**: Registering GRDB table migrations cleanly
+- **Learning**: Create a protocol that combines `TableRecord`, `FetchableRecord`, `MutablePersistableRecord` with a `createTable(table:)` static method. This allows type-safe migration registration via an `allTables` array.
+- **Example**:
+```swift
+protocol MigratableTable: TableRecord, FetchableRecord, MutablePersistableRecord {
+    static var databaseTableName: String { get }
+    static func createTable(table: TableDefinition)
+}
+
+let allTables: [any MigratableTable.Type] = [
+    PersistedTrack.self,
+    PersistedPlaylist.self,
+    PlaylistTrack.self,
+    PlayHistory.self,
+    LikedTrack.self,
+]
+```
+- **Session**: Local-first refactor (2026-01-04)
+
+### ValueObservation for Reactive UI
+- **Context**: Connecting SwiftUI views to GRDB database changes
+- **Learning**: Use `ValueObservation.tracking { }.values(in:)` to create async streams that update whenever the database changes. Call `observeDatabase()` from `.task` modifier - it never returns (infinite async for loop).
+- **Example**:
+```swift
+@Observable @MainActor
+final class LibraryViewModel {
+    private(set) var playlists: [Playlist] = []
+
+    func observeDatabase() async {
+        let observation = ValueObservation.tracking { db in
+            try PersistedPlaylist.order(Columns.lastUpdated.desc).fetchAll(db)
+        }.values(in: MixBridgeDB.shared.reader)
+
+        for try await persisted in observation {
+            self.playlists = persisted.map { $0.toPlaylist() }
+        }
+    }
+}
+
+// In View:
+.task { await viewModel.observeDatabase() }
+.task { await viewModel.refresh() }  // Separate task for network sync
+```
+- **Session**: Local-first refactor (2026-01-04)
+
+### OperationQueue Actor for Serial Sync
+- **Context**: Preventing race conditions in database sync operations
+- **Learning**: Wrap sync operations in an actor-based operation queue that chains tasks. This ensures only one sync operation runs at a time while still allowing async behavior.
+- **Example**:
+```swift
+actor SyncOperationQueue {
+    private var tail: Task<Void, Never>?
+
+    func run<T>(_ operation: @escaping () async throws -> T) async throws -> T {
+        let previous = tail
+        let current = Task.detached { () throws -> T in
+            _ = await previous?.value
+            return try await operation()
+        }
+        tail = Task.detached { _ = try? await current.value }
+        return try await current.value
+    }
+}
+```
+- **Session**: Local-first refactor (2026-01-04)
+
+### Optimistic UI Updates with Rollback
+- **Context**: Like/unlike actions that need instant UI feedback
+- **Learning**: Write to local database immediately for instant UI update, then sync to backend. If backend fails, rollback the local change. ValueObservation handles all UI updates automatically.
+- **Example**:
+```swift
+func toggleLike(track: Track) async throws {
+    let wasLiked = try await db.read { try LikedTrack.fetchOne(db, key: track.id) != nil }
+
+    // Optimistic local update
+    try await db.write { db in
+        if wasLiked {
+            try LikedTrack.deleteOne(db, key: track.id)
+        } else {
+            try LikedTrack(trackId: track.id, likedAt: Date()).insert(db)
+        }
+    }
+
+    // Sync to backend
+    do {
+        if wasLiked {
+            try await convex.unlikeTrack(userId: userId, trackId: track.id)
+        } else {
+            try await convex.likeTrack(userId: userId, track: soundCloudTrack)
+        }
+    } catch {
+        // Rollback on failure
+        try? await db.write { db in
+            if wasLiked {
+                try LikedTrack(trackId: track.id, likedAt: Date()).insert(db)
+            } else {
+                try LikedTrack.deleteOne(db, key: track.id)
+            }
+        }
+        throw error
+    }
+}
+```
+- **Session**: Local-first refactor (2026-01-04)
+
+### Database as Single Source of Truth
+- **Context**: Eliminating PreloadedDataStore and in-memory caching
+- **Learning**: With GRDB, the database becomes the single source of truth. Network syncs write to the database, and ValueObservation automatically updates all observing views. This eliminates complex cache invalidation logic and provides offline support for free.
+- **Session**: Local-first refactor (2026-01-04)

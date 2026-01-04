@@ -9,33 +9,18 @@ import SwiftUI
 
 struct PlaylistDetailView: View {
     let playlist: Playlist
+    @State private var viewModel: PlaylistDetailViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
     @Environment(QueueManager.self) private var queueManager
-    @Environment(PreloadedDataStore.self) private var dataStore
 
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
     private let artworkSize: CGFloat = 300
 
-    // Computed properties from dataStore
-    private var trackItems: [TrackItem] {
-        dataStore.playlistTracks[playlist.id] ?? []
-    }
-
-    private var isLoading: Bool {
-        dataStore.playlistTracksState[playlist.id] == .loading
-    }
-
-    private var loadError: Error? {
-        if case .failed(let error) = dataStore.playlistTracksState[playlist.id] {
-            return error
-        }
-        return nil
-    }
-
-    private var hasLoaded: Bool {
-        dataStore.playlistTracksState[playlist.id]?.isLoaded ?? false
+    init(playlist: Playlist) {
+        self.playlist = playlist
+        self._viewModel = State(initialValue: PlaylistDetailViewModel(playlistId: playlist.id))
     }
 
     var body: some View {
@@ -74,17 +59,26 @@ struct PlaylistDetailView: View {
         }
         .navigationAllowDismissalGestures(allowDismissalGesture)
         .navigationBarBackButtonHidden(true)
+        // Start database observation
+        .task {
+            await viewModel.observeDatabase()
+        }
+        // Fetch fresh data if not loaded
+        .task {
+            if !viewModel.hasLoaded {
+                if let userId = authManager.currentUserId {
+                    await viewModel.refresh(userId: userId)
+                }
+            }
+        }
         .task {
             try? await Task.sleep(for: .seconds(1))
             allowDismissalGesture = .all
         }
-        .onAppear {
-            if !hasLoaded {
-                Task { await loadPlaylistTracks() }
-            }
-        }
         .refreshable {
-            await loadPlaylistTracks(forceRefresh: true)
+            if let userId = authManager.currentUserId {
+                await viewModel.refresh(userId: userId, forceRefresh: true)
+            }
         }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -155,15 +149,15 @@ struct PlaylistDetailView: View {
     private var actionButtons: some View {
         PlaylistActionButtons(
             onPlay: {
-                guard !trackItems.isEmpty else { return }
+                guard !viewModel.trackItems.isEmpty else { return }
                 Task {
-                    await PlayerState.shared.playFromList(items: trackItems, startIndex: 0)
+                    await PlayerState.shared.playFromList(items: viewModel.trackItems, startIndex: 0)
                 }
             },
             onShuffle: {
-                guard !trackItems.isEmpty else { return }
+                guard !viewModel.trackItems.isEmpty else { return }
                 Task {
-                    await PlayerState.shared.playFromList(items: trackItems, startIndex: 0, shuffle: true)
+                    await PlayerState.shared.playFromList(items: viewModel.trackItems, startIndex: 0, shuffle: true)
                 }
             }
         )
@@ -171,7 +165,7 @@ struct PlaylistDetailView: View {
 
     private var tracksSection: some View {
         Section {
-            if isLoading && trackItems.isEmpty {
+            if viewModel.isLoading && viewModel.trackItems.isEmpty {
                 HStack {
                     Spacer()
                     ProgressView()
@@ -180,26 +174,30 @@ struct PlaylistDetailView: View {
                 .padding()
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
-            } else if let error = loadError, trackItems.isEmpty {
+            } else if let error = viewModel.error, viewModel.trackItems.isEmpty {
                 VStack(spacing: 12) {
                     Text("Unable to load tracks")
                         .foregroundStyle(.secondary)
                     Button("Try Again") {
-                        Task { await loadPlaylistTracks(forceRefresh: true) }
+                        Task {
+                            if let userId = authManager.currentUserId {
+                                await viewModel.refresh(userId: userId, forceRefresh: true)
+                            }
+                        }
                     }
                     .buttonStyle(.bordered)
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
                 .listRowBackground(Color.clear)
-            } else if !trackItems.isEmpty {
-                ForEach(Array(trackItems.enumerated()), id: \.element.id) { index, item in
+            } else if !viewModel.trackItems.isEmpty {
+                ForEach(Array(viewModel.trackItems.enumerated()), id: \.element.id) { index, item in
                     TrackRow(
                         item.track,
                         number: index + 1,
                         showCover: true,
                         soundCloudTrack: item.soundCloudTrack,
-                        listContext: trackItems,
+                        listContext: viewModel.trackItems,
                         indexInList: index
                     )
                     .listRowBackground(Color.clear)
@@ -221,18 +219,6 @@ struct PlaylistDetailView: View {
         }
         .listSectionSeparator(.hidden)
     }
-
-    private func loadPlaylistTracks(forceRefresh: Bool = false) async {
-        guard let userId = authManager.currentUserId else { return }
-
-        if forceRefresh {
-            // Force refresh from network - bypasses cache check
-            await AppDataPreloader.shared.preloadPlaylistTracks(userId: userId, playlistId: playlist.id, forceRefresh: true)
-        } else {
-            // Just ensure it's loaded
-            await AppDataPreloader.shared.refreshIfStale(userId: userId, dataType: .playlistTracks(playlistId: playlist.id))
-        }
-    }
 }
 
 #Preview("Light Mode") {
@@ -245,7 +231,6 @@ struct PlaylistDetailView: View {
     }
     .environment(AuthManager.shared)
     .environment(QueueManager.shared)
-    .environment(PreloadedDataStore.shared)
     .preferredColorScheme(.light)
 }
 
@@ -259,6 +244,5 @@ struct PlaylistDetailView: View {
     }
     .environment(AuthManager.shared)
     .environment(QueueManager.shared)
-    .environment(PreloadedDataStore.shared)
     .preferredColorScheme(.dark)
 }

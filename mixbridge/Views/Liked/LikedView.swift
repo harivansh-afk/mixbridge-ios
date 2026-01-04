@@ -8,9 +8,9 @@
 import SwiftUI
 
 struct LikedView: View {
+    @State private var viewModel = LikedViewModel()
     @Environment(AuthManager.self) private var authManager
     @Environment(QueueManager.self) private var queueManager
-    @Environment(PreloadedDataStore.self) private var dataStore
 
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
@@ -18,24 +18,31 @@ struct LikedView: View {
         content
             .navigationTitle("Liked")
             .navigationBarTitleDisplayMode(.large)
-            .refreshable {
-                await loadLikedTracks(forceRefresh: true)
+            // Start database observation
+            .task {
+                await viewModel.observeDatabase()
             }
-    }
-
-    private func loadLikedTracks(forceRefresh: Bool = false) async {
-        guard let userId = authManager.currentUserId else { return }
-        await AppDataPreloader.shared.refreshIfStale(userId: userId, dataType: .likedTracks)
+            // Fetch fresh data
+            .task {
+                if let userId = authManager.currentUserId {
+                    await viewModel.refresh(userId: userId)
+                }
+            }
+            .refreshable {
+                if let userId = authManager.currentUserId {
+                    await viewModel.refresh(userId: userId, forceRefresh: true)
+                }
+            }
     }
 
     @ViewBuilder
     private var content: some View {
-        if dataStore.likedTracksState == .loading && dataStore.likedTracks.isEmpty {
+        if viewModel.isLoading && viewModel.likedTracks.isEmpty {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if case .failed(let error) = dataStore.likedTracksState, dataStore.likedTracks.isEmpty {
+        } else if let error = viewModel.error, viewModel.likedTracks.isEmpty {
             errorView(error)
-        } else if dataStore.likedTracks.isEmpty {
+        } else if viewModel.likedTracks.isEmpty {
             emptyState
         } else {
             likedList
@@ -50,7 +57,9 @@ struct LikedView: View {
         } actions: {
             Button("Try Again") {
                 Task {
-                    await loadLikedTracks()
+                    if let userId = authManager.currentUserId {
+                        await viewModel.refresh(userId: userId)
+                    }
                 }
             }
             .buttonStyle(.bordered)
@@ -68,13 +77,13 @@ struct LikedView: View {
     private var likedList: some View {
         List {
             Section {
-                ForEach(Array(dataStore.likedTracks.enumerated()), id: \.element.id) { index, item in
+                ForEach(Array(viewModel.likedTracks.enumerated()), id: \.element.id) { index, item in
                     TrackRow(
                         item.track,
                         number: index + 1,
                         showCover: true,
                         soundCloudTrack: item.soundCloudTrack,
-                        listContext: dataStore.likedTracks,
+                        listContext: viewModel.likedTracks,
                         indexInList: index
                     )
                 }
@@ -96,7 +105,6 @@ struct LikedView: View {
     }
     .environment(AuthManager.shared)
     .environment(QueueManager.shared)
-    .environment(PreloadedDataStore.shared)
     .preferredColorScheme(.light)
 }
 
@@ -106,6 +114,5 @@ struct LikedView: View {
     }
     .environment(AuthManager.shared)
     .environment(QueueManager.shared)
-    .environment(PreloadedDataStore.shared)
     .preferredColorScheme(.dark)
 }
