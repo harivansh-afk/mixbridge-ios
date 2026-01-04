@@ -33,13 +33,14 @@ and leverage proven approaches.
 - **Observable pattern**: Uses Swift's `@Observable` macro for state management (managers are singletons with `.shared`)
 - **Service layer**: Backend communication via `ConvexService` (connects to Convex backend at mixbridge.app)
 - **Coordinator pattern**: `PlaybackCoordinator` handles all audio playback including mix/crossfade mode
-- **Data preloading**: `AppDataPreloader` and `PreloadedDataStore` for optimistic UI and background data loading
+- **Local-first sync engine**: GRDB-backed SQLite with `PlaylistSync`, `HistorySync`, `LikedSync` for offline-first data with Convex backend synchronization
 
 ### Tech Stack
 
 - **Language**: Swift 5.9+ (iOS 18+, uses new Swift concurrency features)
 - **UI Framework**: SwiftUI (declarative, uses `@Observable`, `@Environment`, `@State`)
 - **Audio**: AVFoundation (`AVQueuePlayer`, `AVAudioEngine` for mix mode)
+- **Database**: GRDB (SQLite wrapper with reactive ValueObservation)
 - **Backend**: Convex (BaaS) - queries, mutations, actions via REST API
 - **Auth**: OAuth 2.0 via SoundCloud, JWT session tokens stored in Keychain
 - **Animation**: Lottie (via SPM)
@@ -52,9 +53,14 @@ and leverage proven approaches.
   - `Extensions/` - Swift/SwiftUI extensions (Color+Theme, String+SoundCloud, View+Animations)
   - `Models/` - Data models (Track, Playlist, SoundCloudModels, PlayerState, MixSettings)
   - `Services/` - Business logic (ConvexService, PlaybackCoordinator, QueueManager, etc.)
+  - `Sync/` - Local-first sync engine (PlaylistSync, HistorySync, LikedSync, SyncOperationQueue)
   - `Utilities/` - Helpers (HapticManager, LogManager, Debouncer, ImageCacheManager)
   - `Views/` - Screen views organized by feature (Home, Library, Search, Settings, etc.)
+  - `ViewModels/` - Observable ViewModels with GRDB database observation
   - `Onboarding/` - Onboarding flow views
+- `Packages/` - Local Swift packages for modular architecture
+  - `MixBridgeDomain/` - Pure Swift domain models (no external dependencies)
+  - `MixBridgeDB/` - GRDB database layer with migrations and model extensions
 
 ### Build & Test Commands
 

@@ -25,42 +25,71 @@ final class HistorySync: Sendable {
             // 1. Fetch from API
             let history = try await convex.getPlayHistory(userId: userId, limit: limit)
 
-            // 2. Save to DB
+            // 2. Aggregate history entries by trackId to avoid overcounting
+            // Each backend entry represents one play - group them to get accurate counts
+            var aggregated: [String: AggregatedHistory] = [:]
+
+            for playItem in history {
+                let trackId = String(playItem.trackData.id)
+
+                // Calculate listened percentage for this play
+                let percentage: Double
+                if let position = playItem.playbackPosition, let duration = playItem.duration, duration > 0 {
+                    percentage = min(position / duration, 1.0)
+                } else {
+                    percentage = playItem.listenedPercentage ?? 0
+                }
+
+                let playedAt = Date(timeIntervalSince1970: playItem.playedAt / 1000)
+
+                if var existing = aggregated[trackId] {
+                    // Aggregate: increment count, keep most recent position/time, max percentage
+                    existing.playCount += 1
+                    if playedAt > existing.updatedAt {
+                        existing.lastPlayedPosition = playItem.playbackPosition ?? existing.lastPlayedPosition
+                        existing.updatedAt = playedAt
+                    }
+                    existing.listenedPercentage = max(percentage, existing.listenedPercentage)
+                    aggregated[trackId] = existing
+                } else {
+                    aggregated[trackId] = AggregatedHistory(
+                        trackData: playItem.trackData,
+                        playCount: 1,
+                        lastPlayedPosition: playItem.playbackPosition ?? 0,
+                        listenedPercentage: percentage,
+                        createdAt: playedAt,
+                        updatedAt: playedAt
+                    )
+                }
+            }
+
+            // 3. Save aggregated data to DB
             try await db.writer.write { db in
-                for playItem in history {
+                for (trackId, aggregatedItem) in aggregated {
                     // Save track
-                    var track = PersistedTrack(from: playItem.trackData)
+                    var track = PersistedTrack(from: aggregatedItem.trackData)
                     try track.upsert(db)
 
-                    // Calculate listened percentage
-                    let percentage: Double
-                    if let position = playItem.playbackPosition, let duration = playItem.duration, duration > 0 {
-                        percentage = min(position / duration, 1.0)
-                    } else {
-                        percentage = playItem.listenedPercentage ?? 0
-                    }
-
-                    // Create/update history record
-                    let trackId = String(playItem.trackData.id)
+                    // Create/update history record using aggregated counts
                     var historyRecord: PlayHistory
 
                     if let existing = try PlayHistory.fetchOne(db, key: trackId) {
-                        // Update existing record
+                        // Merge with existing: use max of local vs backend counts
+                        // This handles the case where local optimistic updates have occurred
                         historyRecord = existing
-                        historyRecord.playCount += 1
-                        historyRecord.lastPlayedPosition = playItem.playbackPosition ?? existing.lastPlayedPosition
-                        historyRecord.listenedPercentage = max(percentage, existing.listenedPercentage)
-                        historyRecord.updatedAt = Date(timeIntervalSince1970: playItem.playedAt / 1000)
+                        historyRecord.playCount = max(existing.playCount, aggregatedItem.playCount)
+                        historyRecord.lastPlayedPosition = aggregatedItem.lastPlayedPosition
+                        historyRecord.listenedPercentage = max(aggregatedItem.listenedPercentage, existing.listenedPercentage)
+                        historyRecord.updatedAt = aggregatedItem.updatedAt
                     } else {
                         // Create new record
-                        let playedAt = Date(timeIntervalSince1970: playItem.playedAt / 1000)
                         historyRecord = PlayHistory(
                             trackId: trackId,
-                            playCount: 1,
-                            lastPlayedPosition: playItem.playbackPosition ?? 0,
-                            listenedPercentage: percentage,
-                            createdAt: playedAt,
-                            updatedAt: playedAt
+                            playCount: aggregatedItem.playCount,
+                            lastPlayedPosition: aggregatedItem.lastPlayedPosition,
+                            listenedPercentage: aggregatedItem.listenedPercentage,
+                            createdAt: aggregatedItem.createdAt,
+                            updatedAt: aggregatedItem.updatedAt
                         )
                     }
 
@@ -68,8 +97,18 @@ final class HistorySync: Sendable {
                 }
             }
 
-            logInfo(.sync, "Synced \(history.count) history items")
+            logInfo(.sync, "Synced \(history.count) history items (\(aggregated.count) unique tracks)")
         }
+    }
+
+    /// Helper struct for aggregating multiple play entries per track
+    private struct AggregatedHistory {
+        let trackData: SoundCloudTrack
+        var playCount: Int
+        var lastPlayedPosition: Double
+        var listenedPercentage: Double
+        var createdAt: Date
+        var updatedAt: Date
     }
 
     // MARK: - Optimistic Add to History

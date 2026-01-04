@@ -525,6 +525,58 @@ return trackIds.compactMap { tracksDict[$0] }
 
 ---
 
+## Sync Engine Architecture
+
+**See [sync-engine.md](sync-engine.md) for comprehensive documentation.**
+
+### History Sync Aggregation Bug Fix
+- **Context**: `syncHistory()` was incrementing `playCount` for every API record, causing overcounting
+- **Learning**: When backend returns multiple history entries for the same track, aggregate them first before saving. The naive approach of incrementing `playCount` for each record causes N plays of the same track to result in playCount = N * existingCount instead of playCount = N.
+- **Fix**: Create aggregation map keyed by trackId, count occurrences, then save once per unique track with accurate count.
+- **Example**:
+```swift
+// Bad - increments per record (overcounts)
+for playItem in history {
+    if let existing = try PlayHistory.fetchOne(db, key: trackId) {
+        historyRecord = existing
+        historyRecord.playCount += 1  // Adds 1 for EACH api record!
+    }
+}
+
+// Good - aggregate first, then save
+var aggregated: [String: AggregatedHistory] = [:]
+for playItem in history {
+    let trackId = String(playItem.trackData.id)
+    if var existing = aggregated[trackId] {
+        existing.playCount += 1
+        aggregated[trackId] = existing
+    } else {
+        aggregated[trackId] = AggregatedHistory(playCount: 1, ...)
+    }
+}
+// Then save aggregated counts once per track
+for (trackId, agg) in aggregated {
+    historyRecord.playCount = max(existing.playCount, agg.playCount)
+}
+```
+- **Session**: Sync engine review (2026-01-04)
+
+### Module Loading Pattern (Swift Package Manager)
+- **Context**: Organizing GRDB models to avoid circular references
+- **Learning**: Use two-package pattern: Domain (pure Swift models) + DB (GRDB extensions with `@retroactive` conformances). Re-export both from DB package for convenience.
+- **Key files**:
+  - `Packages/MixBridgeDomain/` - Pure Codable structs, no external deps
+  - `Packages/MixBridgeDB/` - GRDB extensions, migrations, associations
+- **Re-export pattern**:
+```swift
+// In MixBridgeDB.swift
+@_exported import GRDB
+@_exported import MixBridgeDomain
+```
+- **Session**: Sync engine review (2026-01-04)
+
+---
+
 ## SwiftUI Performance
 
 ### State vs Computed Properties for Expensive Derived Data
