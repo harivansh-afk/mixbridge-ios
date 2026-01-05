@@ -101,6 +101,10 @@ final class ArtistSync: Sendable {
                     let existing = try PersistedPlaylist.fetchOne(db, key: playlistId)
                     var persisted = playlist
                     persisted.libraryOwnerUserId = existing?.libraryOwnerUserId ?? content.cachedOwner
+                    if let existing {
+                        persisted.createdAt = existing.createdAt
+                        persisted.lastUpdated = existing.lastUpdated
+                    }
                     try persisted.upsert(db)
                 }
             }

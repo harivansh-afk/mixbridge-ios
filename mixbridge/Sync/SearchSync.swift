@@ -106,6 +106,10 @@ final class SearchSync: Sendable {
                     let existing = try PersistedPlaylist.fetchOne(db, key: playlistId)
                     var persisted = playlist
                     persisted.libraryOwnerUserId = existing?.libraryOwnerUserId ?? payload.cachedOwner
+                    if let existing {
+                        persisted.createdAt = existing.createdAt
+                        persisted.lastUpdated = existing.lastUpdated
+                    }
                     try persisted.upsert(db)
                 }
             }

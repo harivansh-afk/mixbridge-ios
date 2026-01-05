@@ -71,9 +71,13 @@ final class PlaylistDetailViewModel {
                     return TrackItem(soundCloudTrack: scTrack)
                 }
 
-                self.trackItems = items
+                if self.trackItems != items {
+                    self.trackItems = items
+                }
                 self.error = nil
             }
+        } catch is CancellationError {
+            // Expected when the view disappears; don't surface as an error state.
         } catch {
             logError(.db, "Failed to observe playlist tracks: \(error)")
             self.error = error

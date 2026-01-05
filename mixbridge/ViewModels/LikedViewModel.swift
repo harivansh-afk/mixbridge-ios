@@ -32,7 +32,7 @@ final class LikedViewModel {
     /// Start observing liked tracks from local database
     /// Call this from view's .task modifier
     func observeDatabase() async {
-        let observation = ValueObservation.trackingConstantRegion { db in
+        let observation = ValueObservation.tracking { db in
             try LikedTrack
                 .including(required: LikedTrack.track)
                 .order(LikedTrack.Columns.likedAt.desc)
@@ -49,9 +49,13 @@ final class LikedViewModel {
                     return TrackItem(soundCloudTrack: scTrack)
                 }
 
-                self.likedTracks = items
+                if self.likedTracks != items {
+                    self.likedTracks = items
+                }
                 self.error = nil
             }
+        } catch is CancellationError {
+            // Expected when the view disappears; don't surface as an error state.
         } catch {
             logError(.db, "Failed to observe liked tracks: \(error)")
             self.error = error
