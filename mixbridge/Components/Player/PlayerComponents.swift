@@ -186,6 +186,27 @@ struct PlayerProgressView: View {
     }
 }
 
+// MARK: - Play/Pause Icon
+/// Play/pause icon that keeps the *original* sizing while avoiding layout shifts.
+/// The ZStack's size becomes the max of both symbols, so toggling never changes the button bounds.
+struct PlayPauseIcon: View {
+    let isPlaying: Bool
+
+    var body: some View {
+        ZStack {
+            Image(systemName: "play.fill")
+                .opacity(isPlaying ? 0 : 1)
+                .scaleEffect(isPlaying ? 0.94 : 1.0)
+
+            Image(systemName: "pause.fill")
+                .opacity(isPlaying ? 1 : 0)
+                .scaleEffect(isPlaying ? 1.0 : 0.94)
+        }
+        .contentShape(Circle())
+        .animation(.snappy(duration: 0.12), value: isPlaying)
+    }
+}
+
 // MARK: - 5. Player Controls
 /// The main transport controls.
 /// Using a ViewBuilder allows us to easily swap the layout or buttons without changing the logic.
@@ -202,22 +223,21 @@ struct PlayerControlsView: View {
                     .font(.system(size: 30))
                     .foregroundStyle(.primary)
             }
-            .buttonStyle(PlayerButtonStyle(hapticStyle: .light))
+            .buttonStyle(PlayerButtonStyle(hapticStyle: .light, scaleAmount: 0.88, haloSize: 20, haloOpacity: 0.32))
 
             Button(action: onPlayPause) {
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                PlayPauseIcon(isPlaying: isPlaying)
                     .font(.system(size: 50))
                     .foregroundStyle(.primary)
-                    .contentTransition(.symbolEffect(.replace))
             }
-            .buttonStyle(PlayerButtonStyle(hapticStyle: .light, scaleAmount: 0.85))
+            .buttonStyle(PlayerButtonStyle(hapticStyle: .light, scaleAmount: 0.88, haloSize: 36, haloOpacity: 0.32))
 
             Button(action: onNext) {
                 Image(systemName: "forward.fill")
                     .font(.system(size: 30))
                     .foregroundStyle(.primary)
             }
-            .buttonStyle(PlayerButtonStyle(hapticStyle: .light))
+            .buttonStyle(PlayerButtonStyle(hapticStyle: .light, scaleAmount: 0.88, haloSize: 20, haloOpacity: 0.32))
         }
     }
 }
@@ -228,15 +248,73 @@ struct PlayerButtonStyle: ButtonStyle {
     var hapticStyle: UIImpactFeedbackGenerator.FeedbackStyle = .light
     var enableHaptic: Bool = true
     var scaleAmount: CGFloat = 0.9
+    var pressedOpacity: CGFloat = 1.0
+    var pressedBrightness: Double = 0.0
+    var haloSize: CGFloat = 40
+    var haloOpacity: Double = 0.22
 
     func makeBody(configuration: Configuration) -> some View {
+        PlayerButtonStyleBody(
+            configuration: configuration,
+            hapticStyle: hapticStyle,
+            enableHaptic: enableHaptic,
+            scaleAmount: scaleAmount,
+            pressedOpacity: pressedOpacity,
+            pressedBrightness: pressedBrightness,
+            haloSize: haloSize,
+            haloOpacity: haloOpacity
+        )
+    }
+}
+
+private struct PlayerButtonStyleBody: View {
+    let configuration: ButtonStyle.Configuration
+    let hapticStyle: UIImpactFeedbackGenerator.FeedbackStyle
+    let enableHaptic: Bool
+    let scaleAmount: CGFloat
+    let pressedOpacity: CGFloat
+    let pressedBrightness: Double
+    let haloSize: CGFloat
+    let haloOpacity: Double
+
+    @State private var pressed: Bool = false
+
+    private var pressIn: Animation { .easeOut(duration: 0.07) }
+    private var pressOut: Animation { .snappy(duration: 0.16, extraBounce: 0.16) }
+
+    var body: some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? scaleAmount : 1.0)
-            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
+            .background {
+                ZStack {
+                    // Subtle grey touch halo - smaller and more muted.
+                    Circle()
+                        .fill(Color.gray.opacity(0.35))
+                        .opacity(pressed ? haloOpacity : 0.0)
+                        .scaleEffect(pressed ? 1.0 : 0.85)
+                        .blur(radius: pressed ? 0 : 6)
+                }
+                .frame(width: haloSize, height: haloSize)
+                .animation(pressed ? pressIn : pressOut, value: pressed)
+            }
+            .scaleEffect(pressed ? scaleAmount : 1.0)
+            .opacity(pressed ? pressedOpacity : 1.0)
+            .brightness(pressed ? pressedBrightness : 0)
+            .animation(pressed ? pressIn : pressOut, value: pressed)
+            .onAppear { pressed = configuration.isPressed }
             .onChange(of: configuration.isPressed) { _, isPressed in
+                if isPressed != pressed {
+                    withAnimation(isPressed ? pressIn : pressOut) {
+                        pressed = isPressed
+                    }
+                }
+
                 if isPressed && enableHaptic {
-                    let generator = UIImpactFeedbackGenerator(style: hapticStyle)
-                    generator.impactOccurred()
+                    switch hapticStyle {
+                    case .light: HapticManager.light()
+                    case .medium: HapticManager.medium()
+                    case .heavy: HapticManager.heavy()
+                    @unknown default: HapticManager.light()
+                    }
                 }
             }
     }

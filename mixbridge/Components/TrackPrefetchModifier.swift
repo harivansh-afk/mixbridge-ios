@@ -15,7 +15,7 @@ struct TrackPrefetchModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onAppear {
-                Task {
+                Task.detached(priority: .utility) { [trackId] in
                     await StreamURLCache.shared.prefetchStreamURL(for: trackId)
                 }
             }

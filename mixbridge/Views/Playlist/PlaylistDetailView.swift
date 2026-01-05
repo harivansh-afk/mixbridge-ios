@@ -146,15 +146,11 @@ struct PlaylistDetailView: View {
         PlaylistActionButtons(
             onPlay: {
                 guard !viewModel.trackItems.isEmpty else { return }
-                Task {
-                    await PlayerState.shared.playFromList(items: viewModel.trackItems, startIndex: 0)
-                }
+                PlayerState.shared.playFromList(items: viewModel.trackItems, startIndex: 0)
             },
             onShuffle: {
                 guard !viewModel.trackItems.isEmpty else { return }
-                Task {
-                    await PlayerState.shared.playFromList(items: viewModel.trackItems, startIndex: 0, shuffle: true)
-                }
+                PlayerState.shared.playFromList(items: viewModel.trackItems, startIndex: 0, shuffle: true)
             }
         )
     }

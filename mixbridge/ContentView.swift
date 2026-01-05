@@ -88,10 +88,8 @@ struct MiniPlayerModifier: ViewModifier {
                 HapticManager.light()
                 playerState.togglePlayback()
             }   label: {
-                Image(systemName: playerState.isPlaying ? "pause.fill" : "play.fill")
+                PlayPauseIcon(isPlaying: playerState.isPlaying)
                     .foregroundStyle(colorScheme == .dark ? .white : .black)
-                    .contentTransition(.symbolEffect(.replace))
-                    .contentShape(.rect)
             }
             .padding(.trailing, 10)
             .buttonStyle(.plain)
