@@ -97,7 +97,7 @@ final class PlaylistSync: Sendable {
         userId: String,
         playlistId: String,
         forceRefresh: Bool = false,
-        updatePlaylistRow: Bool = true
+        updatePlaylistRow: Bool = false
     ) async throws {
         try await operationQueue.run { [self] in
             // 1. Fetch playlist (including tracks) from API
@@ -162,10 +162,13 @@ final class PlaylistSync: Sendable {
                     try item.junction.insert(db)
                 }
 
-                // Update playlist track count
-                try PersistedPlaylist
-                    .filter(PersistedPlaylist.Columns.id == playlistId)
-                    .updateAll(db, PersistedPlaylist.Columns.trackCount.set(to: prepared.trackCount))
+                // Update playlist track count only when explicitly updating playlist metadata.
+                // Otherwise, avoid touching the playlists table (prevents Library cover churn).
+                if updatePlaylistRow {
+                    try PersistedPlaylist
+                        .filter(PersistedPlaylist.Columns.id == playlistId)
+                        .updateAll(db, PersistedPlaylist.Columns.trackCount.set(to: prepared.trackCount))
+                }
             }
 
             await MainActor.run {

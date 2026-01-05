@@ -105,12 +105,18 @@ final class SearchSync: Sendable {
                     let playlistId = playlist.id
                     let existing = try PersistedPlaylist.fetchOne(db, key: playlistId)
                     var persisted = playlist
-                    persisted.libraryOwnerUserId = existing?.libraryOwnerUserId ?? payload.cachedOwner
-                    if let existing {
-                        persisted.createdAt = existing.createdAt
-                        persisted.lastUpdated = existing.lastUpdated
+                    if let existing, existing.libraryOwnerUserId == userId {
+                        // Never let search cache overwrite Library playlist metadata (artwork/name/etc).
+                        // The Library sync is the source of truth for library-owned playlists.
+                        continue
+                    } else {
+                        persisted.libraryOwnerUserId = existing?.libraryOwnerUserId ?? payload.cachedOwner
+                        if let existing {
+                            persisted.createdAt = existing.createdAt
+                            persisted.lastUpdated = existing.lastUpdated
+                        }
+                        try persisted.upsert(db)
                     }
-                    try persisted.upsert(db)
                 }
             }
 

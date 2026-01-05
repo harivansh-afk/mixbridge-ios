@@ -96,7 +96,8 @@ final class PlaylistDetailViewModel {
             try await playlistSync.syncPlaylistTracks(
                 userId: userId,
                 playlistId: playlistId,
-                forceRefresh: forceRefresh
+                forceRefresh: forceRefresh,
+                updatePlaylistRow: false
             )
             error = nil
         } catch {
