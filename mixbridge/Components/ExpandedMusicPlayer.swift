@@ -247,7 +247,7 @@ struct ExpandedPlayerView: View {
             let queueHandleTopPadding: CGFloat = 20
             let queueHandleBottomPadding: CGFloat = 6
             let queueTopFadeHeight: CGFloat = 30
-            let queueListTopInset: CGFloat = 5 
+            let queueListTopInset: CGFloat = 1 
             let queueSectionVisualLift: CGFloat = 44
             // If SwiftUI carousel state lags behind playback state, prefer playback-derived values
             // so we never briefly show the previous track at the end of a crossfade.
@@ -311,6 +311,7 @@ struct ExpandedPlayerView: View {
                                     HexagonArtworkFace(
                                         track: prevTrack,
                                         artworkWidth: artworkMaxWidth,
+                                        contentHorizontalPadding: horizontalPadding,
                                         cornerRadius: cornerRadius,
                                         rotation: calculate3DRotation(offset: dragOffset, direction: .left, screenWidth: screenWidth),
                                         anchor: .trailing, // Hinge at right edge
@@ -327,6 +328,7 @@ struct ExpandedPlayerView: View {
                                 HexagonArtworkFace(
                                     track: effectiveDisplayedTrack,
                                     artworkWidth: artworkMaxWidth,
+                                    contentHorizontalPadding: horizontalPadding,
                                     cornerRadius: cornerRadius,
                                     rotation: calculate3DRotation(offset: dragOffset, direction: .center, screenWidth: screenWidth),
                                     anchor: dragOffset > 0 ? .leading : .trailing,
@@ -344,6 +346,7 @@ struct ExpandedPlayerView: View {
                                     HexagonArtworkFace(
                                         track: nxtTrack,
                                         artworkWidth: artworkMaxWidth,
+                                        contentHorizontalPadding: horizontalPadding,
                                         cornerRadius: cornerRadius,
                                         rotation: calculate3DRotation(offset: dragOffset, direction: .right, screenWidth: screenWidth),
                                         anchor: .leading, // Hinge at left edge
@@ -1008,6 +1011,7 @@ struct HorizontalPanGesture: UIViewRepresentable {
 struct HexagonArtworkFace: View {
     let track: Track
     let artworkWidth: CGFloat
+    var contentHorizontalPadding: CGFloat = 20
     let cornerRadius: CGFloat
     let rotation: Double
     let anchor: UnitPoint
@@ -1026,6 +1030,8 @@ struct HexagonArtworkFace: View {
     @State private var crossfadeHandoffArtwork: String? = nil
 
     var body: some View {
+        let contentWidth = max(artworkWidth - (contentHorizontalPadding * 2), 1)
+        
         VStack(spacing: contentSpacing + 5) {
             // Artwork with 3D rotation applied
             // Layer the destination artwork behind Metal view to prevent flicker on transition end
@@ -1094,12 +1100,13 @@ struct HexagonArtworkFace: View {
                     startDelay: 5.0,
                     isPlaying: isPlaying
                 )
-                .frame(maxWidth: artworkWidth - 40)
+                .frame(width: contentWidth)
 
                 Text(track.artist)
                     .font(.headline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .frame(width: contentWidth)
             }
             .opacity(opacity)
         }
