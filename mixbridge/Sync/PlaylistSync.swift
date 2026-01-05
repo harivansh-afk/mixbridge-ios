@@ -24,7 +24,18 @@ final class PlaylistSync: Sendable {
             // 1. Fetch from API
             let scPlaylists = try await convex.getPlaylists(userId: userId, forceRefresh: forceRefresh)
 
-            // 2. Sync to DB (add/update + remove deleted)
+            // 2. Prepare DB payload on MainActor (SoundCloud models are main-actor isolated in this project).
+            let prepared = await MainActor.run { () -> (persistedPlaylists: [PersistedPlaylist], newPlaylistIds: Set<String>, cachedOwner: String) in
+                let persistedPlaylists = scPlaylists.map { scPlaylist in
+                    var persisted = PersistedPlaylist(from: scPlaylist)
+                    persisted.libraryOwnerUserId = userId
+                    return persisted
+                }
+                let newPlaylistIds = Set(scPlaylists.map { String($0.id) })
+                return (persistedPlaylists, newPlaylistIds, SyncConstants.cachedPlaylistOwner)
+            }
+
+            // 3. Sync to DB (add/update + remove deleted)
             try await db.writer.write { db in
                 // Backfill legacy databases (pre-v2) where playlists were already local-first but not scoped.
                 // At this point, only library playlists existed; cached playlists use a sentinel and won't match NULL.
@@ -37,26 +48,25 @@ final class PlaylistSync: Sendable {
                     .filter(PersistedPlaylist.Columns.libraryOwnerUserId == userId)
                     .fetchAll(db)
                     .map(\.id)
-                let newPlaylistIds = Set(scPlaylists.map { String($0.id) })
 
                 // Remove playlists no longer in backend (unfollowed/deleted)
-                for playlistId in currentLocalIds where !newPlaylistIds.contains(playlistId) {
+                for playlistId in currentLocalIds where !prepared.newPlaylistIds.contains(playlistId) {
                     // Keep the cached playlist row, but remove it from the user's Library scope.
                     // This prevents cached/search playlists from disappearing while still updating the Library UI.
                     try PersistedPlaylist
                         .filter(PersistedPlaylist.Columns.id == playlistId)
-                        .updateAll(db, PersistedPlaylist.Columns.libraryOwnerUserId.set(to: SyncConstants.cachedPlaylistOwner))
+                        .updateAll(db, PersistedPlaylist.Columns.libraryOwnerUserId.set(to: prepared.cachedOwner))
                 }
 
                 // Add/update playlists
-                for scPlaylist in scPlaylists {
-                    var persisted = PersistedPlaylist(from: scPlaylist)
-                    persisted.libraryOwnerUserId = userId
+                for persisted in prepared.persistedPlaylists {
                     try persisted.upsert(db)
                 }
             }
 
-            logInfo(.sync, "Synced \(scPlaylists.count) playlists")
+            await MainActor.run {
+                logInfo(.sync, "Synced \(scPlaylists.count) playlists")
+            }
         }
     }
 
@@ -73,13 +83,32 @@ final class PlaylistSync: Sendable {
             )
             let scTracks = scPlaylist.tracks ?? []
 
-            // 2. Save tracks and junction records
+            // 2. Prepare DB payload on MainActor (SoundCloud models are main-actor isolated in this project).
+            let now = Date()
+            let cachedOwner = await MainActor.run { SyncConstants.cachedPlaylistOwner }
+            let prepared = await MainActor.run { () -> (playlist: PersistedPlaylist, tracks: [PreparedPlaylistTrack], trackCount: Int) in
+                let playlist = PersistedPlaylist(from: scPlaylist)
+                let tracks = scTracks.enumerated().map { index, scTrack in
+                    PreparedPlaylistTrack(
+                        track: PersistedTrack(from: scTrack),
+                        junction: PlaylistTrack(
+                            playlistId: playlistId,
+                            trackId: String(scTrack.id),
+                            position: index,
+                            addedAt: now
+                        )
+                    )
+                }
+                return (playlist, tracks, scTracks.count)
+            }
+
+            // 3. Save tracks and junction records
             try await db.writer.write { db in
                 // Ensure playlist exists locally so the junction table's foreign key is satisfied.
                 // Preserve Library scoping if this playlist is already part of the user's library.
                 let existing = try PersistedPlaylist.fetchOne(db, key: playlistId)
-                var persisted = PersistedPlaylist(from: scPlaylist)
-                persisted.libraryOwnerUserId = existing?.libraryOwnerUserId ?? SyncConstants.cachedPlaylistOwner
+                var persisted = prepared.playlist
+                persisted.libraryOwnerUserId = existing?.libraryOwnerUserId ?? cachedOwner
                 try persisted.upsert(db)
 
                 // Clear existing junction records for this playlist
@@ -87,31 +116,26 @@ final class PlaylistSync: Sendable {
                     .filter(PlaylistTrack.Columns.playlistId == playlistId)
                     .deleteAll(db)
 
-                let now = Date()
-
-                for (index, scTrack) in scTracks.enumerated() {
-                    // Save track
-                    var track = PersistedTrack(from: scTrack)
-                    try track.upsert(db)
-
-                    // Create junction record with position
-                    var junction = PlaylistTrack(
-                        playlistId: playlistId,
-                        trackId: String(scTrack.id),
-                        position: index,
-                        addedAt: now
-                    )
-                    try junction.insert(db)
+                for item in prepared.tracks {
+                    try item.track.upsert(db)
+                    try item.junction.insert(db)
                 }
 
                 // Update playlist track count
                 try PersistedPlaylist
                     .filter(PersistedPlaylist.Columns.id == playlistId)
-                    .updateAll(db, PersistedPlaylist.Columns.trackCount.set(to: scTracks.count))
+                    .updateAll(db, PersistedPlaylist.Columns.trackCount.set(to: prepared.trackCount))
             }
 
-            logInfo(.sync, "Synced \(scTracks.count) tracks for playlist \(playlistId)")
+            await MainActor.run {
+                logInfo(.sync, "Synced \(prepared.trackCount) tracks for playlist \(playlistId)")
+            }
         }
+    }
+
+    private struct PreparedPlaylistTrack: Sendable {
+        let track: PersistedTrack
+        let junction: PlaylistTrack
     }
 
     // MARK: - Local Queries

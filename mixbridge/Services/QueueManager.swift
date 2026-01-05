@@ -384,7 +384,7 @@ class QueueManager {
         logInfo(.queue, "removeAtLocal: index=\(index), silent=\(silent)")
         logQueueState("removeAtLocal BEFORE")
 
-        guard let item = queue.items[safe: index] else {
+        guard queue.items[safe: index] != nil else {
             logWarning(.queue, "removeAtLocal: index \(index) OUT OF BOUNDS")
             return nil
         }

@@ -66,7 +66,7 @@ final class ArtistSync: Sendable {
                 forceRefresh: forceRefresh
             )
 
-            let content = try await MainActor.run { () -> (tracks: [SoundCloudTrack], playlists: [SoundCloudPlaylist], tracksData: Data, playlistsData: Data, persistedTracks: [PersistedTrack], persistedPlaylists: [PersistedPlaylist]) in
+            let content = try await MainActor.run { () -> (tracks: [SoundCloudTrack], playlists: [SoundCloudPlaylist], tracksData: Data, playlistsData: Data, persistedTracks: [PersistedTrack], persistedPlaylists: [PersistedPlaylist], cachedOwner: String) in
                 let numericArtistId = Int(artistId) ?? 0
                 let tracks = results.tracks.filter { $0.user.id == numericArtistId }
                 let playlists = results.playlists.filter { $0.user.id == numericArtistId }
@@ -78,7 +78,7 @@ final class ArtistSync: Sendable {
                 let persistedTracks = tracks.map { PersistedTrack(from: $0) }
                 let persistedPlaylists = playlists.map { PersistedPlaylist(from: $0) }
 
-                return (tracks, playlists, tracksData, playlistsData, persistedTracks, persistedPlaylists)
+                return (tracks, playlists, tracksData, playlistsData, persistedTracks, persistedPlaylists, SyncConstants.cachedPlaylistOwner)
             }
 
             try await db.writer.write { db in
@@ -93,7 +93,6 @@ final class ArtistSync: Sendable {
                 try cached.upsert(db)
 
                 for persisted in content.persistedTracks {
-                    var persisted = persisted
                     try persisted.upsert(db)
                 }
 
@@ -101,7 +100,7 @@ final class ArtistSync: Sendable {
                     let playlistId = playlist.id
                     let existing = try PersistedPlaylist.fetchOne(db, key: playlistId)
                     var persisted = playlist
-                    persisted.libraryOwnerUserId = existing?.libraryOwnerUserId ?? SyncConstants.cachedPlaylistOwner
+                    persisted.libraryOwnerUserId = existing?.libraryOwnerUserId ?? content.cachedOwner
                     try persisted.upsert(db)
                 }
             }

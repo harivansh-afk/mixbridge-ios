@@ -10,7 +10,7 @@
 import Foundation
 
 /// A queue item with both display data and Convex ID for backend sync
-struct QueueItem: Identifiable, Equatable {
+struct QueueItem: Identifiable, Equatable, Sendable {
     /// Stable local identifier (UUID for optimistic inserts; Convex id for synced rows).
     let id: String
 

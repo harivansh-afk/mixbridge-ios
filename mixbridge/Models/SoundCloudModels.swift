@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - SoundCloud Track Models
 
-struct SoundCloudTrack: Codable {
+struct SoundCloudTrack: Codable, Sendable {
     let id: Int
     let title: String
     let user: SoundCloudUser
@@ -19,7 +19,7 @@ struct SoundCloudTrack: Codable {
     let reposts_count: Int?
 }
 
-struct SoundCloudUser: Codable {
+struct SoundCloudUser: Codable, Sendable {
     let id: Int
     let username: String
     let avatar_url: String?
@@ -28,7 +28,7 @@ struct SoundCloudUser: Codable {
     let followings_count: Int?
 }
 
-struct SoundCloudPlaylist: Codable {
+struct SoundCloudPlaylist: Codable, Sendable {
     let id: Int
     let title: String
     let user: SoundCloudUser
@@ -42,7 +42,7 @@ struct SoundCloudPlaylist: Codable {
     let created_at: String?
 }
 
-struct SoundCloudProfile: Codable {
+struct SoundCloudProfile: Codable, Sendable {
     let id: Int
     let username: String
     let full_name: String?

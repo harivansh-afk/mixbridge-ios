@@ -8,7 +8,7 @@
 import Foundation
 
 /// Display model for tracks in the UI
-struct Track: Identifiable, Codable, Equatable, Hashable {
+struct Track: Identifiable, Codable, Equatable, Hashable, Sendable {
     let id: String
     let title: String
     let artist: String
@@ -34,7 +34,7 @@ struct Track: Identifiable, Codable, Equatable, Hashable {
 }
 
 /// A track with its underlying SoundCloud data for API operations
-struct TrackItem: Identifiable, Equatable {
+struct TrackItem: Identifiable, Equatable, Sendable {
     let track: Track
     let soundCloudTrack: SoundCloudTrack
     // Play history tracking

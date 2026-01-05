@@ -9,6 +9,7 @@ import SwiftUI
 import AVFoundation
 import MediaPlayer
 import UIKit
+import MixBridgeDB
 
 @Observable
 @MainActor

@@ -71,7 +71,7 @@ final class SearchSync: Sendable {
             )
 
             // Pre-encode/cache payloads on MainActor to avoid global-actor issues inside DB transactions.
-            let payload = try await MainActor.run { () -> (tracks: Data, playlists: Data, users: Data, persistedTracks: [PersistedTrack], persistedPlaylists: [PersistedPlaylist]) in
+            let payload = try await MainActor.run { () -> (tracks: Data, playlists: Data, users: Data, persistedTracks: [PersistedTrack], persistedPlaylists: [PersistedPlaylist], cachedOwner: String) in
                 let encoder = JSONEncoder()
                 let tracksData = try encoder.encode(result.tracks)
                 let playlistsData = try encoder.encode(result.playlists)
@@ -80,7 +80,7 @@ final class SearchSync: Sendable {
                 let persistedTracks = result.tracks.map { PersistedTrack(from: $0) }
                 let persistedPlaylists = result.playlists.map { PersistedPlaylist(from: $0) }
 
-                return (tracksData, playlistsData, usersData, persistedTracks, persistedPlaylists)
+                return (tracksData, playlistsData, usersData, persistedTracks, persistedPlaylists, SyncConstants.cachedPlaylistOwner)
             }
 
             try await db.writer.write { db in
@@ -96,7 +96,6 @@ final class SearchSync: Sendable {
 
                 // Persist tracks globally (safe: not directly listed in UI without joins).
                 for persisted in payload.persistedTracks {
-                    var persisted = persisted
                     try persisted.upsert(db)
                 }
 
@@ -106,7 +105,7 @@ final class SearchSync: Sendable {
                     let playlistId = playlist.id
                     let existing = try PersistedPlaylist.fetchOne(db, key: playlistId)
                     var persisted = playlist
-                    persisted.libraryOwnerUserId = existing?.libraryOwnerUserId ?? SyncConstants.cachedPlaylistOwner
+                    persisted.libraryOwnerUserId = existing?.libraryOwnerUserId ?? payload.cachedOwner
                     try persisted.upsert(db)
                 }
             }

@@ -23,14 +23,17 @@ final class UserProfileSync: Sendable {
     func syncProfile(userId: String) async throws -> SoundCloudProfile? {
         try await operationQueue.run { [self] in
             let scProfile = try await convex.getUserProfile(userId: userId)
-            let persisted = try PersistedUserProfile(from: scProfile)
-
-            try await db.writer.write { db in
-                var profile = persisted
-                try profile.upsert(db)
+            let persisted: PersistedUserProfile = try await MainActor.run {
+                try PersistedUserProfile(from: scProfile)
             }
 
-            logInfo(.sync, "Synced user profile for \(scProfile.username)")
+            try await db.writer.write { db in
+                try persisted.upsert(db)
+            }
+
+            await MainActor.run {
+                logInfo(.sync, "Synced user profile for \(scProfile.username)")
+            }
             return scProfile
         }
     }
@@ -42,7 +45,9 @@ final class UserProfileSync: Sendable {
         let persisted = try await db.reader.read { db in
             try PersistedUserProfile.fetchOne(db, key: userId)
         }
-        return persisted?.toSoundCloudProfile()
+        return await MainActor.run {
+            persisted?.toSoundCloudProfile()
+        }
     }
 }
 
