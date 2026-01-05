@@ -53,7 +53,9 @@ struct LibraryView: View {
             }
             // Start database observation
             .task {
-                await viewModel.observeDatabase()
+                if let userId = authManager.currentUserId {
+                    await viewModel.observeDatabase(userId: userId)
+                }
             }
             // Fetch fresh data
             .task {

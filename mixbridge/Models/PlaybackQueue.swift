@@ -11,7 +11,11 @@ import Foundation
 
 /// A queue item with both display data and Convex ID for backend sync
 struct QueueItem: Identifiable, Equatable {
-    let id: String              // Convex queueTracks._id
+    /// Stable local identifier (UUID for optimistic inserts; Convex id for synced rows).
+    let id: String
+
+    /// Convex `queueTracks._id` (nil until the optimistic insert is synced).
+    let serverId: String?
     let trackId: String         // SoundCloud track ID
     let track: Track
     let soundCloudTrack: SoundCloudTrack?
@@ -128,6 +132,12 @@ final class PlaybackQueue {
     /// Replace all items
     func replaceAll(_ newItems: [QueueItem]) {
         items = newItems
+    }
+
+    /// Update a single item in-place (used for server ID reconciliation).
+    func updateItem(withId id: String, transform: (QueueItem) -> QueueItem) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        items[index] = transform(items[index])
     }
 
     /// Clear all items

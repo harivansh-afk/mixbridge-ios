@@ -297,23 +297,43 @@ struct ArtistDetailView: View {
 
     private func loadArtistContent(forceRefresh: Bool = false) async {
         guard let userId = authManager.currentUserId else { return }
-        isLoading = true
+
+        // 1) Local cache first (instant)
+        do {
+            if let cached = try await ArtistSync.shared.getLocalArtistContent(userId: userId, artistId: artist.id) {
+                self.fetchedTrackItems = cached.tracks.toTrackItems()
+                self.artistPlaylists = cached.playlists.map { scPlaylist in
+                    Playlist(
+                        id: String(scPlaylist.id),
+                        name: scPlaylist.title,
+                        creator: scPlaylist.user.username,
+                        artwork: scPlaylist.primaryArtworkUrl,
+                        tracks: [],
+                        lastUpdated: cached.updatedAt
+                    )
+                }
+                self.hasLoaded = true
+                self.error = nil
+            }
+        } catch {
+            // Cache decode failure shouldn't block refresh.
+        }
+
+        // 2) Refresh from network (updates local DB too)
+        isLoading = !hasLoaded || forceRefresh
         error = nil
 
         do {
-            let searchResults = try await BackgroundExecutor.run {
-                try await ConvexService.shared.search(userId: userId, query: artist.name, limit: 50, forceRefresh: forceRefresh)
-            }
+            let content = try await ArtistSync.shared.fetchAndStoreArtistContent(
+                userId: userId,
+                artistId: artist.id,
+                artistName: artist.name,
+                limit: 50,
+                forceRefresh: forceRefresh
+            )
 
-            let artistId = Int(artist.id) ?? 0
-
-            // Filter tracks by this artist
-            let filteredTracks = searchResults.tracks.filter { $0.user.id == artistId }
-            self.fetchedTrackItems = filteredTracks.toTrackItems()
-
-            // Filter playlists by this artist
-            let filteredPlaylists = searchResults.playlists.filter { $0.user.id == artistId }
-            self.artistPlaylists = filteredPlaylists.map { scPlaylist in
+            self.fetchedTrackItems = content.tracks.toTrackItems()
+            self.artistPlaylists = content.playlists.map { scPlaylist in
                 Playlist(
                     id: String(scPlaylist.id),
                     name: scPlaylist.title,
@@ -323,8 +343,11 @@ struct ArtistDetailView: View {
                     lastUpdated: Date()
                 )
             }
+            self.error = nil
         } catch {
-            self.error = error
+            if self.fetchedTrackItems.isEmpty && self.artistPlaylists.isEmpty {
+                self.error = error
+            }
         }
 
         hasLoaded = true

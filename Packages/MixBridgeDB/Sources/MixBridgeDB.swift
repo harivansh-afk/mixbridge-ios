@@ -44,6 +44,10 @@ extension MixBridgeDB {
             try PersistedPlaylist.deleteAll(db)
             try PersistedTrack.deleteAll(db)
             try PersistedUserProfile.deleteAll(db)
+            try PersistedQueueTrack.deleteAll(db)
+            try PersistedQueue.deleteAll(db)
+            try PersistedSearchCache.deleteAll(db)
+            try PersistedArtistCache.deleteAll(db)
         }
     }
 }

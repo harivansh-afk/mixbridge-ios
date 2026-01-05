@@ -31,9 +31,10 @@ final class LibraryViewModel {
 
     /// Start observing playlists from local database
     /// Call this from view's .task modifier
-    func observeDatabase() async {
+    func observeDatabase(userId: String) async {
         let observation = ValueObservation.trackingConstantRegion { db in
             try PersistedPlaylist
+                .filter(PersistedPlaylist.Columns.libraryOwnerUserId == userId)
                 .order(PersistedPlaylist.Columns.lastUpdated.desc)
                 .fetchAll(db)
         }

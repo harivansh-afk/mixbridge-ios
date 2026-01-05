@@ -27,6 +27,9 @@ class QueueManager {
     /// SoundCloud metadata cache (trackId -> SoundCloudTrack)
     private var soundCloudTracks: [String: SoundCloudTrack] = [:]
 
+    private let queueSync = QueueSync.shared
+    private var activeUserId: String?
+
     private(set) var isLoading = false
     private var prefetchTask: Task<Void, Never>?
 
@@ -40,6 +43,32 @@ class QueueManager {
 
     private init() {
         logInfo(.queue, "QueueManager initialized")
+    }
+
+    // MARK: - Lifecycle / Local-First Bootstrap
+
+    /// Call this once after authentication to load the persisted queue instantly and start a background refresh.
+    func start(userId: String) async {
+        activeUserId = userId
+
+        do {
+            let localItems = try await queueSync.loadLocalQueueItems(userId: userId)
+            applyQueueSnapshot(localItems, context: "start(loadLocal)")
+        } catch {
+            logWarning(.queue, "Failed to load local queue: \(error)")
+        }
+
+        Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            do {
+                let merged = try await self.queueSync.syncQueueFromServer(userId: userId)
+                await MainActor.run {
+                    self.applyQueueSnapshot(merged, context: "start(syncFromServer)")
+                }
+            } catch {
+                logWarning(.queue, "Failed to sync queue from server: \(error)")
+            }
+        }
     }
 
     // MARK: - Queue Change Notification
@@ -63,6 +92,32 @@ class QueueManager {
         let titles = queue.items.prefix(5).map { $0.track.title }
         let more = queue.count > 5 ? "... +\(queue.count - 5) more" : ""
         logDebug(.queue, "\(context) | count=\(queue.count) | items=[\(titles.joined(separator: ", "))\(more)]")
+    }
+
+    private func requireUserId() throws -> String {
+        if let activeUserId { return activeUserId }
+        if let userId = KeychainManager.shared.getUserId() { return userId }
+        throw ConvexError.unauthorized
+    }
+
+    private func applyQueueSnapshot(_ items: [QueueItem], context: String) {
+        queue.replaceAll(items)
+        soundCloudTracks = items.reduce(into: [:]) { dict, item in
+            if let scTrack = item.soundCloudTrack {
+                dict[item.trackId] = scTrack
+            }
+        }
+        logQueueState(context)
+        notifyQueueChanged()
+    }
+
+    private func persistSnapshot() async {
+        do {
+            let userId = try requireUserId()
+            try await queueSync.persistQueueSnapshot(userId: userId, items: queue.items)
+        } catch {
+            logWarning(.queue, "Failed to persist queue snapshot: \(error)")
+        }
     }
 
     // MARK: - Query Operations
@@ -129,20 +184,22 @@ class QueueManager {
             return nil
         }
 
-        logInfo(.queue, "popNext: popped '\(item.track.title)' (id=\(item.id), trackId=\(item.trackId))")
+        logInfo(.queue, "popNext: popped '\(item.track.title)' (id=\(item.id), serverId=\(item.serverId ?? "nil"), trackId=\(item.trackId))")
         logQueueState("popNext AFTER")
         notifyQueueChanged()
+        Task { await persistSnapshot() }
 
         // Sync removal to backend (fire-and-forget with logging)
-        Task {
+        Task { [serverId = item.serverId] in
             do {
-                logDebug(.queue, "popNext: syncing removal to Convex for id=\(item.id)")
+                guard let serverId else { return }
+                logDebug(.queue, "popNext: syncing removal to Convex for serverId=\(serverId)")
                 try await BackgroundExecutor.run {
-                    try await ConvexService.shared.removeTrackFromQueue(queueTrackId: item.id)
+                    try await ConvexService.shared.removeTrackFromQueue(queueTrackId: serverId)
                 }
-                logDebug(.queue, "popNext: Convex removal SUCCESS for id=\(item.id)")
+                logDebug(.queue, "popNext: Convex removal SUCCESS for serverId=\(serverId)")
             } catch {
-                logWarning(.queue, "popNext: Convex removal FAILED for id=\(item.id): \(error)")
+                logWarning(.queue, "popNext: Convex removal FAILED: \(error)")
                 // Don't rollback - track already played
             }
         }
@@ -154,97 +211,126 @@ class QueueManager {
 
     /// Add track to queue
     func addTrack(_ track: Track, soundCloudTrack: SoundCloudTrack) async throws {
-        logInfo(.queue, "addTrack: '\(track.title)' (trackId=\(track.id))")
+        let userId = try requireUserId()
+        logInfo(.queue, "addTrack(local-first): '\(track.title)' (trackId=\(track.id), userId=\(userId))")
 
         if isInQueue(track.id) {
             logWarning(.queue, "addTrack: track already in queue, throwing alreadyInQueue")
             throw ConvexError.alreadyInQueue
         }
 
-        do {
-            logDebug(.queue, "addTrack: calling Convex addTrackToQueue")
-            let queueTrackId = try await BackgroundExecutor.run {
-                try await ConvexService.shared.addTrackToQueue(track: soundCloudTrack)
+        // 1) Optimistic local insert (instant UI)
+        let localId = UUID().uuidString
+        let item = QueueItem(
+            id: localId,
+            serverId: nil,
+            trackId: track.id,
+            track: track,
+            soundCloudTrack: soundCloudTrack
+        )
+
+        queue.append(item)
+        soundCloudTracks[track.id] = soundCloudTrack
+        logQueueState("addTrack AFTER local")
+        notifyQueueChanged()
+        await persistSnapshot()
+        HapticManager.success()
+
+        // 2) Background sync to server + reconcile serverId back into local state
+        Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            let serverId = await self.queueSync.syncAddedTrack(userId: userId, itemId: localId)
+            guard let serverId else { return }
+
+            await MainActor.run {
+                self.queue.updateItem(withId: localId) { old in
+                    QueueItem(
+                        id: old.id,
+                        serverId: serverId,
+                        trackId: old.trackId,
+                        track: old.track,
+                        soundCloudTrack: old.soundCloudTrack
+                    )
+                }
+                self.logQueueState("addTrack AFTER reconcile")
+                self.notifyQueueChanged()
             }
-            logDebug(.queue, "addTrack: Convex returned queueTrackId=\(queueTrackId)")
 
-            let item = QueueItem(
-                id: queueTrackId,
-                trackId: track.id,
-                track: track,
-                soundCloudTrack: soundCloudTrack
-            )
-            queue.append(item)
-            soundCloudTracks[track.id] = soundCloudTrack
-            logQueueState("addTrack AFTER")
-            notifyQueueChanged()
-
-            HapticManager.success()
-
-        } catch ConvexError.alreadyInQueue {
-            logWarning(.queue, "addTrack: Convex returned alreadyInQueue")
-            throw ConvexError.alreadyInQueue
+            await self.persistSnapshot()
         }
     }
 
     /// Insert track as "next up" (right after currently playing)
     func insertTrackNext(_ track: Track, soundCloudTrack: SoundCloudTrack) async throws {
-        logInfo(.queue, "insertTrackNext: '\(track.title)' (trackId=\(track.id))")
+        let userId = try requireUserId()
+        logInfo(.queue, "insertTrackNext(local-first): '\(track.title)' (trackId=\(track.id))")
         logQueueState("insertTrackNext BEFORE")
+
+        let snapshotBefore = queue.items
 
         if let existingItem = queue.item(forTrackId: track.id) {
             // Track already in queue - move it to front
             guard queue.index(ofTrackId: track.id) != 0 else {
                 logDebug(.queue, "insertTrackNext: track already at front, no-op")
                 HapticManager.success()
-                return  // Already at front
+                return
             }
 
             let fromIndex = queue.index(ofTrackId: track.id)!
-            logDebug(.queue, "insertTrackNext: moving existing track from index \(fromIndex) to front")
             queue.remove(trackId: track.id)
             queue.insertNext(existingItem)
-            logQueueState("insertTrackNext AFTER move")
+            logQueueState("insertTrackNext AFTER local move")
             notifyQueueChanged()
-
-            // Sync reorder to backend
-            try await BackgroundExecutor.run {
-                try await ConvexService.shared.reorderQueue(fromIndex: fromIndex, toIndex: 0)
-            }
-            logDebug(.queue, "insertTrackNext: Convex reorder SUCCESS")
-
+            await persistSnapshot()
             HapticManager.success()
-        } else {
-            // Track not in queue - add to Convex then move to front
-            logDebug(.queue, "insertTrackNext: track not in queue, adding to Convex")
-            let queueTrackId = try await BackgroundExecutor.run {
-                try await ConvexService.shared.addTrackToQueue(track: soundCloudTrack)
-            }
-            logDebug(.queue, "insertTrackNext: Convex returned queueTrackId=\(queueTrackId)")
 
+            Task(priority: .utility) { [weak self] in
+                guard let self else { return }
+
+                // If we have any pending (unsynced) items, fall back to a full sync for correctness.
+                if self.queue.items.contains(where: { $0.serverId == nil }) {
+                    await self.queueSync.syncFullQueueToServer(userId: userId, items: self.queue.items)
+                    if let refreshed = try? await self.queueSync.loadLocalQueueItems(userId: userId) {
+                        await MainActor.run { self.applyQueueSnapshot(refreshed, context: "insertTrackNext(fullSync)") }
+                    }
+                    return
+                }
+
+                do {
+                    try await BackgroundExecutor.run {
+                        try await ConvexService.shared.reorderQueue(fromIndex: fromIndex, toIndex: 0)
+                    }
+                } catch {
+                    logError(.queue, "insertTrackNext: backend reorder FAILED, rolling back: \(error)")
+                    await MainActor.run { self.applyQueueSnapshot(snapshotBefore, context: "insertTrackNext(rollback)") }
+                    await self.persistSnapshot()
+                }
+            }
+        } else {
+            // Track not in queue - insert locally at front, then reconcile server to match.
+            let localId = UUID().uuidString
             let item = QueueItem(
-                id: queueTrackId,
+                id: localId,
+                serverId: nil,
                 trackId: track.id,
                 track: track,
                 soundCloudTrack: soundCloudTrack
             )
 
-            // Add to front locally
             queue.insertNext(item)
             soundCloudTracks[track.id] = soundCloudTrack
-            logQueueState("insertTrackNext AFTER insert")
+            logQueueState("insertTrackNext AFTER local insert")
             notifyQueueChanged()
+            await persistSnapshot()
+            HapticManager.success()
 
-            // If there are other items, reorder on backend (we added at end, need to move to front)
-            if queue.count > 1 {
-                let fromIndex = queue.count - 1  // Was added at end by Convex
-                logDebug(.queue, "insertTrackNext: reordering on backend from \(fromIndex) to 0")
-                try await BackgroundExecutor.run {
-                    try await ConvexService.shared.reorderQueue(fromIndex: fromIndex, toIndex: 0)
+            Task(priority: .utility) { [weak self] in
+                guard let self else { return }
+                await self.queueSync.syncFullQueueToServer(userId: userId, items: self.queue.items)
+                if let refreshed = try? await self.queueSync.loadLocalQueueItems(userId: userId) {
+                    await MainActor.run { self.applyQueueSnapshot(refreshed, context: "insertTrackNext(fullSync)") }
                 }
             }
-
-            HapticManager.success()
         }
     }
 
@@ -265,15 +351,20 @@ class QueueManager {
         logInfo(.queue, "removeTrack: removed from index \(originalIndex), id=\(item.id)")
         logQueueState("removeTrack AFTER")
         notifyQueueChanged()
+        await persistSnapshot()
 
         if !silent {
             HapticManager.warning()
         }
 
         do {
-            logDebug(.queue, "removeTrack: syncing to Convex")
+            guard let serverId = item.serverId else {
+                // Local-only item (not yet synced); nothing to do remotely.
+                return
+            }
+            logDebug(.queue, "removeTrack: syncing to Convex serverId=\(serverId)")
             try await BackgroundExecutor.run {
-                try await ConvexService.shared.removeTrackFromQueue(queueTrackId: item.id)
+                try await ConvexService.shared.removeTrackFromQueue(queueTrackId: serverId)
             }
             logDebug(.queue, "removeTrack: Convex SUCCESS")
         } catch {
@@ -281,6 +372,7 @@ class QueueManager {
             logError(.queue, "removeTrack: Convex FAILED, rolling back: \(error)")
             queue.reinsert(removedItem, at: originalIndex)
             notifyQueueChanged()
+            await persistSnapshot()
             throw error
         }
     }
@@ -301,6 +393,7 @@ class QueueManager {
         logInfo(.queue, "removeAtLocal: removed '\(removedItem?.track.title ?? "nil")' from index \(index)")
         logQueueState("removeAtLocal AFTER")
         notifyQueueChanged()
+        Task { await persistSnapshot() }
 
         if !silent {
             HapticManager.warning()
@@ -311,10 +404,11 @@ class QueueManager {
 
     /// Sync a remove operation to backend (call after removeAtLocal)
     func syncRemoveToBackend(item: QueueItem, originalIndex: Int) async {
-        logDebug(.queue, "syncRemoveToBackend: syncing to Convex id=\(item.id)")
+        guard let serverId = item.serverId else { return }
+        logDebug(.queue, "syncRemoveToBackend: syncing to Convex serverId=\(serverId)")
         do {
             try await BackgroundExecutor.run {
-                try await ConvexService.shared.removeTrackFromQueue(queueTrackId: item.id)
+                try await ConvexService.shared.removeTrackFromQueue(queueTrackId: serverId)
             }
             logDebug(.queue, "syncRemoveToBackend: Convex SUCCESS")
         } catch {
@@ -322,6 +416,7 @@ class QueueManager {
             logError(.queue, "syncRemoveToBackend: Convex FAILED, rolling back: \(error)")
             queue.reinsert(item, at: originalIndex)
             notifyQueueChanged()
+            await persistSnapshot()
             HapticManager.error()
         }
     }
@@ -338,6 +433,7 @@ class QueueManager {
         queue.remove(id: item.id)
         logInfo(.queue, "removeItemLocal: removed from index \(index)")
         notifyQueueChanged()
+        Task { await persistSnapshot() }
 
         if !silent {
             HapticManager.warning()
@@ -356,10 +452,27 @@ class QueueManager {
 
         queue.move(from: sourceIndex, to: destinationIndex)
         notifyQueueChanged()
+        Task { await persistSnapshot() }
     }
 
     /// Sync a move operation to backend (call after moveItemLocal)
     func syncMoveToBackend(from sourceIndex: Int, to destinationIndex: Int) async {
+        let userId: String
+        do {
+            userId = try requireUserId()
+        } catch {
+            return
+        }
+
+        // If there are pending optimistic inserts, use a full sync to guarantee server order matches local.
+        if queue.items.contains(where: { $0.serverId == nil }) {
+            await queueSync.syncFullQueueToServer(userId: userId, items: queue.items)
+            if let refreshed = try? await queueSync.loadLocalQueueItems(userId: userId) {
+                applyQueueSnapshot(refreshed, context: "syncMoveToBackend(fullSync)")
+            }
+            return
+        }
+
         // Calculate actual destination for Convex (List.onMove destination adjusts)
         let toIndex = destinationIndex > sourceIndex ? destinationIndex - 1 : destinationIndex
 
@@ -373,6 +486,7 @@ class QueueManager {
             let actualDestination = destinationIndex > sourceIndex ? destinationIndex - 1 : destinationIndex
             queue.move(from: actualDestination, to: sourceIndex)
             notifyQueueChanged()
+            await persistSnapshot()
             HapticManager.error()
         }
     }
@@ -381,152 +495,139 @@ class QueueManager {
 
     /// Replace entire queue with new tracks
     func setQueue(items: [TrackItem], startIndex: Int = 0) async throws {
-        logInfo(.queue, "setQueue: \(items.count) items, startIndex=\(startIndex)")
-        guard !items.isEmpty else {
-            logDebug(.queue, "setQueue: empty items, returning")
-            return
-        }
+        _ = try requireUserId()
+        logInfo(.queue, "setQueue(local-first): \(items.count) items, startIndex=\(startIndex)")
+        guard !items.isEmpty else { return }
 
         let tracksToSet = Array(items.suffix(from: min(startIndex, items.count)))
-        guard !tracksToSet.isEmpty else {
-            logDebug(.queue, "setQueue: no tracks after startIndex, returning")
-            return
-        }
+        guard !tracksToSet.isEmpty else { return }
 
-        logDebug(.queue, "setQueue: setting \(tracksToSet.count) tracks")
-        let soundCloudTracksToSet = tracksToSet.map { $0.soundCloudTrack }
-
-        // Call Convex and get back the IDs
-        logDebug(.queue, "setQueue: calling Convex setQueue")
-        let results = try await BackgroundExecutor.run {
-            try await ConvexService.shared.setQueue(tracks: soundCloudTracksToSet)
-        }
-        logDebug(.queue, "setQueue: Convex returned \(results.count) results")
-
-        // Build queue items with IDs from Convex
-        var newItems: [QueueItem] = []
-        var newSoundCloudTracks: [String: SoundCloudTrack] = [:]
-
-        for trackItem in tracksToSet {
-            let scTrack = trackItem.soundCloudTrack
-
-            // Find matching result by trackId
-            let trackId = String(scTrack.id)
-            let convexId = results.first { $0.trackId == trackId }?._id ?? trackId
-
-            if results.first(where: { $0.trackId == trackId }) == nil {
-                logWarning(.queue, "setQueue: no Convex ID found for trackId=\(trackId), using fallback")
-            }
-
-            let item = QueueItem(
-                id: convexId,
-                trackId: trackId,
+        // 1) Optimistic local queue (instant)
+        let localQueueItems: [QueueItem] = tracksToSet.map { trackItem in
+            QueueItem(
+                id: UUID().uuidString,
+                serverId: nil,
+                trackId: trackItem.track.id,
                 track: trackItem.track,
-                soundCloudTrack: scTrack
+                soundCloudTrack: trackItem.soundCloudTrack
             )
-            newItems.append(item)
-            newSoundCloudTracks[trackId] = scTrack
         }
 
-        queue.replaceAll(newItems)
-        soundCloudTracks = newSoundCloudTracks
-        logQueueState("setQueue AFTER")
-        notifyQueueChanged()
-
+        applyQueueSnapshot(localQueueItems, context: "setQueue AFTER local")
+        await persistSnapshot()
         HapticManager.success()
+
+        // 2) Background: set server queue + reconcile server IDs
+        Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            do {
+                let tracks = tracksToSet.map(\.soundCloudTrack)
+                let results = try await BackgroundExecutor.run {
+                    try await ConvexService.shared.setQueue(tracks: tracks)
+                }
+                let mapping = Dictionary(uniqueKeysWithValues: results.map { ($0.trackId, $0._id) })
+
+                await MainActor.run {
+                    for item in self.queue.items {
+                        if let serverId = mapping[item.trackId] {
+                            self.queue.updateItem(withId: item.id) { old in
+                                QueueItem(
+                                    id: old.id,
+                                    serverId: serverId,
+                                    trackId: old.trackId,
+                                    track: old.track,
+                                    soundCloudTrack: old.soundCloudTrack
+                                )
+                            }
+                        }
+                    }
+                    self.logQueueState("setQueue AFTER reconcile")
+                    self.notifyQueueChanged()
+                }
+                await self.persistSnapshot()
+            } catch {
+                logError(.queue, "setQueue: server sync FAILED: \(error)")
+            }
+        }
     }
 
     /// Append multiple tracks to end of queue
     func appendTracks(_ items: [TrackItem]) async throws {
-        logInfo(.queue, "appendTracks: \(items.count) items")
+        _ = try requireUserId()
+        logInfo(.queue, "appendTracks(local-first): \(items.count) items")
         logQueueState("appendTracks BEFORE")
 
-        guard !items.isEmpty else {
-            logDebug(.queue, "appendTracks: empty items, returning")
-            return
-        }
+        guard !items.isEmpty else { return }
 
         // Filter out tracks already in queue
         let newItems = items.filter { !isInQueue($0.track.id) }
-        guard !newItems.isEmpty else {
-            logDebug(.queue, "appendTracks: all tracks already in queue, returning")
-            return
-        }
+        guard !newItems.isEmpty else { return }
 
-        logDebug(.queue, "appendTracks: adding \(newItems.count) new tracks (filtered from \(items.count))")
-        let soundCloudTracksToAdd = newItems.map { $0.soundCloudTrack }
-
-        // Call Convex and get back the IDs
-        logDebug(.queue, "appendTracks: calling Convex addTracksToQueueBatch")
-        let results = try await BackgroundExecutor.run {
-            try await ConvexService.shared.addTracksToQueueBatch(tracks: soundCloudTracksToAdd)
-        }
-        logDebug(.queue, "appendTracks: Convex returned \(results.count) results")
-
-        // Build queue items with IDs from Convex
+        // 1) Optimistic local append
         for trackItem in newItems {
-            let scTrack = trackItem.soundCloudTrack
-
-            let trackId = String(scTrack.id)
-            let convexId = results.first { $0.trackId == trackId }?._id ?? trackId
-
-            if results.first(where: { $0.trackId == trackId }) == nil {
-                logWarning(.queue, "appendTracks: no Convex ID found for trackId=\(trackId), using fallback")
-            }
-
             let item = QueueItem(
-                id: convexId,
-                trackId: trackId,
+                id: UUID().uuidString,
+                serverId: nil,
+                trackId: trackItem.track.id,
                 track: trackItem.track,
-                soundCloudTrack: scTrack
+                soundCloudTrack: trackItem.soundCloudTrack
             )
             queue.append(item)
-            soundCloudTracks[trackId] = scTrack
+            soundCloudTracks[trackItem.track.id] = trackItem.soundCloudTrack
         }
 
-        logQueueState("appendTracks AFTER")
+        logQueueState("appendTracks AFTER local")
         notifyQueueChanged()
+        await persistSnapshot()
         HapticManager.success()
+
+        // 2) Background: append on server + reconcile server IDs for the newly appended tracks
+        Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            do {
+                let tracks = newItems.map(\.soundCloudTrack)
+                let results = try await BackgroundExecutor.run {
+                    try await ConvexService.shared.addTracksToQueueBatch(tracks: tracks)
+                }
+                let mapping = Dictionary(uniqueKeysWithValues: results.map { ($0.trackId, $0._id) })
+
+                await MainActor.run {
+                    for item in self.queue.items where item.serverId == nil {
+                        if let serverId = mapping[item.trackId] {
+                            self.queue.updateItem(withId: item.id) { old in
+                                QueueItem(
+                                    id: old.id,
+                                    serverId: serverId,
+                                    trackId: old.trackId,
+                                    track: old.track,
+                                    soundCloudTrack: old.soundCloudTrack
+                                )
+                            }
+                        }
+                    }
+                    self.logQueueState("appendTracks AFTER reconcile")
+                    self.notifyQueueChanged()
+                }
+
+                await self.persistSnapshot()
+            } catch {
+                logError(.queue, "appendTracks: server sync FAILED: \(error)")
+                // Leave optimistic items; they'll reconcile on next refresh.
+            }
+        }
     }
 
     // MARK: - Load & Clear
 
     /// Load queue from server
     func loadQueue(userId: String) async throws {
-        logInfo(.queue, "loadQueue: userId=\(userId)")
+        logInfo(.queue, "loadQueue(sync-engine): userId=\(userId)")
+        activeUserId = userId
         isLoading = true
         defer { isLoading = false }
 
-        logDebug(.queue, "loadQueue: fetching from Convex")
-        let queueData = try await BackgroundExecutor.run {
-            try await ConvexService.shared.getQueueTracks(userId: userId)
-        }
-        logDebug(.queue, "loadQueue: Convex returned \(queueData.count) tracks")
-
-        let orderedTracks = queueData.sorted { $0.position < $1.position }
-
-        var newItems: [QueueItem] = []
-        var newSoundCloudTracks: [String: SoundCloudTrack] = [:]
-
-        for queueTrack in orderedTracks {
-            let track = queueTrack.trackData.toTrack()
-            let item = QueueItem(
-                id: queueTrack._id,
-                trackId: queueTrack.trackId,
-                track: track,
-                soundCloudTrack: queueTrack.trackData
-            )
-            newItems.append(item)
-            newSoundCloudTracks[queueTrack.trackId] = queueTrack.trackData
-            logDebug(.queue, "loadQueue: loaded '\(track.title)' id=\(queueTrack._id) pos=\(queueTrack.position)")
-        }
-
-        queue.replaceAll(newItems)
-        soundCloudTracks = newSoundCloudTracks
-        logQueueState("loadQueue COMPLETE")
-
-        // Trigger prefetching after queue loads
-        PlaybackCoordinator.shared.prefetchQueue()
+        let merged = try await queueSync.syncQueueFromServer(userId: userId)
+        applyQueueSnapshot(merged, context: "loadQueue COMPLETE")
     }
 
     /// Clear entire queue (local only)
@@ -537,6 +638,7 @@ class QueueManager {
         soundCloudTracks.removeAll()
         logInfo(.queue, "clearQueue: queue cleared locally")
         notifyQueueChanged()
+        Task { await persistSnapshot() }
     }
 
     /// Clear entire queue with backend sync
@@ -544,18 +646,27 @@ class QueueManager {
         logInfo(.queue, "clearQueueWithSync")
         logQueueState("clearQueueWithSync BEFORE")
 
-        logDebug(.queue, "clearQueueWithSync: calling Convex clearQueue")
-        try await BackgroundExecutor.run {
-            try await ConvexService.shared.clearQueue()
-        }
-        logDebug(.queue, "clearQueueWithSync: Convex SUCCESS")
+        let snapshotBefore = queue.items
 
+        // Optimistic local clear
         queue.clear()
         soundCloudTracks.removeAll()
-        logInfo(.queue, "clearQueueWithSync: queue cleared")
         notifyQueueChanged()
+        await persistSnapshot()
 
-        HapticManager.warning()
+        do {
+            logDebug(.queue, "clearQueueWithSync: calling Convex clearQueue")
+            try await BackgroundExecutor.run {
+                try await ConvexService.shared.clearQueue()
+            }
+            logDebug(.queue, "clearQueueWithSync: Convex SUCCESS")
+            HapticManager.warning()
+        } catch {
+            logError(.queue, "clearQueueWithSync: Convex FAILED, rolling back: \(error)")
+            applyQueueSnapshot(snapshotBefore, context: "clearQueueWithSync(rollback)")
+            await persistSnapshot()
+            throw error
+        }
     }
 }
 

@@ -292,6 +292,27 @@ final class PlayerState: NSObject {
         // We need authentication to fetch history
         guard let userId = KeychainManager.shared.getUserId() else { return }
 
+        // Local-first: prefer the sync engine DB for instant startup + offline support.
+        do {
+            if let local = try await HistorySync.shared.getLocalHistory(limit: 1).first,
+               let scTrack = local.track.soundCloudTrack {
+                await setDefaultTrack(from: scTrack)
+                return
+            }
+        } catch {
+            logDebug(.db, "PlayerState: no local history available: \(error)")
+        }
+
+        do {
+            if let local = try await LikedSync.shared.getLocalLikedTracks().first,
+               let scTrack = local.track.soundCloudTrack {
+                await setDefaultTrack(from: scTrack)
+                return
+            }
+        } catch {
+            logDebug(.db, "PlayerState: no local liked tracks available: \(error)")
+        }
+
         // Try 1: Get last played song from play history
         do {
             let history = try await ConvexService.shared.getPlayHistory(userId: userId, limit: 1)

@@ -150,6 +150,13 @@ final class ConvexService {
     /// Get tracks for a specific playlist
     /// - Parameter forceRefresh: If true, bypasses cache and fetches directly from SoundCloud
     func getPlaylistTracks(userId: String, playlistId: String, forceRefresh: Bool = false) async throws -> [SoundCloudTrack] {
+        let playlist = try await getPlaylist(userId: userId, playlistId: playlistId, forceRefresh: forceRefresh)
+        return playlist.tracks ?? []
+    }
+
+    /// Get playlist metadata (and tracks when included) for a specific playlist.
+    /// - Note: This is used to ensure playlist rows exist locally even when opened from Search/Artist.
+    func getPlaylist(userId: String, playlistId: String, forceRefresh: Bool = false) async throws -> SoundCloudPlaylist {
         var args: [String: Any] = ["userId": userId, "playlistId": playlistId]
         if forceRefresh {
             args["forceRefresh"] = true
@@ -158,7 +165,7 @@ final class ConvexService {
             "actions/playlists:getTracks",
             args: args
         )
-        return result.playlist.tracks ?? []
+        return result.playlist
     }
 
     /// Search for tracks, playlists, and users
@@ -206,9 +213,10 @@ final class ConvexService {
 
     // MARK: - Queue Operations
 
-    /// Get queue tracks
-    func getQueueTracks(userId: String) async throws -> [ConvexQueueTrack] {
-        let queueData: QueueWithTracksResponse? = try await query(
+    /// Get queue document with tracks for a user.
+    /// Mirrors Convex `queues:getByUserId` return type.
+    func getQueueWithTracks(userId: String) async throws -> QueueWithTracksResponse? {
+        try await query(
             "queues:getByUserId",
             args: [
                 "userId": userId,
@@ -218,6 +226,11 @@ final class ConvexService {
                 ] as [String: Any]
             ]
         )
+    }
+
+    /// Get queue tracks
+    func getQueueTracks(userId: String) async throws -> [ConvexQueueTrack] {
+        let queueData = try await getQueueWithTracks(userId: userId)
         return queueData?.tracks ?? []
     }
 
