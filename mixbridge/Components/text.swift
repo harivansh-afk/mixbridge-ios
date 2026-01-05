@@ -14,9 +14,13 @@ import SwiftUI
 struct GlassEffectText: View {
     let text: String
     let font: UIFont
-
-    private var segments: [TextSegment] {
-        text.splitByEmoji()
+    
+    @State private var segments: [TextSegment]
+    
+    init(text: String, font: UIFont) {
+        self.text = text
+        self.font = font
+        _segments = State(initialValue: text.splitByEmoji())
     }
 
     var body: some View {
@@ -31,6 +35,12 @@ struct GlassEffectText: View {
                         .opacity(0)
                         .glassEffect(.clear, in: TextToShape(value: segment.text, font: font))
                 }
+            }
+        }
+        .task(id: text) {
+            let updated = text.splitByEmoji()
+            await MainActor.run {
+                segments = updated
             }
         }
     }
@@ -52,10 +62,9 @@ struct MarqueeGlassText: View {
 
     @State private var textWidth: CGFloat = 0
     @State private var containerWidth: CGFloat = 0
-    @State private var animationStartDate: Date?
-    @State private var lastLoopCount: Int = 0
-    @State private var isStopped = true // Start stopped, only move when playing
-    @State private var pendingStop = false // Stop at next loop end
+    @State private var phase: Phase = .stopped(offset: 0)
+    @State private var loopCounter: Int = 0
+    @State private var startTask: Task<Void, Never>?
 
     private var needsScroll: Bool {
         textWidth > 0 && containerWidth > 0 && textWidth > containerWidth + 1
@@ -69,6 +78,25 @@ struct MarqueeGlassText: View {
         let baseSpeed: CGFloat = 50.0
         let duration = Double(segmentWidth) / Double(baseSpeed)
         return duration.isFinite && duration > 0 ? duration : 1.0
+    }
+    
+    private enum Phase: Equatable {
+        case stopped(offset: CGFloat)
+        case waiting(offset: CGFloat, until: Date)
+        case scrolling(referenceDate: Date, referenceOffset: CGFloat, stopAtLoopEnd: Bool)
+        
+        var isScrolling: Bool {
+            if case .scrolling = self { return true }
+            return false
+        }
+        
+        var frozenOffset: CGFloat {
+            switch self {
+            case .stopped(let offset): return offset
+            case .waiting(let offset, _): return offset
+            case .scrolling: return 0
+            }
+        }
     }
 
     private var safeHeight: CGFloat {
@@ -88,8 +116,13 @@ struct MarqueeGlassText: View {
 
                 // Always use marquee layout (no view switching)
                 if needsScroll {
-                    TimelineView(.animation(minimumInterval: 1.0 / 120.0, paused: isStopped)) { context in
-                        marqueeContent(date: context.date)
+                    TimelineView(.animation(minimumInterval: 1.0 / 120.0, paused: !phase.isScrolling)) { context in
+                        let tick = tickState(for: context.date)
+                        marqueeContent(offset: tick.offset)
+                            .onChange(of: tick.loopsSinceReference) { oldValue, newValue in
+                                guard newValue > oldValue else { return }
+                                handleLoopAdvance(delta: newValue - oldValue, at: context.date)
+                            }
                     }
                 } else if textWidth > 0 {
                     // Only show centered text if it actually fits
@@ -99,107 +132,84 @@ struct MarqueeGlassText: View {
             }
             .frame(width: max(geo.size.width, 1), height: max(geo.size.height, 1), alignment: .leading)
             .onChange(of: geo.size.width) { _, newWidth in
-                if newWidth.isFinite && newWidth > 0 { containerWidth = newWidth }
+                if newWidth.isFinite && newWidth > 0 {
+                    containerWidth = newWidth
+                    syncState(now: Date())
+                }
             }
         }
         .frame(height: safeHeight)
         .clipped()
         .mask(fadeMask)
         .onChange(of: text) { _, _ in resetForNewTrack() }
-        .onChange(of: isPlaying) { _, newValue in
-            if newValue {
-                // Song started/resumed - start scrolling after delay
-                startScrolling()
-            } else {
-                // Song paused - stop at next loop end
-                pendingStop = true
-            }
-        }
+        .onChange(of: isPlaying) { _, _ in syncState(now: Date()) }
         .onAppear {
-            if isPlaying {
-                startScrolling()
-            }
+            syncState(now: Date())
         }
         .onDisappear {
-            isStopped = true
-            animationStartDate = nil
+            startTask?.cancel()
+            startTask = nil
         }
     }
 
     @ViewBuilder
-    private func marqueeContent(date: Date) -> some View {
+    private func marqueeContent(offset: CGFloat) -> some View {
         HStack(spacing: spacing) {
             LeftAlignedGlassText(text: text, font: font)
             LeftAlignedGlassText(text: text, font: font)
         }
         .fixedSize(horizontal: true, vertical: false)
-        .offset(x: calculateOffset(for: date))
+        .offset(x: offset)
     }
-
-    private func calculateOffset(for date: Date) -> CGFloat {
-        guard !isStopped, let startDate = animationStartDate else {
-            return 0
-        }
-
-        let elapsed = date.timeIntervalSince(startDate)
-        guard elapsed > 0 else { return 0 }
-
-        let totalLoops = Int(elapsed / scrollDuration)
-        let loopProgress = fmod(elapsed / scrollDuration, 1.0)
-        let offset = -loopProgress * segmentWidth
-
-        // Detect loop completion
-        if totalLoops > lastLoopCount {
-            DispatchQueue.main.async {
-                lastLoopCount = totalLoops
-
-                // Check if we should stop (song paused)
-                if pendingStop {
-                    isStopped = true
-                    pendingStop = false
-                    animationStartDate = nil
-                    return
-                }
-
-                // Check if we should pause for delay (every N loops)
-                if totalLoops % loopsBeforePause == 0 {
-                    isStopped = true
-                    // Resume after delay if still playing
-                    DispatchQueue.main.asyncAfter(deadline: .now() + startDelay) {
-                        if isPlaying && !pendingStop {
-                            animationStartDate = Date()
-                            isStopped = false
-                        }
-                    }
-                }
+    
+    private struct TickState {
+        let offset: CGFloat
+        let loopsSinceReference: Int
+    }
+    
+    private func tickState(for date: Date) -> TickState {
+        guard needsScroll else { return .init(offset: 0, loopsSinceReference: 0) }
+        
+        switch phase {
+        case .stopped(let offset):
+            return .init(offset: normalizedOffset(offset), loopsSinceReference: 0)
+        case .waiting(let offset, _):
+            return .init(offset: normalizedOffset(offset), loopsSinceReference: 0)
+        case .scrolling(let referenceDate, let referenceOffset, _):
+            let baseSpeed: CGFloat = 50.0
+            let delta = max(date.timeIntervalSince(referenceDate), 0)
+            let distance = baseSpeed * CGFloat(delta)
+            let width = segmentWidth
+            
+            if width <= 0 || !width.isFinite {
+                return .init(offset: 0, loopsSinceReference: 0)
             }
+            
+            let startPosition = positiveModulo(-referenceOffset, width)
+            let total = startPosition + distance
+            let loops = Int(total / width)
+            let position = positiveModulo(total, width)
+            let offset = (-position).isFinite ? -position : 0
+            return .init(offset: normalizedOffset(offset), loopsSinceReference: loops)
         }
-
-        return offset.isFinite ? offset : 0
     }
 
     private func measurementReader(geo: GeometryProxy) -> some View {
         GeometryReader { textGeo in
             Color.clear
                 .onAppear {
-                    if textGeo.size.width.isFinite && textGeo.size.width > 0 { textWidth = textGeo.size.width }
-                    if geo.size.width.isFinite && geo.size.width > 0 { containerWidth = geo.size.width }
-                    // Start scrolling once measured (if playing) - defer to let state update
-                    DispatchQueue.main.async {
-                        if isPlaying && needsScroll && isStopped {
-                            startScrolling()
-                        }
+                    if textGeo.size.width.isFinite && textGeo.size.width > 0 {
+                        textWidth = textGeo.size.width
                     }
+                    if geo.size.width.isFinite && geo.size.width > 0 {
+                        containerWidth = geo.size.width
+                    }
+                    syncState(now: Date())
                 }
                 .onChange(of: textGeo.size.width) { _, newWidth in
                     if newWidth.isFinite && newWidth > 0 {
                         textWidth = newWidth
-                        // Start scrolling once measured (if playing) - defer to let state update
-                        DispatchQueue.main.async {
-                            if isPlaying && needsScroll && isStopped {
-                                startScrolling()
-                            }
-                        }
+                        syncState(now: Date())
                     }
                 }
         }
@@ -207,45 +217,137 @@ struct MarqueeGlassText: View {
 
     // Only show fade when text is actually moving (not during delay or when paused)
     private var showFade: Bool {
-        needsScroll && !isStopped
+        needsScroll && phase.isScrolling
     }
 
     private var fadeMask: some View {
-        HStack(spacing: 0) {
+        Group {
             if showFade {
-                LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
-                    .frame(width: leftFade)
-            }
-            Color.black
-            if showFade {
-                LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
-                    .frame(width: rightFade)
+                HStack(spacing: 0) {
+                    LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: leftFade)
+                    Color.black
+                    LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: rightFade)
+                }
+            } else {
+                Color.black
             }
         }
     }
-
-    private func startScrolling() {
-        guard needsScroll else { return }
-        pendingStop = false
-        lastLoopCount = 0
-        // Start after delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + startDelay) {
-            guard isPlaying, !pendingStop else { return }
-            animationStartDate = Date()
-            isStopped = false
+    
+    private func syncState(now: Date) {
+        guard needsScroll else {
+            cancelStartTask()
+            phase = .stopped(offset: 0)
+            loopCounter = 0
+            return
+        }
+        
+        if !isPlaying {
+            cancelStartTask()
+            loopCounter = 0
+            switch phase {
+            case .scrolling(let referenceDate, let referenceOffset, _):
+                phase = .scrolling(referenceDate: referenceDate, referenceOffset: referenceOffset, stopAtLoopEnd: true)
+            case .waiting, .stopped:
+                phase = .stopped(offset: 0)
+            }
+            return
+        }
+        
+        switch phase {
+        case .scrolling(let referenceDate, let referenceOffset, let stopAtLoopEnd):
+            if stopAtLoopEnd {
+                // Playback resumed before the stop point - keep going smoothly.
+                phase = .scrolling(referenceDate: referenceDate, referenceOffset: referenceOffset, stopAtLoopEnd: false)
+            }
+            return
+        case .waiting:
+            return
+        case .stopped(let offset):
+            scheduleStart(from: offset, delay: startDelay)
         }
     }
-
+    
     private func resetForNewTrack() {
-        isStopped = true
-        animationStartDate = nil
-        lastLoopCount = 0
-        pendingStop = false
-        // Start scrolling if playing
-        if isPlaying {
-            startScrolling()
+        cancelStartTask()
+        phase = .stopped(offset: 0)
+        loopCounter = 0
+        syncState(now: Date())
+    }
+    
+    private func handleLoopAdvance(delta: Int, at date: Date) {
+        guard delta > 0 else { return }
+        
+        if case .scrolling(_, _, let stopAtLoopEnd) = phase, stopAtLoopEnd {
+            // Old behavior: when paused, finish the current loop and then stop at the boundary.
+            cancelStartTask()
+            phase = .stopped(offset: 0)
+            loopCounter = 0
+            return
+        }
+        
+        guard loopsBeforePause > 0 else { return }
+        guard isPlaying, needsScroll else { return }
+        guard phase.isScrolling else { return }
+        
+        loopCounter += delta
+        guard loopCounter > 0, loopCounter % loopsBeforePause == 0 else { return }
+        
+        let offset = tickState(for: date).offset
+        scheduleStart(from: offset, delay: startDelay)
+    }
+    
+    private func scheduleStart(from offset: CGFloat, delay: Double) {
+        cancelStartTask()
+        loopCounter = 0
+        
+        let frozen = normalizedOffset(offset)
+        let delaySeconds = delay.isFinite ? max(delay, 0) : 0
+        guard delaySeconds > 0 else {
+            phase = .scrolling(referenceDate: Date(), referenceOffset: frozen, stopAtLoopEnd: false)
+            return
+        }
+        
+        phase = .waiting(offset: frozen, until: Date().addingTimeInterval(delaySeconds))
+        
+        let nanoseconds = UInt64(min(delaySeconds, 3600.0) * 1_000_000_000)
+        startTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: nanoseconds)
+            } catch {
+                return
+            }
+            
+            if Task.isCancelled { return }
+            
+            await MainActor.run {
+                guard needsScroll, isPlaying else { return }
+                guard case .waiting(let waitingOffset, _) = phase else { return }
+                phase = .scrolling(referenceDate: Date(), referenceOffset: normalizedOffset(waitingOffset), stopAtLoopEnd: false)
+            }
         }
     }
+    
+    private func cancelStartTask() {
+        startTask?.cancel()
+        startTask = nil
+    }
+    
+    private func positiveModulo(_ value: CGFloat, _ modulus: CGFloat) -> CGFloat {
+        guard modulus.isFinite, modulus > 0 else { return 0 }
+        let result = value.truncatingRemainder(dividingBy: modulus)
+        return result < 0 ? result + modulus : result
+    }
+    
+    private func normalizedOffset(_ offset: CGFloat) -> CGFloat {
+        let width = segmentWidth
+        guard width.isFinite, width > 0 else { return 0 }
+        let normalized = -positiveModulo(-offset, width)
+        return normalized.isFinite ? normalized : 0
+    }
+
 }
 
 // MARK: - Left-Aligned Glass Text
@@ -255,9 +357,13 @@ struct MarqueeGlassText: View {
 struct LeftAlignedGlassText: View {
     let text: String
     let font: UIFont
-
-    private var segments: [TextSegment] {
-        text.splitByEmoji()
+    
+    @State private var segments: [TextSegment]
+    
+    init(text: String, font: UIFont) {
+        self.text = text
+        self.font = font
+        _segments = State(initialValue: text.splitByEmoji())
     }
 
     var body: some View {
@@ -275,6 +381,12 @@ struct LeftAlignedGlassText: View {
             }
         }
         .fixedSize()
+        .task(id: text) {
+            let updated = text.splitByEmoji()
+            await MainActor.run {
+                segments = updated
+            }
+        }
     }
 }
 
