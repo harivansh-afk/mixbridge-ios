@@ -32,7 +32,7 @@ final class HomeViewModel {
     /// Start observing play history from local database
     /// Call this from view's .task modifier
     func observeDatabase() async {
-        let observation = ValueObservation.trackingConstantRegion { db in
+        let observation = ValueObservation.tracking { db in
             try PlayHistory
                 .including(required: PlayHistory.track)
                 .order(PlayHistory.Columns.updatedAt.desc)
@@ -55,9 +55,13 @@ final class HomeViewModel {
                     )
                 }
 
-                self.playHistory = items
+                if self.playHistory != items {
+                    self.playHistory = items
+                }
                 self.error = nil
             }
+        } catch is CancellationError {
+            // Expected when the view disappears; don't surface as an error state.
         } catch {
             logError(.db, "Failed to observe history: \(error)")
             self.error = error

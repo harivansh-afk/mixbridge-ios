@@ -52,12 +52,23 @@ struct mixbridgeApp: App {
                     try? await Task.sleep(for: .milliseconds(400))
                     isAppInitialized = true
                 }
+
+                // Bootstrap local-first queue immediately if already authenticated.
+                if authManager.isAuthenticated, let userId = authManager.currentUserId {
+                    Task {
+                        await queueManager.start(userId: userId)
+                    }
+                }
             }
             .onChange(of: authManager.isAuthenticated) { wasAuthenticated, isAuthenticated in
                 if !isAuthenticated {
                     // User logged out - clear local database
                     Task {
                         try? await MixBridgeDB.shared.deleteAll()
+                    }
+                } else if let userId = authManager.currentUserId {
+                    Task {
+                        await queueManager.start(userId: userId)
                     }
                 }
             }

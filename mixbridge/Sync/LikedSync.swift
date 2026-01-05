@@ -25,34 +25,35 @@ final class LikedSync: Sendable {
             // 1. Fetch from API
             let scTracks = try await convex.getLikedTracks(userId: userId, forceRefresh: forceRefresh)
 
-            // 2. Save to DB
+            // 2. Prepare DB payload on MainActor (SoundCloud models are main-actor isolated in this project).
+            let now = Date()
+            let prepared = await MainActor.run { () -> (persistedTracks: [PersistedTrack], likedTracks: [LikedTrack], newLikedIds: Set<String>) in
+                let persistedTracks = scTracks.map { PersistedTrack(from: $0) }
+                let likedTracks = scTracks.map { LikedTrack(trackId: String($0.id), likedAt: now) }
+                let newLikedIds = Set(likedTracks.map(\.trackId))
+                return (persistedTracks, likedTracks, newLikedIds)
+            }
+
+            // 3. Save to DB
             try await db.writer.write { db in
                 // Get current liked track IDs
                 let currentLikedIds = try LikedTrack.fetchAll(db).map(\.trackId)
-                let newLikedIds = Set(scTracks.map { String($0.id) })
 
                 // Remove tracks no longer liked
-                for trackId in currentLikedIds where !newLikedIds.contains(trackId) {
-                    try LikedTrack.deleteOne(db, key: trackId)
+                for trackId in currentLikedIds where !prepared.newLikedIds.contains(trackId) {
+                    _ = try LikedTrack.deleteOne(db, key: trackId)
                 }
 
                 // Add/update liked tracks
-                let now = Date()
-                for scTrack in scTracks {
-                    // Save track
-                    var track = PersistedTrack(from: scTrack)
+                for (track, likedTrack) in zip(prepared.persistedTracks, prepared.likedTracks) {
                     try track.upsert(db)
-
-                    // Save liked junction
-                    var likedTrack = LikedTrack(
-                        trackId: String(scTrack.id),
-                        likedAt: now
-                    )
                     try likedTrack.upsert(db)
                 }
             }
 
-            logInfo(.sync, "Synced \(scTracks.count) liked tracks")
+            await MainActor.run {
+                logInfo(.sync, "Synced \(scTracks.count) liked tracks")
+            }
         }
     }
 
@@ -62,15 +63,13 @@ final class LikedSync: Sendable {
     func likeTrack(_ scTrack: SoundCloudTrack) async throws {
         let trackId = String(scTrack.id)
         let now = Date()
+        let persistedTrack = await MainActor.run { PersistedTrack(from: scTrack) }
+        let likedTrack = LikedTrack(trackId: trackId, likedAt: now)
 
         // 1. Optimistic update
         try await db.writer.write { db in
             // Save track
-            var track = PersistedTrack(from: scTrack)
-            try track.upsert(db)
-
-            // Add to liked
-            var likedTrack = LikedTrack(trackId: trackId, likedAt: now)
+            try persistedTrack.upsert(db)
             try likedTrack.upsert(db)
         }
 
@@ -80,7 +79,7 @@ final class LikedSync: Sendable {
         } catch {
             // 3. Rollback on failure
             try await db.writer.write { db in
-                try LikedTrack.deleteOne(db, key: trackId)
+                _ = try LikedTrack.deleteOne(db, key: trackId)
             }
             throw error
         }
@@ -95,7 +94,7 @@ final class LikedSync: Sendable {
 
         // 2. Optimistic delete
         try await db.writer.write { db in
-            try LikedTrack.deleteOne(db, key: trackId)
+            _ = try LikedTrack.deleteOne(db, key: trackId)
         }
 
         // 3. Sync to backend
@@ -105,8 +104,7 @@ final class LikedSync: Sendable {
             // 4. Rollback on failure
             if let likedTrack = existingLikedTrack {
                 try await db.writer.write { db in
-                    var restored = likedTrack
-                    try restored.insert(db)
+                    try likedTrack.insert(db)
                 }
             }
             throw error

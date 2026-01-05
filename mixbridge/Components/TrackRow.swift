@@ -289,8 +289,12 @@ struct TrackRow: View {
             Task {
                 isLoading = true
                 do {
-                    try await BackgroundExecutor.run {
-                        try await ConvexService.shared.likeTrack(trackId: track.id)
+                    if let soundCloudTrack {
+                        try await LikedSync.shared.likeTrack(soundCloudTrack)
+                    } else {
+                        try await BackgroundExecutor.run {
+                            try await ConvexService.shared.likeTrack(trackId: track.id)
+                        }
                     }
                     HapticManager.success()
                 } catch {

@@ -63,33 +63,48 @@ final class HistorySync: Sendable {
                 }
             }
 
-            // 3. Save aggregated data to DB
+            // 3. Prepare DB payload on MainActor (SoundCloud models are main-actor isolated in this project).
+            let aggregatedSnapshot = aggregated
+            let prepared: [PreparedHistory] = await MainActor.run {
+                aggregatedSnapshot.map { trackId, aggregatedItem in
+                    PreparedHistory(
+                        trackId: trackId,
+                        track: PersistedTrack(from: aggregatedItem.trackData),
+                        playCount: aggregatedItem.playCount,
+                        lastPlayedPosition: aggregatedItem.lastPlayedPosition,
+                        listenedPercentage: aggregatedItem.listenedPercentage,
+                        createdAt: aggregatedItem.createdAt,
+                        updatedAt: aggregatedItem.updatedAt
+                    )
+                }
+            }
+
+            // 4. Save aggregated data to DB
             try await db.writer.write { db in
-                for (trackId, aggregatedItem) in aggregated {
+                for item in prepared {
                     // Save track
-                    var track = PersistedTrack(from: aggregatedItem.trackData)
-                    try track.upsert(db)
+                    try item.track.upsert(db)
 
                     // Create/update history record using aggregated counts
                     var historyRecord: PlayHistory
 
-                    if let existing = try PlayHistory.fetchOne(db, key: trackId) {
+                    if let existing = try PlayHistory.fetchOne(db, key: item.trackId) {
                         // Merge with existing: use max of local vs backend counts
                         // This handles the case where local optimistic updates have occurred
                         historyRecord = existing
-                        historyRecord.playCount = max(existing.playCount, aggregatedItem.playCount)
-                        historyRecord.lastPlayedPosition = aggregatedItem.lastPlayedPosition
-                        historyRecord.listenedPercentage = max(aggregatedItem.listenedPercentage, existing.listenedPercentage)
-                        historyRecord.updatedAt = aggregatedItem.updatedAt
+                        historyRecord.playCount = max(existing.playCount, item.playCount)
+                        historyRecord.lastPlayedPosition = item.lastPlayedPosition
+                        historyRecord.listenedPercentage = max(item.listenedPercentage, existing.listenedPercentage)
+                        historyRecord.updatedAt = item.updatedAt
                     } else {
                         // Create new record
                         historyRecord = PlayHistory(
-                            trackId: trackId,
-                            playCount: aggregatedItem.playCount,
-                            lastPlayedPosition: aggregatedItem.lastPlayedPosition,
-                            listenedPercentage: aggregatedItem.listenedPercentage,
-                            createdAt: aggregatedItem.createdAt,
-                            updatedAt: aggregatedItem.updatedAt
+                            trackId: item.trackId,
+                            playCount: item.playCount,
+                            lastPlayedPosition: item.lastPlayedPosition,
+                            listenedPercentage: item.listenedPercentage,
+                            createdAt: item.createdAt,
+                            updatedAt: item.updatedAt
                         )
                     }
 
@@ -97,18 +112,30 @@ final class HistorySync: Sendable {
                 }
             }
 
-            logInfo(.sync, "Synced \(history.count) history items (\(aggregated.count) unique tracks)")
+            await MainActor.run {
+                logInfo(.sync, "Synced \(history.count) history items (\(prepared.count) unique tracks)")
+            }
         }
     }
 
     /// Helper struct for aggregating multiple play entries per track
-    private struct AggregatedHistory {
+    private struct AggregatedHistory: Sendable {
         let trackData: SoundCloudTrack
         var playCount: Int
         var lastPlayedPosition: Double
         var listenedPercentage: Double
         var createdAt: Date
         var updatedAt: Date
+    }
+
+    private struct PreparedHistory: Sendable {
+        let trackId: String
+        let track: PersistedTrack
+        let playCount: Int
+        let lastPlayedPosition: Double
+        let listenedPercentage: Double
+        let createdAt: Date
+        let updatedAt: Date
     }
 
     // MARK: - Optimistic Add to History
@@ -118,12 +145,12 @@ final class HistorySync: Sendable {
     func addToHistory(_ scTrack: SoundCloudTrack, userId: String, sessionId: String, queueIndex: Int?) async throws {
         let trackId = String(scTrack.id)
         let now = Date()
+        let persistedTrack = await MainActor.run { PersistedTrack(from: scTrack) }
 
         // 1. Optimistic update to local DB
         try await db.writer.write { db in
             // Save track
-            var track = PersistedTrack(from: scTrack)
-            try track.upsert(db)
+            try persistedTrack.upsert(db)
 
             // Update or create history record
             var history: PlayHistory
@@ -154,7 +181,9 @@ final class HistorySync: Sendable {
                     queueIndex: queueIndex
                 )
             } catch {
-                logError(.sync, "Failed to sync play to backend: \(error)")
+                await MainActor.run {
+                    logError(.sync, "Failed to sync play to backend: \(error)")
+                }
                 // Optimistic update stays - no rollback needed for history
             }
         }

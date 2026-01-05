@@ -71,9 +71,13 @@ final class PlaylistDetailViewModel {
                     return TrackItem(soundCloudTrack: scTrack)
                 }
 
-                self.trackItems = items
+                if self.trackItems != items {
+                    self.trackItems = items
+                }
                 self.error = nil
             }
+        } catch is CancellationError {
+            // Expected when the view disappears; don't surface as an error state.
         } catch {
             logError(.db, "Failed to observe playlist tracks: \(error)")
             self.error = error
@@ -92,7 +96,8 @@ final class PlaylistDetailViewModel {
             try await playlistSync.syncPlaylistTracks(
                 userId: userId,
                 playlistId: playlistId,
-                forceRefresh: forceRefresh
+                forceRefresh: forceRefresh,
+                updatePlaylistRow: false
             )
             error = nil
         } catch {

@@ -84,7 +84,7 @@ struct SearchView: View {
             Text(error.localizedDescription)
         } actions: {
             Button("Try Again") {
-                Task { await performSearch(query: searchText) }
+                Task { await performSearch(query: searchText, forceRefresh: true) }
             }
             .buttonStyle(.bordered)
         }
@@ -228,18 +228,36 @@ struct SearchView: View {
         }
     }
 
-    private func performSearch(query: String) async {
+    private func performSearch(query: String, forceRefresh: Bool = false) async {
         guard !query.isEmpty else { return }
-        guard query != lastSearchedQuery else { return }
+        guard forceRefresh || query != lastSearchedQuery else { return }
         guard let userId = authManager.currentUserId else { return }
 
-        isSearching = true
+        // Try local cache first for instant UI.
+        do {
+            if let cached = try await SearchSync.shared.getLocalSearchResult(userId: userId, query: query) {
+                if query == searchText {
+                    self.searchResult = cached.result
+                    self.error = nil
+                    self.lastSearchedQuery = query
+                    recentSearchManager.addSearch(query)
+                }
+            }
+        } catch {
+            // Cache decode failure shouldn't block live search.
+        }
+
+        // Only show spinner if we have nothing to display yet.
+        isSearching = (searchResult == nil)
         error = nil
 
         do {
-            let results = try await BackgroundExecutor.run {
-                try await ConvexService.shared.search(userId: userId, query: query, limit: 20)
-            }
+            let results = try await SearchSync.shared.fetchAndStoreSearch(
+                userId: userId,
+                query: query,
+                limit: 20,
+                forceRefresh: forceRefresh
+            )
 
             if query == searchText {
                 self.searchResult = results
