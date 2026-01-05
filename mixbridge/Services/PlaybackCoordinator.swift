@@ -100,6 +100,8 @@ final class PlaybackCoordinator: NSObject {
     }
 
     private var isPreparingPlayback = false
+    private var playbackTask: Task<Void, Never>?
+    private var activeRequestId: UUID = UUID()
 
     /// Track retry attempts with exponential backoff
     private var retryAttempts: [String: RetryMetadata] = [:]
@@ -193,10 +195,25 @@ final class PlaybackCoordinator: NSObject {
     }
 
     func play(track: Track, soundCloudTrack: SoundCloudTrack?, queueIndex: Int?, startTime: Double? = nil) {
-        guard !isPreparingPlayback else {
-            logWarning(.playback, "Playback already in progress, ignoring duplicate request")
-            return
+        // Cancel any in-flight preparation so rapid taps feel instantaneous.
+        playbackTask?.cancel()
+        isIntendedToPlay = true
+        let requestId = UUID()
+        activeRequestId = requestId
+
+        // Stop current audio immediately so UI never “bounces” between old/new tracks.
+        if isUsingMixMode {
+            mixEngine.stop()
+            isUsingMixMode = false
+        } else {
+            player.pause()
         }
+        PlayerState.shared.crossfadeFromArtwork = ""
+        PlayerState.shared.crossfadeProgress = 0
+        PlayerState.shared.isCrossfading = false
+        PlayerState.shared.crossfadeNextTrack = nil
+        PlayerState.shared.crossfadeNextPosition = 0
+        PlayerState.shared.crossfadeNextDuration = 0
 
         // Check if track can be retried (exponential backoff)
         if let metadata = retryAttempts[track.id] {
@@ -210,11 +227,16 @@ final class PlaybackCoordinator: NSObject {
         let effectiveQueueIndex = queueIndex ?? queueManager.indexOfTrack(withId: track.id)
         let context = PlaybackContext(track: track, soundCloudTrack: soundCloudTrack, queueIndex: effectiveQueueIndex)
 
-        Task {
-            if mixEnabled {
-                await startMixPlayback(with: context, startTime: startTime)
+        // Immediate UI: publish selected track + loading state synchronously.
+        currentContext = context
+        status = .loading
+
+        playbackTask = Task { [weak self] in
+            guard let self else { return }
+            if self.mixEnabled {
+                await self.startMixPlayback(with: context, requestId: requestId, startTime: startTime)
             } else {
-                await startPlayback(with: context, startTime: startTime)
+                await self.startPlayback(with: context, requestId: requestId, startTime: startTime)
             }
         }
     }
@@ -236,6 +258,8 @@ final class PlaybackCoordinator: NSObject {
     }
 
     func pause() {
+        playbackTask?.cancel()
+        playbackTask = nil
         isIntendedToPlay = false
         if isUsingMixMode {
             mixEngine.pause()
@@ -357,9 +381,11 @@ final class PlaybackCoordinator: NSObject {
         currentContext = context
     }
 
-    private func startPlayback(with context: PlaybackContext, startTime: Double? = nil, forceRefreshURL: Bool = false) async {
+    private func startPlayback(with context: PlaybackContext, requestId: UUID, startTime: Double? = nil, forceRefreshURL: Bool = false) async {
         isPreparingPlayback = true
         defer { isPreparingPlayback = false }
+
+        guard activeRequestId == requestId else { return }
 
         // Ensure mix engine is fully stopped before starting AVQueuePlayer playback.
         // Without this, it's possible to end up with mixEngine still playing while the queue player starts,
@@ -375,6 +401,7 @@ final class PlaybackCoordinator: NSObject {
         do {
             logDebug(.playback, "Fetching stream URL\(forceRefreshURL ? " (force refresh)" : "")...")
             let item = try await prepareItem(for: pendingContext, forceRefresh: forceRefreshURL)
+            guard activeRequestId == requestId, !Task.isCancelled else { return }
 
             // Clear old items
             player.removeAllItems()
@@ -398,9 +425,13 @@ final class PlaybackCoordinator: NSObject {
             if let startTime = startTime, startTime > 0 {
                 await player.seek(to: CMTime(seconds: startTime, preferredTimescale: CMTimeScale(NSEC_PER_SEC)), toleranceBefore: .zero, toleranceAfter: .zero)
             }
+            guard activeRequestId == requestId, !Task.isCancelled else { return }
 
-            // Play
-            isIntendedToPlay = true
+            // Only start audio if the user still intends to play (e.g., they didn’t pause mid-load).
+            guard isIntendedToPlay else {
+                status = .paused
+                return
+            }
             player.play()
             handleTrackStartedPlaying(context: pendingContext)
 
@@ -419,8 +450,8 @@ final class PlaybackCoordinator: NSObject {
                     duration: Double(scTrack.duration) / 1000.0  // Convert ms to seconds
                 )
                 // Add to local history immediately (optimistic), sync to backend in background
-                Task {
-                    try? await historySync.addToHistory(
+                Task.detached(priority: .utility) {
+                    try? await HistorySync.shared.addToHistory(
                         scTrack,
                         userId: userId,
                         sessionId: sessionId,
@@ -430,6 +461,10 @@ final class PlaybackCoordinator: NSObject {
             }
 
         } catch {
+            if Task.isCancelled || error is CancellationError {
+                // User initiated another action; don't show failures for cancelled work.
+                return
+            }
             // Check if this is a recoverable error (timeout, server error, expired URL)
             let metadata = retryAttempts[pendingContext.track.id] ?? RetryMetadata()
 
@@ -441,7 +476,7 @@ final class PlaybackCoordinator: NSObject {
                 await streamCache.invalidate(trackId: pendingContext.track.id)
 
                 // Retry with force refresh (don't increment counter yet)
-                await startPlayback(with: pendingContext, startTime: startTime, forceRefreshURL: true)
+                await startPlayback(with: pendingContext, requestId: requestId, startTime: startTime, forceRefreshURL: true)
                 return
             }
 
@@ -460,9 +495,11 @@ final class PlaybackCoordinator: NSObject {
 
     // MARK: - Mix Mode Playback
 
-    private func startMixPlayback(with context: PlaybackContext, startTime: Double? = nil, forceRefreshURL: Bool = false) async {
+    private func startMixPlayback(with context: PlaybackContext, requestId: UUID, startTime: Double? = nil, forceRefreshURL: Bool = false) async {
         isPreparingPlayback = true
         defer { isPreparingPlayback = false }
+
+        guard activeRequestId == requestId else { return }
 
         status = .loading
 
@@ -489,6 +526,7 @@ final class PlaybackCoordinator: NSObject {
                     stream = try await streamCache.ensureStream(for: context.track.id, priority: .userInitiated)
                 }
             }
+            guard activeRequestId == requestId, !Task.isCancelled else { return }
 
             // Stop regular playback and switch to mix mode
             player.pause()
@@ -500,11 +538,16 @@ final class PlaybackCoordinator: NSObject {
             mixEngine.prewarmSeconds = prewarmSeconds
             mixEngine.fadeCurve = fadeCurve
 
+            // Only start audio if the user still intends to play (e.g., they didn’t pause mid-load).
+            guard isIntendedToPlay else {
+                status = .paused
+                return
+            }
+
             // Start mix playback
             mixEngine.play(context: context, streamData: stream, startTime: startTime)
             isUsingMixMode = true
 
-            isIntendedToPlay = true
             currentContext = context
             handleTrackStartedPlaying(context: context)
 
@@ -523,8 +566,8 @@ final class PlaybackCoordinator: NSObject {
                     duration: Double(scTrack.duration) / 1000.0
                 )
                 // Add to local history immediately (optimistic), sync to backend in background
-                Task {
-                    try? await historySync.addToHistory(
+                Task.detached(priority: .utility) {
+                    try? await HistorySync.shared.addToHistory(
                         scTrack,
                         userId: userId,
                         sessionId: sessionId,
@@ -536,13 +579,16 @@ final class PlaybackCoordinator: NSObject {
             status = .playing
 
         } catch {
+            if Task.isCancelled || error is CancellationError {
+                return
+            }
             // Check if this is a recoverable error
             let metadata = retryAttempts[context.track.id] ?? RetryMetadata()
 
             if isRecoverableError(error) && metadata.hasRetriesRemaining && !forceRefreshURL {
                 logWarning(.playback, "[MixMode] Recoverable error, retrying with fresh URL: \(error.localizedDescription)")
                 await streamCache.invalidate(trackId: context.track.id)
-                await startMixPlayback(with: context, startTime: startTime, forceRefreshURL: true)
+                await startMixPlayback(with: context, requestId: requestId, startTime: startTime, forceRefreshURL: true)
                 return
             }
 
@@ -759,8 +805,8 @@ final class PlaybackCoordinator: NSObject {
                         queueIndex: preloadedContext.queueIndex,
                         duration: Double(scTrack.duration) / 1000.0
                     )
-                    Task {
-                        try? await historySync.addToHistory(
+                    Task.detached(priority: .utility) {
+                        try? await HistorySync.shared.addToHistory(
                             scTrack,
                             userId: userId,
                             sessionId: sessionId,
@@ -784,8 +830,9 @@ final class PlaybackCoordinator: NSObject {
                 nextPreloadedItem = nil
                 itemContextMap.removeValue(forKey: preloadedItem)
 
+                let requestId = activeRequestId
                 Task {
-                    await startPlayback(with: preloadedContext)
+                    await startPlayback(with: preloadedContext, requestId: requestId)
                 }
                 return
             }
@@ -824,6 +871,13 @@ final class PlaybackCoordinator: NSObject {
             duration = CMTimeGetSeconds(player.currentItem?.duration ?? .invalid)
         }
 
+        // When switching tracks, avoid reporting the previous item’s time/duration during the loading gap.
+        let isLoading = (status == .loading)
+        let effectiveTime = isLoading ? 0 : (currentTime.isFinite ? currentTime : 0)
+        let effectiveDuration = isLoading
+            ? (currentContext?.track.duration ?? 0)
+            : (duration.isFinite ? duration : (currentContext?.track.duration ?? 0))
+
         let effectiveStatus: PlayerState.PlaybackStatus = {
             if case .failed = status { return status }
 
@@ -853,8 +907,8 @@ final class PlaybackCoordinator: NSObject {
             queueIndex: currentContext?.queueIndex,
             status: effectiveStatus,
             isPlaying: effectiveIsPlaying,
-            currentTime: currentTime.isFinite ? currentTime : 0,
-            duration: duration.isFinite ? duration : (currentContext?.track.duration ?? 0)
+            currentTime: effectiveTime,
+            duration: effectiveDuration
         )
 
         delegate?.playbackCoordinator(self, didUpdate: snapshot)
@@ -866,14 +920,14 @@ final class PlaybackCoordinator: NSObject {
         let tracks = queueManager.queueTracks
         guard !tracks.isEmpty else { return }
 
-        Task {
-            await streamCache.prefetchUpcoming(tracks: tracks, lookAhead: 5)
+        Task.detached(priority: .utility) { [tracks] in
+            await StreamURLCache.shared.prefetchUpcoming(tracks: tracks, lookAhead: 5)
         }
     }
 
     func prefetchTrack(_ track: Track, with soundCloudTrack: SoundCloudTrack?) {
-        Task {
-            await streamCache.prefetchStreamURL(for: track.id)
+        Task.detached(priority: .utility) { [trackId = track.id] in
+            await StreamURLCache.shared.prefetchStreamURL(for: trackId)
         }
     }
 
@@ -925,8 +979,8 @@ extension PlaybackCoordinator: MixPlaybackEngineDelegate {
                 queueIndex: context.queueIndex,
                 duration: Double(scTrack.duration) / 1000.0
             )
-            Task {
-                try? await historySync.addToHistory(
+            Task.detached(priority: .utility) {
+                try? await HistorySync.shared.addToHistory(
                     scTrack,
                     userId: userId,
                     sessionId: sessionId,
@@ -964,10 +1018,11 @@ extension PlaybackCoordinator: MixPlaybackEngineDelegate {
 
         // If we have a next track context, try normal playback
         if let context = context {
+            let requestId = activeRequestId
             Task {
                 // Switch back to non-mix mode for fallback
                 isUsingMixMode = false
-                await startPlayback(with: context)
+                await startPlayback(with: context, requestId: requestId)
             }
         }
     }

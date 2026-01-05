@@ -53,6 +53,24 @@ final class PlayerState: NSObject {
     }
     var errorMessage: String?
 
+    // MARK: - Perf / Interaction Timing
+
+    private struct PendingPlayback {
+        let trackId: String
+        var uiUpdated: InteractionMetrics.Token?
+        var startedPlaying: InteractionMetrics.Token?
+    }
+
+    private enum PendingNavigationKind {
+        case next(previousTrackId: String)
+        case previous(previousTrackId: String)
+    }
+
+    private var pendingPlayback: PendingPlayback?
+    private var pendingToggle: InteractionMetrics.Token?
+    private var pendingNavigation: (kind: PendingNavigationKind, token: InteractionMetrics.Token)?
+    private var pendingSeek: (target: Double, token: InteractionMetrics.Token)?
+
     // MARK: - Crossfade Visual State
 
     /// Current crossfade progress (0.0 to 1.0) for visual transitions
@@ -121,7 +139,9 @@ final class PlayerState: NSObject {
     
     /// Returns true if there's an active track (not idle and has valid duration)
     var hasActiveTrack: Bool {
-        playbackStatus != .idle && duration > 0
+        // Treat any non-idle state as active so the mini player appears instantly,
+        // even before AVPlayer has reported a duration.
+        playbackStatus != .idle
     }
 
     private let playbackCoordinator = PlaybackCoordinator.shared
@@ -170,6 +190,7 @@ final class PlayerState: NSObject {
 
     private var nowPlayingArtwork: MPMediaItemArtwork?
     private var artworkTask: Task<Void, Never>?
+    private var saveStateTask: Task<Void, Never>?
     private var lastPublishedStatus: PlaybackStatus = .idle
 
     /// Flag to prevent time observer updates during user scrubbing (prevents slider jitter)
@@ -253,15 +274,26 @@ final class PlayerState: NSObject {
         playbackCoordinator.fadeCurve = fadeCurve
     }
 
-    private func savePlaybackState() {
-        // Save current track
-        if let encoded = try? JSONEncoder().encode(currentTrack) {
-            UserDefaults.standard.set(encoded, forKey: kSavedTrack)
-        }
+    private func scheduleSavePlaybackState(immediate: Bool = false) {
+        let track = currentTrack
+        let position = playbackPosition
+        let duration = self.duration
+        let savedTrackKey = kSavedTrack
+        let savedPositionKey = kSavedPosition
+        let savedDurationKey = kSavedDuration
 
-        // Save position and duration
-        UserDefaults.standard.set(playbackPosition, forKey: kSavedPosition)
-        UserDefaults.standard.set(duration, forKey: kSavedDuration)
+        saveStateTask?.cancel()
+        saveStateTask = Task.detached(priority: .utility) {
+            if !immediate {
+                try? await Task.sleep(for: .milliseconds(150))
+            }
+
+            if let encoded = try? JSONEncoder().encode(track) {
+                UserDefaults.standard.set(encoded, forKey: savedTrackKey)
+            }
+            UserDefaults.standard.set(position, forKey: savedPositionKey)
+            UserDefaults.standard.set(duration, forKey: savedDurationKey)
+        }
     }
 
     private func loadPlaybackState() {
@@ -362,21 +394,35 @@ final class PlayerState: NSObject {
                 // Load artwork and update Now Playing info
                 self.refreshArtwork(for: track)
                 self.updateNowPlayingInfo(playbackRate: 0)
-                self.savePlaybackState() // Save so we don't fetch next time
+                self.scheduleSavePlaybackState(immediate: true) // Save so we don't fetch next time
             }
         }
     }
     
     @objc private func handleAppBackground() {
-        savePlaybackState()
+        scheduleSavePlaybackState(immediate: true)
     }
 
     // MARK: - Public API
 
     func play(track: Track, soundCloudTrack: SoundCloudTrack? = nil, queueIndex: Int? = nil, startTime: Double? = nil) {
-        // ⚡ CRITICAL FIX: Don't update currentTrack yet - wait for successful playback
-        // Only update status to loading to show the user something is happening
+        // Instant UI: update the selected track immediately and show loading.
+        // Playback correctness is enforced by PlaybackCoordinator snapshots.
+        if track.id != currentTrack.id {
+            currentTrack = track
+            duration = max(track.duration, 0)
+            if let startTime { playbackPosition = startTime }
+            refreshArtwork(for: track)
+            updateNowPlayingInfo(playbackRate: 0)
+        }
+
         playbackStatus = .loading
+
+        pendingPlayback = PendingPlayback(
+            trackId: track.id,
+            uiUpdated: InteractionMetrics.begin("player_play_tap_to_ui", context: track.title),
+            startedPlaying: InteractionMetrics.begin("player_play_tap_to_playing", context: track.title)
+        )
 
         // Store queue index
         if let explicitIndex = queueIndex {
@@ -394,9 +440,6 @@ final class PlayerState: NSObject {
             queueIndex: queueIndex,
             startTime: startTime
         )
-
-        // NOTE: currentTrack will be updated when we receive successful snapshot from PlaybackCoordinator
-        // This ensures tight coupling between UI and actual playback state
     }
 
     /// Play from a list context - handles queue setup/append automatically
@@ -404,7 +447,7 @@ final class PlayerState: NSObject {
     ///   - items: Full list of TrackItems
     ///   - startIndex: Which track was clicked (0-based index)
     ///   - shuffle: If true, shuffles the list before setting queue
-    func playFromList(items: [TrackItem], startIndex: Int, shuffle: Bool = false) async {
+    func playFromList(items: [TrackItem], startIndex: Int, shuffle: Bool = false) {
         guard !items.isEmpty else { return }
         guard startIndex >= 0 && startIndex < items.count else { return }
 
@@ -420,27 +463,15 @@ final class PlayerState: NSObject {
         // Get the track to play
         let trackToPlay = itemsToQueue[playIndex]
 
-        // Get items from playIndex onwards for the queue
-        let queueItems = Array(itemsToQueue.suffix(from: playIndex))
+        // Queue invariant: current track is never in the queue.
+        // We replace the upcoming queue with tracks AFTER the tapped track.
+        queueManager.setQueue(items: itemsToQueue, startIndex: playIndex)
 
-        do {
-            if queueManager.hasQueue {
-                // Append to existing queue
-                try await queueManager.appendTracks(queueItems)
-            } else {
-                // Set as new queue
-                try await queueManager.setQueue(items: queueItems, startIndex: 0)
-            }
-        } catch {
-            logError(.queue, "Failed to update queue: \(error)")
-            // Continue to play even if queue update fails
-        }
-
-        // Play the track (queue index is 0 since we're starting from playIndex)
+        // Play immediately (do not await queue persistence/sync).
         play(
             track: trackToPlay.track,
             soundCloudTrack: trackToPlay.soundCloudTrack,
-            queueIndex: 0
+            queueIndex: nil
         )
     }
 
@@ -451,6 +482,7 @@ final class PlayerState: NSObject {
     }
 
     func togglePlayback() {
+        pendingToggle = InteractionMetrics.begin("player_toggle_tap")
         // Check if we need to restore playback from a saved state (coordinator empty but we have a track)
         if playbackStatus == .paused && duration > 0 && !playbackCoordinator.hasLoadedItems {
              // Try to resume/restart the current track if coordinator is empty
@@ -458,14 +490,26 @@ final class PlayerState: NSObject {
              play(track: currentTrack, startTime: playbackPosition)
              return
         }
-        
+
+        // Optimistic UI: flip immediately, then let the coordinator reconcile actual playback.
+        // This makes play/pause feel “instant” even if AVPlayer takes a beat to start/stop.
+        if isPlaying {
+            isPlaying = false
+            playbackStatus = .paused
+            updateNowPlayingInfo(playbackRate: 0)
+        } else if playbackStatus == .paused || playbackStatus == .ready || playbackStatus == .playing {
+            isPlaying = true
+            playbackStatus = .playing
+            updateNowPlayingInfo(playbackRate: 1)
+        }
+
         playbackCoordinator.togglePlayback()
     }
 
     func pause() {
         playbackCoordinator.pause()
         updateNowPlayingInfo(playbackRate: 0)
-        savePlaybackState()
+        scheduleSavePlaybackState(immediate: true)
     }
 
     func resume() {
@@ -479,6 +523,7 @@ final class PlayerState: NSObject {
     ///
     /// - Parameter time: The target playback position in seconds
     func seek(to time: Double) {
+        pendingSeek = (target: time, token: InteractionMetrics.begin("player_seek_tap_to_settle"))
         // ⚡ CRITICAL: Set seeking flag to prevent time observer jitter
         isSeeking = true
 
@@ -502,10 +547,12 @@ final class PlayerState: NSObject {
     }
 
     func playNextFromQueue() {
+        pendingNavigation = (kind: .next(previousTrackId: currentTrack.id), token: InteractionMetrics.begin("player_next_tap"))
         playbackCoordinator.playNext(manual: true)
     }
 
     func playPreviousFromQueue() {
+        pendingNavigation = (kind: .previous(previousTrackId: currentTrack.id), token: InteractionMetrics.begin("player_previous_tap"))
         playbackCoordinator.playPrevious()
     }
 
@@ -888,6 +935,36 @@ extension PlayerState: PlaybackCoordinatorDelegate {
             needsNowPlayingUpdate = true
         }
 
+        // Perf: resolve pending interactions
+        if let pending = pendingPlayback, let track = snapshot.track, track.id == pending.trackId {
+            if let token = pending.uiUpdated {
+                InteractionMetrics.end(token, result: "track=\(track.title)")
+                pendingPlayback?.uiUpdated = nil
+            }
+            if case .playing = snapshot.status, let token = pending.startedPlaying {
+                InteractionMetrics.end(token, result: "track=\(track.title)")
+                pendingPlayback?.startedPlaying = nil
+            }
+            if pendingPlayback?.uiUpdated == nil, pendingPlayback?.startedPlaying == nil {
+                pendingPlayback = nil
+            }
+        }
+
+        if let pending = pendingNavigation, let track = snapshot.track, track.id != {
+            switch pending.kind {
+            case .next(let previousTrackId), .previous(let previousTrackId):
+                return previousTrackId
+            }
+        }() {
+            InteractionMetrics.end(pending.token, result: "track=\(track.title)")
+            pendingNavigation = nil
+        }
+
+        if let pending = pendingSeek, abs(snapshot.currentTime - pending.target) < 0.25 {
+            InteractionMetrics.end(pending.token, result: "t=\(String(format: "%.2f", snapshot.currentTime))")
+            pendingSeek = nil
+        }
+
         // Position and duration (update locally, but don't spam Now Playing)
         // CRITICAL: Only update playback position if user is NOT actively seeking
         // This prevents the time observer from fighting with user's slider dragging
@@ -915,6 +992,11 @@ extension PlayerState: PlaybackCoordinatorDelegate {
         }
 
         lastPublishedStatus = playbackStatus
+
+        if let token = pendingToggle, wasPlaying != isPlaying {
+            InteractionMetrics.end(token, result: isPlaying ? "playing" : "paused")
+            pendingToggle = nil
+        }
     }
 
     func playbackCoordinator(_ coordinator: PlaybackCoordinator, didEncounter error: Error) {

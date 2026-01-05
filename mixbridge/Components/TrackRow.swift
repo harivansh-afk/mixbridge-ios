@@ -224,9 +224,7 @@ struct TrackRow: View {
 
         // If list context is provided, use smart queue management
         if let context = listContext, let index = indexInList {
-            Task {
-                await PlayerState.shared.playFromList(items: context, startIndex: index)
-            }
+            PlayerState.shared.playFromList(items: context, startIndex: index)
             return
         }
 
@@ -246,17 +244,13 @@ struct TrackRow: View {
             return
         }
 
-        Task {
-            isLoading = true
-            do {
-                try await QueueManager.shared.addTrack(track, soundCloudTrack: soundCloudTrack)
-            } catch ConvexError.alreadyInQueue {
-                // Don't show error for duplicates
-            } catch {
-                errorMessage = error.localizedDescription
-                showError = true
-            }
-            isLoading = false
+        do {
+            try QueueManager.shared.addTrackLocalFirst(track, soundCloudTrack: soundCloudTrack)
+        } catch ConvexError.alreadyInQueue {
+            // Don't show error for duplicates
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
         }
     }
 
@@ -267,17 +261,13 @@ struct TrackRow: View {
             return
         }
 
-        Task {
-            isLoading = true
-            do {
-                try await QueueManager.shared.insertTrackNext(track, soundCloudTrack: soundCloudTrack)
-            } catch ConvexError.alreadyInQueue {
-                // Don't show error for duplicates
-            } catch {
-                errorMessage = error.localizedDescription
-                showError = true
-            }
-            isLoading = false
+        do {
+            try QueueManager.shared.insertTrackNextLocalFirst(track, soundCloudTrack: soundCloudTrack)
+        } catch ConvexError.alreadyInQueue {
+            // Don't show error for duplicates
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
         }
     }
 

@@ -8,50 +8,101 @@
 import UIKit
 import SwiftUI
 
+@MainActor
+private enum CachedHaptics {
+    static let light = UIImpactFeedbackGenerator(style: .light)
+    static let medium = UIImpactFeedbackGenerator(style: .medium)
+    static let heavy = UIImpactFeedbackGenerator(style: .heavy)
+    static let selection = UISelectionFeedbackGenerator()
+    static let notification = UINotificationFeedbackGenerator()
+
+    static func impact(_ generator: UIImpactFeedbackGenerator) {
+        generator.prepare()
+        generator.impactOccurred()
+    }
+}
+
 /// Centralized haptic feedback management
 /// Provides consistent haptics across the app
 struct HapticManager {
 
     /// Light impact - for subtle interactions
     static func light() {
-        let impact = UIImpactFeedbackGenerator(style: .light)
-        impact.impactOccurred()
+        if Thread.isMainThread {
+            CachedHaptics.impact(CachedHaptics.light)
+        } else {
+            DispatchQueue.main.async { CachedHaptics.impact(CachedHaptics.light) }
+        }
     }
 
     /// Medium impact - for standard button taps and selections
     static func medium() {
-        let impact = UIImpactFeedbackGenerator(style: .medium)
-        impact.impactOccurred()
+        if Thread.isMainThread {
+            CachedHaptics.impact(CachedHaptics.medium)
+        } else {
+            DispatchQueue.main.async { CachedHaptics.impact(CachedHaptics.medium) }
+        }
     }
 
     /// Heavy impact - for significant actions
     static func heavy() {
-        let impact = UIImpactFeedbackGenerator(style: .heavy)
-        impact.impactOccurred()
+        if Thread.isMainThread {
+            CachedHaptics.impact(CachedHaptics.heavy)
+        } else {
+            DispatchQueue.main.async { CachedHaptics.impact(CachedHaptics.heavy) }
+        }
     }
 
     /// Selection feedback - for navigation and tab changes
     static func selection() {
-        let selection = UISelectionFeedbackGenerator()
-        selection.selectionChanged()
+        if Thread.isMainThread {
+            CachedHaptics.selection.prepare()
+            CachedHaptics.selection.selectionChanged()
+        } else {
+            DispatchQueue.main.async {
+                CachedHaptics.selection.prepare()
+                CachedHaptics.selection.selectionChanged()
+            }
+        }
     }
 
     /// Success notification - for successful operations
     static func success() {
-        let notification = UINotificationFeedbackGenerator()
-        notification.notificationOccurred(.success)
+        if Thread.isMainThread {
+            CachedHaptics.notification.prepare()
+            CachedHaptics.notification.notificationOccurred(.success)
+        } else {
+            DispatchQueue.main.async {
+                CachedHaptics.notification.prepare()
+                CachedHaptics.notification.notificationOccurred(.success)
+            }
+        }
     }
 
     /// Warning notification - for destructive actions
     static func warning() {
-        let notification = UINotificationFeedbackGenerator()
-        notification.notificationOccurred(.warning)
+        if Thread.isMainThread {
+            CachedHaptics.notification.prepare()
+            CachedHaptics.notification.notificationOccurred(.warning)
+        } else {
+            DispatchQueue.main.async {
+                CachedHaptics.notification.prepare()
+                CachedHaptics.notification.notificationOccurred(.warning)
+            }
+        }
     }
 
     /// Error notification - for failed operations
     static func error() {
-        let notification = UINotificationFeedbackGenerator()
-        notification.notificationOccurred(.error)
+        if Thread.isMainThread {
+            CachedHaptics.notification.prepare()
+            CachedHaptics.notification.notificationOccurred(.error)
+        } else {
+            DispatchQueue.main.async {
+                CachedHaptics.notification.prepare()
+                CachedHaptics.notification.notificationOccurred(.error)
+            }
+        }
     }
 }
 

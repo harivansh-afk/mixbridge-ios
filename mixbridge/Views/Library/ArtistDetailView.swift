@@ -150,15 +150,11 @@ struct ArtistDetailView: View {
         PlaylistActionButtons(
             onPlay: {
                 guard !combinedTrackItems.isEmpty else { return }
-                Task {
-                    await PlayerState.shared.playFromList(items: combinedTrackItems, startIndex: 0)
-                }
+                PlayerState.shared.playFromList(items: combinedTrackItems, startIndex: 0)
             },
             onShuffle: {
                 guard !combinedTrackItems.isEmpty else { return }
-                Task {
-                    await PlayerState.shared.playFromList(items: combinedTrackItems, startIndex: 0, shuffle: true)
-                }
+                PlayerState.shared.playFromList(items: combinedTrackItems, startIndex: 0, shuffle: true)
             }
         )
     }

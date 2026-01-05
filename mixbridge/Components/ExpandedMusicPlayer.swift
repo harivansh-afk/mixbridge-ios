@@ -70,11 +70,11 @@ struct ExpandedMusicPlayer: View {
 
     // Prefetch tracks for carousel
     private func prefetchSurroundingTracks() {
-        Task {
-            await TrackPrefetcher.shared.prefetchForQueue(queueManager.queueTracks, currentIndex: 0)
-
-            // Immediately preload next for instant carousel
-            if let next = getNextTrack() {
+        let snapshot = queueManager.queueTracks
+        let next = getNextTrack()
+        Task.detached(priority: .utility) {
+            await TrackPrefetcher.shared.prefetchForQueue(snapshot, currentIndex: 0)
+            if let next {
                 await TrackPrefetcher.shared.preloadTrackImmediately(next)
             }
         }
@@ -126,15 +126,8 @@ struct ExpandedMusicPlayer: View {
             }
         )
         .onAppear {
-            // Load queue when expanded player opens
-            if let userId = authManager.currentUserId {
-                Task {
-                    try? await queueManager.loadQueue(userId: userId)
-                    // Sync player's queue index after queue loads
-                    // This ensures navigation works even if track was played from outside the queue
-                    playerState.syncQueueIndex()
-                }
-            }
+            // Queue is bootstrapped at app start; avoid a network refresh on open.
+            playerState.syncQueueIndex()
             // Prefetch surrounding tracks when player opens
             prefetchSurroundingTracks()
         }

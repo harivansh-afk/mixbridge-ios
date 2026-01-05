@@ -75,7 +75,7 @@ final class PlaybackPositionTracker {
         let percentage = duration > 0 ? (position / duration) * 100 : 0
         logDebug(.playback, "Flushing position: \(String(format: "%.1f", position))s / \(String(format: "%.1f", duration))s (\(String(format: "%.0f", percentage))%)")
 
-        Task {
+        Task.detached(priority: .utility) { [convexService] in
             try? await convexService.updatePlayPosition(
                 sessionId: sessionId,
                 userId: userId,
