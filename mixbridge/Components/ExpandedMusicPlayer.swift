@@ -197,6 +197,9 @@ struct ExpandedPlayerView: View {
     @State private var confirmDeleteQueue: Bool = false
     @Namespace private var toolbarUnionNamespace
 
+    // Automix toast state
+    @State private var showAutomixToast: Bool = false
+
     init(currentTrack: Track, currentQueueIndex: Int = -1, nextTrack: Track?, previousTrack: Track?, isPlaying: Bool, namespace: Namespace.ID, playbackPosition: Binding<Double>, duration: Double, volume: Binding<Double>, isDraggingProgress: Binding<Bool>, onPlayPause: @escaping () -> Void, onNext: @escaping () -> Void, onPrevious: @escaping () -> Void, onSeek: @escaping (Bool) -> Void, onDismiss: @escaping () -> Void, previewQueueTracks: [Track]? = nil, initialShowQueue: Bool = false) {
         self.currentTrack = currentTrack
         self.currentQueueIndex = currentQueueIndex
@@ -641,6 +644,9 @@ struct ExpandedPlayerView: View {
                                     Button {
                                         playerState.mixEnabled.toggle()
                                         HapticManager.selection()
+                                        // Reset then show to ensure onChange fires
+                                        showAutomixToast = false
+                                        showAutomixToast = true
                                     } label: {
                                         Image("wave-sine")
                                             .renderingMode(.template)
@@ -656,6 +662,7 @@ struct ExpandedPlayerView: View {
 
                                     // Queue button
                                     Button {
+                                        HapticManager.selection()
                                         confirmDeleteQueue = false
                                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                             showQueueSheet = true
@@ -684,6 +691,16 @@ struct ExpandedPlayerView: View {
 
         // Setup the hero transition
         .navigationTransition(.zoom(sourceID: "MINIPLAYER", in: namespace))
+        .dynamicIslandToast(
+            isPresented: $showAutomixToast,
+            value: Toast(
+                symbol: playerState.mixEnabled ? "checkmark.seal.fill" : "xmark.seal.fill",
+                symbolFont: .system(size: 35),
+                symbolForegroundStyle: playerState.mixEnabled ? (.white, .green) : (.white, .red),
+                title: playerState.mixEnabled ? "On" : "Off",
+                message: playerState.mixEnabled ? "Automix is turned on" : "Automix is turned off"
+            )
+        )
         .onChange(of: showQueueSheet) { _, newValue in
             // Reset delete confirmation when queue sheet state changes
             if newValue {
