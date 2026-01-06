@@ -51,7 +51,7 @@ struct ConnectSoundCloudScreen: View {
                             .foregroundStyle(.primary)
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
-                            .glassEffect(.regular, in: .capsule)
+                            .glassEffectIfAvailable(.regular, in: Capsule())
                         }
                         .buttonStyle(.plain)
                     }

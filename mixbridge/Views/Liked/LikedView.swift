@@ -113,10 +113,9 @@ struct LikedView: View {
             }
         }
         .listStyle(.plain)
-        .onScrollPhaseChange { oldPhase, newPhase, context in
+        .onScrollPhaseChangeIfAvailable { oldPhase, newPhase, context in
             guard oldPhase == .interacting, newPhase != .interacting else { return }
-            let geometry = context.geometry
-            let offset = geometry.contentOffset.y + geometry.contentInsets.top
+            let offset = context.geometry.contentOffset.y + context.geometry.contentInsets.top
 
             if offset < -revealThreshold && !isSearchPresented {
                 isSearchPresented = true

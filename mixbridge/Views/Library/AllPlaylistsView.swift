@@ -107,15 +107,14 @@ struct AllPlaylistsView: View {
                         .padding(.top, 8)
                     }
                 }
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                .onScrollGeometryChangeIfAvailable(for: CGFloat.self, of: { geometry in
                     geometry.contentOffset.y + geometry.contentInsets.top
-                } action: { _, newValue in
+                }, action: { _, newValue in
                     scrollOffset = newValue
-                }
-                .onScrollPhaseChange { oldPhase, newPhase, context in
+                })
+                .onScrollPhaseChangeIfAvailable { oldPhase, newPhase, context in
                     guard oldPhase == .interacting, newPhase != .interacting else { return }
-                    let geometry = context.geometry
-                    let offset = geometry.contentOffset.y + geometry.contentInsets.top
+                    let offset = context.geometry.contentOffset.y + context.geometry.contentInsets.top
 
                     // Show search when pulled past threshold
                     if offset < -revealThreshold && !isSearchPresented {

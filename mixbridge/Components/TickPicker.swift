@@ -37,12 +37,29 @@ struct TickPicker: View {
     var count: Int
     var config: TickConfig = .init()
     @Binding var selection: Int
+
+    var body: some View {
+        if #available(iOS 26, *) {
+            TickPicker_iOS26(count: count, config: config, selection: $selection)
+        } else {
+            TickPicker_Legacy(count: count, config: config, selection: $selection)
+        }
+    }
+}
+
+// MARK: - iOS 26 TickPicker
+@available(iOS 26, *)
+struct TickPicker_iOS26: View {
+    var count: Int
+    var config: TickConfig = .init()
+    @Binding var selection: Int
     /// View Properties
     @State private var scrollIndex: Int = 0
     @State private var scrollPosition: Int?
     @State private var scrollPhase: ScrollPhase = .idle
     @State private var animationRange: ClosedRange<Int> = 0...0
     @State private var isInitialSetupDone: Bool = false
+
     var body: some View {
         GeometryReader {
             let size = $0.size
@@ -61,7 +78,6 @@ struct TickPicker: View {
             .scrollIndicators(.hidden)
             .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
             .scrollPosition(id: $scrollPosition, anchor: .center)
-            /// Centering Tick start and end!
             .safeAreaPadding(.horizontal, (size.width - width) / 2)
             .onScrollGeometryChange(for: CGFloat.self) {
                 $0.contentOffset.x + $0.contentInsets.leading
@@ -81,7 +97,6 @@ struct TickPicker: View {
                 scrollPhase = newPhase
                 animationRange = scrollIndex...scrollIndex
 
-                /// In some Rare instances the view aligned target behaviour will not center the item in those instances this will work out!
                 if newPhase == .idle && scrollPosition != scrollIndex {
                     withAnimation(config.animation) {
                         scrollPosition = scrollIndex
@@ -92,18 +107,12 @@ struct TickPicker: View {
         .frame(height: config.interactionHeight)
         .task {
             guard !isInitialSetupDone else { return }
-            /// Setting up Initial Scroll
             updateScrollPosition(selection: selection)
-
-            /// Optional Start
             try? await Task.sleep(for: .seconds(0.05))
-            /// Optional End
-
             isInitialSetupDone = true
         }
         .onChange(of: scrollIndex) { oldValue, newValue in
             Task { @MainActor in
-                /// Introduce some very little delay eg(0.05), if you encounter any scroll UI issue!
                 selection = newValue
             }
         }
@@ -111,11 +120,9 @@ struct TickPicker: View {
             guard scrollIndex != newValue else { return }
             updateScrollPosition(selection: newValue)
         }
-        /// Enabling interaction only after the initial setup is done
         .allowsHitTesting(isInitialSetupDone)
     }
 
-    /// Tick View
     @ViewBuilder
     func TickView(_ index: Int) -> some View {
         let height = config.tickHeight
@@ -138,6 +145,75 @@ struct TickPicker: View {
         scrollPosition = safeSelection
         scrollIndex = safeSelection
         animationRange = safeSelection...safeSelection
+    }
+
+    var width: CGFloat {
+        return config.tickWidth + (config.tickHPadding * 2)
+    }
+}
+
+// MARK: - Legacy TickPicker (iOS 18)
+struct TickPicker_Legacy: View {
+    var count: Int
+    var config: TickConfig = .init()
+    @Binding var selection: Int
+    @State private var scrollPosition: Int?
+    @State private var isInitialSetupDone: Bool = false
+
+    var body: some View {
+        GeometryReader {
+            let size = $0.size
+
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 0) {
+                    ForEach(0...count, id: \.self) { index in
+                        TickView(index)
+                    }
+                }
+                .frame(height: config.tickHeight)
+                .frame(maxHeight: .infinity)
+                .contentShape(.rect)
+                .scrollTargetLayout()
+            }
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
+            .scrollPosition(id: $scrollPosition, anchor: .center)
+            .safeAreaPadding(.horizontal, (size.width - width) / 2)
+        }
+        .frame(height: config.interactionHeight)
+        .task {
+            guard !isInitialSetupDone else { return }
+            scrollPosition = selection
+            try? await Task.sleep(for: .seconds(0.05))
+            isInitialSetupDone = true
+        }
+        .onChange(of: scrollPosition) { oldValue, newValue in
+            if let newValue, isInitialSetupDone {
+                selection = newValue
+            }
+        }
+        .onChange(of: selection) { oldValue, newValue in
+            guard scrollPosition != newValue else { return }
+            scrollPosition = newValue
+        }
+        .allowsHitTesting(isInitialSetupDone)
+    }
+
+    @ViewBuilder
+    func TickView(_ index: Int) -> some View {
+        let height = config.tickHeight
+        let isSelected = selection == index
+        let fillColor = isSelected ? config.activeTint : config.inActiveTint.opacity(0.4)
+
+        Rectangle()
+            .fill(fillColor)
+            .frame(
+                width: config.tickWidth,
+                height: height * (isSelected ? 1 : config.inActiveHeightProgress)
+            )
+            .frame(width: width, height: height, alignment: config.alignment.value)
+            .clipped()
+            .animation(config.animation, value: isSelected)
     }
 
     var width: CGFloat {

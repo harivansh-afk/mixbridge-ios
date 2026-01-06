@@ -109,7 +109,7 @@ struct AllArtistsView: View {
                             }
                             .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                             .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
-                            .matchedTransitionSource(id: "artist-\(artist.id)", in: namespace)
+                            .matchedTransitionSourceIfAvailable(id: "artist-\(artist.id)", in: namespace)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 HapticManager.selection()
@@ -119,10 +119,9 @@ struct AllArtistsView: View {
                     }
                 }
                 .listStyle(.plain)
-                .onScrollPhaseChange { oldPhase, newPhase, context in
+                .onScrollPhaseChangeIfAvailable { oldPhase, newPhase, context in
                     guard oldPhase == .interacting, newPhase != .interacting else { return }
-                    let geometry = context.geometry
-                    let offset = geometry.contentOffset.y + geometry.contentInsets.top
+                    let offset = context.geometry.contentOffset.y + context.geometry.contentInsets.top
 
                     if offset < -revealThreshold && !isSearchPresented {
                         isSearchPresented = true
@@ -136,7 +135,7 @@ struct AllArtistsView: View {
         .navigationTitle("Artists")
         .navigationDestination(item: $selectedArtist) { artist in
             ArtistDetailView(artist: artist)
-                .navigationTransition(.zoom(sourceID: "artist-\(artist.id)", in: namespace))
+                .navigationTransitionIfAvailable(sourceID: "artist-\(artist.id)", in: namespace)
         }
         // Start database observation and fetch fresh data
         .task {

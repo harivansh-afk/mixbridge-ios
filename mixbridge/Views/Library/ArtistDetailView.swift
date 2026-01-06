@@ -216,10 +216,10 @@ struct ArtistDetailView: View {
                     ForEach(artistPlaylists) { playlist in
                         NavigationLink {
                             PlaylistDetailView(playlist: playlist)
-                                .navigationTransition(.zoom(sourceID: "artist-release-\(playlist.id)", in: namespace))
+                                .navigationTransitionIfAvailable(sourceID: "artist-release-\(playlist.id)", in: namespace)
                         } label: {
                             releaseCard(playlist)
-                                .matchedTransitionSource(id: "artist-release-\(playlist.id)", in: namespace)
+                                .matchedTransitionSourceIfAvailable(id: "artist-release-\(playlist.id)", in: namespace)
                         }
                         .buttonStyle(.plain)
                     }

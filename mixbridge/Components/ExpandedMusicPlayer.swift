@@ -578,8 +578,8 @@ struct ExpandedPlayerView: View {
                             .scrollContentBackground(.hidden)
                             // Keep the original top fade, but start rows slightly below it so the first row
                             // doesn't look "cut off" when the queue is lifted closer to the controls.
-                            .contentMargins(.top, queueListTopInset, for: .scrollContent)
-                            .contentMargins(.bottom, 60, for: .scrollContent)
+                            .contentMarginsIfAvailable(.top, queueListTopInset, for: .scrollContent)
+                            .contentMarginsIfAvailable(.bottom, 60, for: .scrollContent)
                             .mask(
                                 VStack(spacing: 0) {
                                     LinearGradient(
@@ -628,14 +628,14 @@ struct ExpandedPlayerView: View {
                                     .background(confirmDeleteQueue ? Color.blue : Color.clear)
                                     .clipShape(Circle())
                             }
-                            .glassEffect(.clear, in: .circle)
+                            .glassEffectIfAvailable(.clear, in: Circle())
                         }
 
                         Spacer()
 
                         // Mix + Queue toolbar group (only show if queue has items)
                         if queueManager.hasQueue {
-                            GlassEffectContainer {
+                            GlassEffectContainerCompat {
                                 HStack(spacing: 12) {
                                     // Mix Mode toggle
                                     Button {
@@ -652,7 +652,7 @@ struct ExpandedPlayerView: View {
                                             .padding(.leading, 12)
                                             .padding(.vertical, 6)
                                     }
-                                    .glassEffectUnion(id: "playback-toolbar", namespace: toolbarUnionNamespace)
+                                    .glassEffectUnionIfAvailable(id: "playback-toolbar", namespace: toolbarUnionNamespace)
 
                                     // Queue button
                                     Button {
@@ -669,10 +669,10 @@ struct ExpandedPlayerView: View {
                                             .padding(.vertical, 6)
                                     }
                                     .tint(.secondary)
-                                    .glassEffectUnion(id: "playback-toolbar", namespace: toolbarUnionNamespace)
+                                    .glassEffectUnionIfAvailable(id: "playback-toolbar", namespace: toolbarUnionNamespace)
                                 }
                             }
-                            .glassEffect(.clear, in: .capsule)
+                            .glassEffectIfAvailable(.clear, in: Capsule())
                         }
                     }
                     .padding(.horizontal, horizontalPadding)
@@ -681,9 +681,29 @@ struct ExpandedPlayerView: View {
 
             }
         }
+        // Dismiss handle pinned to top - only on iOS 18 where zoom transition isn't available
+        .overlay(alignment: .top) {
+            if #unavailable(iOS 26) {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        onDismiss()
+                    }
+                } label: {
+                    VStack(spacing: 0) {
+                        Capsule()
+                            .fill(.white.opacity(0.4))
+                            .frame(width: 60, height: 5)
+                    }
+                    .frame(width: 100, height: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, -8)
+            }
+        }
 
         // Setup the hero transition
-        .navigationTransition(.zoom(sourceID: "MINIPLAYER", in: namespace))
+        .navigationTransitionIfAvailable(sourceID: "MINIPLAYER", in: namespace)
         .onChange(of: showQueueSheet) { _, newValue in
             // Reset delete confirmation when queue sheet state changes
             if newValue {

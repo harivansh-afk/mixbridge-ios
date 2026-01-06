@@ -88,7 +88,7 @@ struct AccountBottomSheet: View {
                         }
                         .pickerStyle(.segmented)
                     }
-                    .glassEffect(.regular)
+                    .glassEffectIfAvailable(.regular)
                 }
 
                 // Settings Section
@@ -181,7 +181,7 @@ struct AccountBottomSheet: View {
             }
             .listStyle(InsetGroupedListStyle())
             .listSectionSpacing(23)
-            .contentMargins(.top, 5, for: .scrollContent)
+            .contentMarginsIfAvailable(.top, 5, for: .scrollContent)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

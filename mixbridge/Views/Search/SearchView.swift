@@ -212,7 +212,7 @@ struct SearchView: View {
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     }
-                    .matchedTransitionSource(id: "search-\(playlist.id)", in: namespace)
+                    .matchedTransitionSourceIfAvailable(id: "search-\(playlist.id)", in: namespace)
                     .contentShape(Rectangle())
                     .onTapGesture {
                         HapticManager.selection()
@@ -224,7 +224,7 @@ struct SearchView: View {
         .listStyle(.plain)
         .navigationDestination(item: $selectedPlaylist) { playlist in
             PlaylistDetailView(playlist: playlist)
-                .navigationTransition(.zoom(sourceID: "search-\(playlist.id)", in: namespace))
+                .navigationTransitionIfAvailable(sourceID: "search-\(playlist.id)", in: namespace)
         }
     }
 

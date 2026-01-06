@@ -114,9 +114,9 @@ struct AutomixSettingsView: View {
         .listSectionSpacing(12)
         .scrollContentBackground(.hidden)
         .background(.clear)
-        .contentMargins(.top, 5, for: .scrollContent)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .containerBackground(.clear, for: .navigation)
+        .contentMarginsIfAvailable(.top, 5, for: .scrollContent)
+        .toolbarBackgroundHiddenIfAvailable(for: .navigationBar)
+        .containerBackgroundIfAvailable(.clear, for: .navigation)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {

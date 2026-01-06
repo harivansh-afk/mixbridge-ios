@@ -245,8 +245,13 @@ struct ConditionalGlassEffect: ViewModifier {
 
     func body(content: Content) -> some View {
         if isDragging {
-            content
-                .glassEffect(.clear, in: .capsule)
+            if #available(iOS 26, *) {
+                content
+                    .glassEffect(.clear, in: .capsule)
+            } else {
+                content
+                    .background(.thinMaterial, in: Capsule())
+            }
         } else {
             content
         }

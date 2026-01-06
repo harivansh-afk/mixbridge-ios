@@ -30,10 +30,16 @@ struct GlassEffectText: View {
                     Text(segment.text)
                         .font(Font(font))
                 } else {
-                    Text(segment.text)
-                        .font(Font(font))
-                        .opacity(0)
-                        .glassEffect(.clear, in: TextToShape(value: segment.text, font: font))
+                    if #available(iOS 26, *) {
+                        Text(segment.text)
+                            .font(Font(font))
+                            .opacity(0)
+                            .glassEffect(.clear, in: TextToShape(value: segment.text, font: font))
+                    } else {
+                        Text(segment.text)
+                            .font(Font(font))
+                            .foregroundStyle(.primary)
+                    }
                 }
             }
         }
@@ -373,10 +379,16 @@ struct LeftAlignedGlassText: View {
                     Text(segment.text)
                         .font(Font(font))
                 } else {
-                    Text(segment.text)
-                        .font(Font(font))
-                        .opacity(0)
-                        .glassEffect(.clear, in: LeftAlignedTextShape(value: segment.text, font: font))
+                    if #available(iOS 26, *) {
+                        Text(segment.text)
+                            .font(Font(font))
+                            .opacity(0)
+                            .glassEffect(.clear, in: LeftAlignedTextShape(value: segment.text, font: font))
+                    } else {
+                        Text(segment.text)
+                            .font(Font(font))
+                            .foregroundStyle(.primary)
+                    }
                 }
             }
         }

@@ -27,7 +27,7 @@ struct PlaylistActionButtons: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .foregroundStyle(.primary)
-                .glassEffect(.clear, in: .capsule)
+                .glassEffectIfAvailable(.clear, in: Capsule())
             }
             .buttonStyle(.plain)
 
@@ -45,7 +45,7 @@ struct PlaylistActionButtons: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .foregroundStyle(.primary)
-                .glassEffect(.clear, in: .capsule)
+                .glassEffectIfAvailable(.clear, in: Capsule())
             }
             .buttonStyle(.plain)
         }

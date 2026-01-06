@@ -135,7 +135,7 @@ struct LibraryView: View {
                 ForEach(Array(viewModel.playlists.prefix(6).enumerated()), id: \.element.id) { index, playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
-                            .navigationTransition(.zoom(sourceID: "top-\(playlist.id)", in: namespace))
+                            .navigationTransitionIfAvailable(sourceID: "top-\(playlist.id)", in: namespace)
                     } label: {
                         VStack(alignment: .center, spacing: 6) {
                             // Artwork
@@ -173,7 +173,7 @@ struct LibraryView: View {
                                 .truncationMode(.tail)
                                 .frame(maxWidth: .infinity)
                         }
-                        .matchedTransitionSource(id: "top-\(playlist.id)", in: namespace)
+                        .matchedTransitionSourceIfAvailable(id: "top-\(playlist.id)", in: namespace)
                     }
                     .buttonStyle(.plain)
                     .haptic(.selection)
@@ -283,7 +283,7 @@ struct LibraryView: View {
                 ForEach(Array(recentlyAddedPlaylists.enumerated()), id: \.element.id) { index, playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
-                            .navigationTransition(.zoom(sourceID: "recent-\(playlist.id)", in: namespace))
+                            .navigationTransitionIfAvailable(sourceID: "recent-\(playlist.id)", in: namespace)
                     } label: {
                         VStack(alignment: .center, spacing: 6) {
                             // Artwork
@@ -321,7 +321,7 @@ struct LibraryView: View {
                                 .truncationMode(.tail)
                                 .frame(maxWidth: .infinity)
                         }
-                        .matchedTransitionSource(id: "recent-\(playlist.id)", in: namespace)
+                        .matchedTransitionSourceIfAvailable(id: "recent-\(playlist.id)", in: namespace)
                     }
                     .buttonStyle(.plain)
                     .haptic(.selection)
