@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct TickConfig {
     var tickWidth: CGFloat = 3
@@ -43,6 +44,7 @@ struct TickPicker: View {
     @State private var scrollPhase: ScrollPhase = .idle
     @State private var animationRange: ClosedRange<Int> = 0...0
     @State private var isInitialSetupDone: Bool = false
+    private let feedbackGenerator = UISelectionFeedbackGenerator()
     var body: some View {
         GeometryReader {
             let size = $0.size
@@ -71,6 +73,10 @@ struct TickPicker: View {
                 let previousScrollIndex = scrollIndex
                 scrollIndex = index
 
+                if previousScrollIndex != scrollIndex {
+                    feedbackGenerator.selectionChanged()
+                }
+
                 let isGreater = scrollIndex > previousScrollIndex
                 let leadingBound = isGreater ? previousScrollIndex : scrollIndex
                 let trailingBound = !isGreater ? previousScrollIndex : scrollIndex
@@ -80,6 +86,10 @@ struct TickPicker: View {
             .onScrollPhaseChange { oldPhase, newPhase in
                 scrollPhase = newPhase
                 animationRange = scrollIndex...scrollIndex
+
+                if oldPhase == .idle && newPhase != .idle {
+                    feedbackGenerator.prepare()
+                }
 
                 /// In some Rare instances the view aligned target behaviour will not center the item in those instances this will work out!
                 if newPhase == .idle && scrollPosition != scrollIndex {
