@@ -187,23 +187,30 @@ struct PlayerProgressView: View {
 }
 
 // MARK: - Play/Pause Icon
-/// Play/pause icon that keeps the *original* sizing while avoiding layout shifts.
-/// The ZStack's size becomes the max of both symbols, so toggling never changes the button bounds.
+/// Play/pause icon with a collapsing morph animation.
+/// The outgoing icon collapses inward while the incoming icon expands outward,
+/// creating a smooth transformation effect.
 struct PlayPauseIcon: View {
     let isPlaying: Bool
 
+    // Animation parameters
+    private let collapsedScale: CGFloat = 0.35
+    private let expandedScale: CGFloat = 1.0
+
     var body: some View {
         ZStack {
+            // Play icon - visible when NOT playing
             Image(systemName: "play.fill")
                 .opacity(isPlaying ? 0 : 1)
-                .scaleEffect(isPlaying ? 0.94 : 1.0)
+                .scaleEffect(isPlaying ? collapsedScale : expandedScale)
 
+            // Pause icon - visible when playing
             Image(systemName: "pause.fill")
                 .opacity(isPlaying ? 1 : 0)
-                .scaleEffect(isPlaying ? 1.0 : 0.94)
+                .scaleEffect(isPlaying ? expandedScale : collapsedScale)
         }
         .contentShape(Circle())
-        .animation(.snappy(duration: 0.12), value: isPlaying)
+        .animation(.spring(response: 0.5, dampingFraction: 0.6, blendDuration: 0), value: isPlaying)
     }
 }
 
@@ -223,21 +230,21 @@ struct PlayerControlsView: View {
                     .font(.system(size: 30))
                     .foregroundStyle(.primary)
             }
-            .buttonStyle(PlayerButtonStyle(hapticStyle: .light, scaleAmount: 0.88, haloSize: 20, haloOpacity: 0.32))
+            .buttonStyle(PlayerButtonStyle(hapticStyle: .light, scaleAmount: 0.88, haloSize: 60, haloOpacity: 0.32))
 
             Button(action: onPlayPause) {
                 PlayPauseIcon(isPlaying: isPlaying)
                     .font(.system(size: 50))
                     .foregroundStyle(.primary)
             }
-            .buttonStyle(PlayerButtonStyle(hapticStyle: .light, scaleAmount: 0.88, haloSize: 36, haloOpacity: 0.32))
+            .buttonStyle(PlayerButtonStyle(hapticStyle: .light, scaleAmount: 0.88, haloSize: 60, haloOpacity: 0.32))
 
             Button(action: onNext) {
                 Image(systemName: "forward.fill")
                     .font(.system(size: 30))
                     .foregroundStyle(.primary)
             }
-            .buttonStyle(PlayerButtonStyle(hapticStyle: .light, scaleAmount: 0.88, haloSize: 20, haloOpacity: 0.32))
+            .buttonStyle(PlayerButtonStyle(hapticStyle: .light, scaleAmount: 0.88, haloSize: 60, haloOpacity: 0.32))
         }
     }
 }
@@ -278,23 +285,26 @@ private struct PlayerButtonStyleBody: View {
     let haloOpacity: Double
 
     @State private var pressed: Bool = false
+    @State private var showRipple: Bool = false
 
     private var pressIn: Animation { .easeOut(duration: 0.07) }
     private var pressOut: Animation { .snappy(duration: 0.16, extraBounce: 0.16) }
+    private var rippleFadeOut: Animation { .easeOut(duration: 0.35) }
 
     var body: some View {
         configuration.label
             .background {
                 ZStack {
-                    // Subtle grey touch halo - smaller and more muted.
+                    // Subtle grey touch halo - shows on press and lingers on tap
                     Circle()
                         .fill(Color.gray.opacity(0.35))
-                        .opacity(pressed ? haloOpacity : 0.0)
-                        .scaleEffect(pressed ? 1.0 : 0.85)
-                        .blur(radius: pressed ? 0 : 6)
+                        .opacity((pressed || showRipple) ? haloOpacity : 0.0)
+                        .scaleEffect((pressed || showRipple) ? 1.0 : 0.85)
+                        .blur(radius: (pressed || showRipple) ? 0 : 6)
                 }
                 .frame(width: haloSize, height: haloSize)
-                .animation(pressed ? pressIn : pressOut, value: pressed)
+                .animation(pressed ? pressIn : rippleFadeOut, value: pressed)
+                .animation(rippleFadeOut, value: showRipple)
             }
             .scaleEffect(pressed ? scaleAmount : 1.0)
             .opacity(pressed ? pressedOpacity : 1.0)
@@ -302,18 +312,27 @@ private struct PlayerButtonStyleBody: View {
             .animation(pressed ? pressIn : pressOut, value: pressed)
             .onAppear { pressed = configuration.isPressed }
             .onChange(of: configuration.isPressed) { _, isPressed in
-                if isPressed != pressed {
-                    withAnimation(isPressed ? pressIn : pressOut) {
-                        pressed = isPressed
+                if isPressed {
+                    // Press down
+                    withAnimation(pressIn) {
+                        pressed = true
                     }
-                }
-
-                if isPressed && enableHaptic {
-                    switch hapticStyle {
-                    case .light: HapticManager.light()
-                    case .medium: HapticManager.medium()
-                    case .heavy: HapticManager.heavy()
-                    @unknown default: HapticManager.light()
+                    if enableHaptic {
+                        switch hapticStyle {
+                        case .light: HapticManager.light()
+                        case .medium: HapticManager.medium()
+                        case .heavy: HapticManager.heavy()
+                        @unknown default: HapticManager.light()
+                        }
+                    }
+                } else {
+                    // Release - trigger ripple that lingers
+                    withAnimation(pressOut) {
+                        pressed = false
+                    }
+                    showRipple = true
+                    withAnimation(rippleFadeOut.delay(0.08)) {
+                        showRipple = false
                     }
                 }
             }
