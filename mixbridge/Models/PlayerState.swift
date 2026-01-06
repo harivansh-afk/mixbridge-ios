@@ -103,10 +103,10 @@ final class PlayerState: NSObject {
         }
     }
 
-    /// Crossfade duration in seconds (default: 6, clamped to 0...12)
+    /// Crossfade duration in seconds (default: 6, clamped to 1...20)
     var crossfadeSeconds: Double = 6 {
         didSet {
-            let clamped = max(0, min(12, crossfadeSeconds))
+            let clamped = max(1, min(20, crossfadeSeconds))
             if clamped != crossfadeSeconds {
                 crossfadeSeconds = clamped
                 return
@@ -116,10 +116,10 @@ final class PlayerState: NSObject {
         }
     }
 
-    /// Prewarm lead time in seconds (default: 15, clamped to 0...60)
+    /// Prewarm lead time in seconds (default: 15, clamped to 5...60)
     var prewarmSeconds: Double = 15 {
         didSet {
-            let clamped = max(0, min(60, prewarmSeconds))
+            let clamped = max(5, min(60, prewarmSeconds))
             if clamped != prewarmSeconds {
                 prewarmSeconds = clamped
                 return
@@ -257,10 +257,10 @@ final class PlayerState: NSObject {
             mixEnabled = defaults.bool(forKey: kMixEnabled)
         }
         if defaults.object(forKey: kCrossfadeSeconds) != nil {
-            crossfadeSeconds = max(0, min(12, defaults.double(forKey: kCrossfadeSeconds)))
+            crossfadeSeconds = max(1, min(20, defaults.double(forKey: kCrossfadeSeconds)))
         }
         if defaults.object(forKey: kPrewarmSeconds) != nil {
-            prewarmSeconds = max(0, min(60, defaults.double(forKey: kPrewarmSeconds)))
+            prewarmSeconds = max(5, min(60, defaults.double(forKey: kPrewarmSeconds)))
         }
         if let curveRaw = defaults.string(forKey: kFadeCurve),
            let curve = FadeCurve(rawValue: curveRaw) {
