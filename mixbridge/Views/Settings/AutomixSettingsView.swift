@@ -11,6 +11,22 @@ struct AutomixSettingsView: View {
     @Bindable var playerState = PlayerState.shared
     @Environment(\.dismiss) private var dismiss
 
+    // Binding to convert crossfadeSeconds (Double 1-20, step 0.5) to Int selection (0-38)
+    private var crossfadeSelection: Binding<Int> {
+        Binding(
+            get: { Int((playerState.crossfadeSeconds - 1) / 0.5) },
+            set: { playerState.crossfadeSeconds = 1 + Double($0) * 0.5 }
+        )
+    }
+
+    // Binding to convert prewarmSeconds (Double 5-60, step 1) to Int selection (0-55)
+    private var prewarmSelection: Binding<Int> {
+        Binding(
+            get: { Int(playerState.prewarmSeconds - 5) },
+            set: { playerState.prewarmSeconds = 5 + Double($0) }
+        )
+    }
+
     var body: some View {
         List {
             // Automix Toggle
@@ -23,36 +39,62 @@ struct AutomixSettingsView: View {
 
             // Duration Section
             Section {
-                Slider(value: $playerState.crossfadeSeconds, in: 0...12, step: 0.5) {
-                    Text("Duration")
-                } minimumValueLabel: {
-                    Text("0s")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } maximumValueLabel: {
-                    Text("12s")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                VStack(spacing: 8) {
+                    TickPicker(
+                        count: 38,
+                        config: TickConfig(
+                            tickWidth: 2,
+                            tickHeight: 30,
+                            inActiveHeightProgress: 0.43,
+                            activeTint: .blue,
+                            inActiveTint: .secondary,
+                            alignment: .center
+                        ),
+                        selection: crossfadeSelection
+                    )
+
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text(formatDuration(playerState.crossfadeSeconds))
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .monospacedDigit()
+                        Text("s")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .tint(.blue)
+                .listRowInsets(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 0))
             } header: {
                 Text("Duration")
             }
 
             // Prewarm Time Section
             Section {
-                Slider(value: $playerState.prewarmSeconds, in: 5...60, step: 5) {
-                    Text("Prewarm Time")
-                } minimumValueLabel: {
-                    Text("5s")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } maximumValueLabel: {
-                    Text("60s")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                VStack(spacing: 8) {
+                    TickPicker(
+                        count: 55,
+                        config: TickConfig(
+                            tickWidth: 2,
+                            tickHeight: 30,
+                            inActiveHeightProgress: 0.43,
+                            activeTint: .blue,
+                            inActiveTint: .secondary,
+                            alignment: .center
+                        ),
+                        selection: prewarmSelection
+                    )
+
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("\(Int(playerState.prewarmSeconds))")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .monospacedDigit()
+                        Text("s")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .tint(.blue)
+                .listRowInsets(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 0))
             } header: {
                 Text("Prewarm Time")
             }
@@ -86,6 +128,14 @@ struct AutomixSettingsView: View {
                         .fontWeight(.semibold)
                 }
             }
+        }
+    }
+
+    private func formatDuration(_ seconds: Double) -> String {
+        if seconds == seconds.rounded() {
+            return "\(Int(seconds))"
+        } else {
+            return String(format: "%.1f", seconds)
         }
     }
 }
