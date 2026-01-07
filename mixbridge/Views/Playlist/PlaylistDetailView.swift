@@ -129,11 +129,15 @@ struct PlaylistDetailView: View {
 
     private var playlistInfo: some View {
         VStack(spacing: 8) {
-            GlassEffectText(
+            MarqueeGlassText(
                 text: playlist.name,
-                font: .systemFont(ofSize: 28, weight: .bold)
+                font: .systemFont(ofSize: 28, weight: .bold),
+                startDelay: 3.0,
+                loopsBeforePause: 2,
+                isPlaying: true
             )
             .frame(maxWidth: .infinity)
+            .padding(.horizontal, 20)
 
             Text(playlist.creator)
                 .font(.body)
