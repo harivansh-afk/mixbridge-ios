@@ -59,10 +59,11 @@ struct DynamicIslandToastViewModifier: ViewModifier {
         } else {
             let overlayWindow = PassThroughWindow(windowScene: windowScene)
             overlayWindow.backgroundColor = .clear
-            overlayWindow.isHidden = false
+            overlayWindow.windowLevel = .statusBar + 1
             overlayWindow.isUserInteractionEnabled = true
             overlayWindow.tag = 1009
             createRootController(overlayWindow)
+            overlayWindow.isHidden = false
 
             self.overlayWindow = overlayWindow
         }

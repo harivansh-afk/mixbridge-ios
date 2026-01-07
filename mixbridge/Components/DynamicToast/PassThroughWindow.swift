@@ -12,6 +12,12 @@ class PassThroughWindow: UIWindow {
     var toast: Toast? = nil
     var isPresented: Bool = false
 
+    /// Prevent this window from becoming key window to avoid triggering
+    /// audio session interruptions when the toast appears
+    override var canBecomeKey: Bool {
+        return false
+    }
+
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         guard let hitView = super.hitTest(point, with: event),
               let rootView = rootViewController?.view else {

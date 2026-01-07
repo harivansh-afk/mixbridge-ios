@@ -728,10 +728,36 @@ final class PlayerState: NSObject {
 
         switch type {
         case .began:
+            let wasSuspended = info[AVAudioSessionInterruptionWasSuspendedKey] as? Bool ?? false
+            
             // Remember if we were playing before interruption
-            wasPlayingBeforeInterruption = isPlaying
-            pause()
-            logInfo(.playback, "Audio interruption began (was playing: \(self.wasPlayingBeforeInterruption))")
+            let wasPlaying = isPlaying
+            wasPlayingBeforeInterruption = wasPlaying
+            
+            logInfo(.playback, "Audio interruption began (wasSuspended: \(wasSuspended), wasPlaying: \(wasPlaying))")
+            
+            // For wasSuspended interruptions (like overlay windows), auto-resume immediately
+            // The OS pauses the player but we want to keep playing
+            if wasSuspended && wasPlaying {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 100ms delay
+                    do {
+                        try self.activateAudioSession()
+                    } catch {
+                        logWarning(.playback, "Failed to reactivate after wasSuspended: \(error)")
+                    }
+                    self.resume()
+                    logInfo(.playback, "Auto-resumed after wasSuspended interruption")
+                }
+                return
+            }
+            
+            // For real interruptions (phone calls, Siri, etc.), pause properly
+            if !wasSuspended {
+                playbackCoordinator.pause()
+                updateNowPlayingInfo(playbackRate: 0)
+                scheduleSavePlaybackState(immediate: true)
+            }
 
         case .ended:
             logInfo(.playback, "Audio interruption ended")

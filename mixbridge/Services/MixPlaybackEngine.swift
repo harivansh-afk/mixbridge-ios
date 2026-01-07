@@ -94,7 +94,7 @@ final class MixPlaybackEngine {
     private let streamCache = StreamURLCache.shared
     private let queueManager = QueueManager.shared
 
-    private var fadeDisplayLink: CADisplayLink?
+    private var fadeTimer: Timer?
     private var fadeStartTime: Date?
     private var effectiveCrossfadeDuration: Double = 0
 
@@ -426,22 +426,26 @@ final class MixPlaybackEngine {
         // Initialize crossfade progress for visual transition
         delegate?.mixEngineDidUpdateCrossfadeProgress(self, progress: 0, nextTrack: nextCtx.track)
 
-        // Start display link for smooth volume ramping
-        startFadeDisplayLink()
+        // Start timer for smooth volume ramping (Timer works when screen is off, CADisplayLink doesn't)
+        startFadeTimer()
     }
 
-    private func startFadeDisplayLink() {
-        fadeDisplayLink?.invalidate()
-        fadeDisplayLink = CADisplayLink(target: self, selector: #selector(updateFade))
-        fadeDisplayLink?.add(to: .main, forMode: .common)
+    private func startFadeTimer() {
+        fadeTimer?.invalidate()
+        fadeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.updateFade()
+            }
+        }
+        RunLoop.main.add(fadeTimer!, forMode: .common)
     }
 
-    @objc private func updateFade() {
+    private func updateFade() {
         guard state == .crossfading,
               let fadeStart = fadeStartTime,
               let nextPlayer = nextPlayer else {
-            fadeDisplayLink?.invalidate()
-            fadeDisplayLink = nil
+            fadeTimer?.invalidate()
+            fadeTimer = nil
             return
         }
 
@@ -464,8 +468,8 @@ final class MixPlaybackEngine {
     }
 
     private func completeCrossfade() {
-        fadeDisplayLink?.invalidate()
-        fadeDisplayLink = nil
+        fadeTimer?.invalidate()
+        fadeTimer = nil
 
         guard let currentCtx = currentContext, let nextCtx = nextContext else { return }
 
@@ -527,8 +531,8 @@ final class MixPlaybackEngine {
     private func abortMixTransition(reason: String, shouldFallbackToNext: Bool) {
         guard state != .singlePlaying else { return }
 
-        fadeDisplayLink?.invalidate()
-        fadeDisplayLink = nil
+        fadeTimer?.invalidate()
+        fadeTimer = nil
 
         // Reset crossfade progress for visual transition
         delegate?.mixEngineDidUpdateCrossfadeProgress(self, progress: 0, nextTrack: nil)
@@ -623,8 +627,8 @@ final class MixPlaybackEngine {
     }
 
     private func cleanup() {
-        fadeDisplayLink?.invalidate()
-        fadeDisplayLink = nil
+        fadeTimer?.invalidate()
+        fadeTimer = nil
 
         if let token = timeObserverToken {
             currentPlayer.removeTimeObserver(token)
