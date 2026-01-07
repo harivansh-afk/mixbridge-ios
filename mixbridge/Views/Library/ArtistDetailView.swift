@@ -137,11 +137,15 @@ struct ArtistDetailView: View {
 
     private var artistInfo: some View {
         VStack(spacing: 8) {
-            GlassEffectText(
+            MarqueeGlassText(
                 text: artist.name,
-                font: .systemFont(ofSize: 28, weight: .bold)
+                font: .systemFont(ofSize: 28, weight: .bold),
+                startDelay: 3.0,
+                loopsBeforePause: 2,
+                isPlaying: true
             )
             .frame(maxWidth: .infinity)
+            .padding(.horizontal, 20)
         }
         .padding(.horizontal)
     }
