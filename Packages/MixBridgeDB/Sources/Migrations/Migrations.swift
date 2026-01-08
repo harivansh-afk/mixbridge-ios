@@ -147,6 +147,15 @@ extension MixBridgeDB {
             try db.create(index: "idx_artistCache_userId", on: PersistedArtistCache.databaseTableName, columns: ["userId"])
         }
 
+        migrator.registerMigration("v3_liked_playlists") { db in
+            // Liked playlists table - mirrors liked_tracks pattern
+            try db.create(table: LikedPlaylist.databaseTableName) { t in
+                t.column("playlistId", .text).primaryKey()
+                    .references(PersistedPlaylist.databaseTableName, onDelete: .cascade)
+                t.column("likedAt", .datetime).notNull().indexed()
+            }
+        }
+
         return migrator
     }
 }

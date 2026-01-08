@@ -31,3 +31,32 @@ struct Playlist: Identifiable, Codable, Equatable, Hashable {
         self.lastUpdated = lastUpdated
     }
 }
+
+/// A playlist with its underlying SoundCloud data for API operations
+struct PlaylistItem: Identifiable, Equatable, Sendable {
+    let playlist: Playlist
+    let soundCloudPlaylist: SoundCloudPlaylist?
+
+    var id: String { playlist.id }
+
+    init(soundCloudPlaylist: SoundCloudPlaylist) {
+        self.playlist = Playlist(
+            id: String(soundCloudPlaylist.id),
+            name: soundCloudPlaylist.title,
+            creator: soundCloudPlaylist.user.username,
+            artwork: soundCloudPlaylist.primaryArtworkUrl,
+            tracks: [],
+            lastUpdated: Date()
+        )
+        self.soundCloudPlaylist = soundCloudPlaylist
+    }
+
+    init(playlist: Playlist, soundCloudPlaylist: SoundCloudPlaylist?) {
+        self.playlist = playlist
+        self.soundCloudPlaylist = soundCloudPlaylist
+    }
+
+    static func == (lhs: PlaylistItem, rhs: PlaylistItem) -> Bool {
+        lhs.playlist.id == rhs.playlist.id
+    }
+}
