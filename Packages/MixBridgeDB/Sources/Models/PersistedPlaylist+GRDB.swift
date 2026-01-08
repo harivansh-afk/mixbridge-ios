@@ -39,4 +39,5 @@ extension PersistedPlaylist: @retroactive FetchableRecord, @retroactive Persista
 
 extension PersistedPlaylist {
     public static let playlistTracks = hasMany(PlaylistTrack.self, using: ForeignKey(["playlistId"]))
+    public static let likedPlaylist = hasOne(LikedPlaylist.self, using: ForeignKey(["playlistId"]))
 }
