@@ -133,6 +133,20 @@ final class ConvexService {
         return result.tracks
     }
 
+    /// Get user's liked playlists
+    /// - Parameter forceRefresh: If true, bypasses cache and fetches directly from SoundCloud
+    func getLikedPlaylists(userId: String, forceRefresh: Bool = false) async throws -> [SoundCloudPlaylist] {
+        var args: [String: Any] = ["userId": userId]
+        if forceRefresh {
+            args["forceRefresh"] = true
+        }
+        let result: ConvexPlaylistsResponse = try await action(
+            "actions/likedPlaylists:get",
+            args: args
+        )
+        return result.playlists
+    }
+
     /// Get user's playlists
     /// - Parameter forceRefresh: If true, bypasses cache and fetches directly from SoundCloud
     func getPlaylists(userId: String, forceRefresh: Bool = false) async throws -> [SoundCloudPlaylist] {

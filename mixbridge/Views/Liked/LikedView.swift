@@ -7,6 +7,15 @@
 
 import SwiftUI
 
+// MARK: - Liked Tab
+
+enum LikedTab: String, CaseIterable, Identifiable {
+    case tracks = "Tracks"
+    case playlists = "Playlists"
+
+    var id: String { rawValue }
+}
+
 struct LikedView: View {
     @State private var viewModel = LikedViewModel()
     @Environment(AuthManager.self) private var authManager
@@ -15,6 +24,9 @@ struct LikedView: View {
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
     @State private var searchText = ""
     @State private var isSearchPresented = false
+    @State private var selectedTab: LikedTab = .tracks
+    @State private var selectedPlaylist: Playlist?
+    @Namespace private var namespace
 
     private let revealThreshold: CGFloat = 90
 
@@ -26,6 +38,14 @@ struct LikedView: View {
         }
     }
 
+    private var filteredPlaylists: [PlaylistItem] {
+        guard !searchText.isEmpty else { return viewModel.likedPlaylists }
+        return viewModel.likedPlaylists.filter {
+            $0.playlist.name.localizedCaseInsensitiveContains(searchText) ||
+            $0.playlist.creator.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
     var body: some View {
         content
             .navigationTitle("Liked")
@@ -34,22 +54,31 @@ struct LikedView: View {
             .task {
                 await viewModel.observeDatabase()
             }
+            .task {
+                await viewModel.observePlaylistsDatabase()
+            }
             // Fetch fresh data
             .task {
                 if let userId = authManager.currentUserId {
                     await viewModel.refresh(userId: userId)
+                    await viewModel.refreshPlaylists(userId: userId)
                 }
             }
             .refreshable {
                 if let userId = authManager.currentUserId {
                     await viewModel.refresh(userId: userId, forceRefresh: true)
+                    await viewModel.refreshPlaylists(userId: userId, forceRefresh: true)
                 }
+            }
+            .navigationDestination(item: $selectedPlaylist) { playlist in
+                PlaylistDetailView(playlist: playlist)
+                    .navigationTransition(.zoom(sourceID: "liked-\(playlist.id)", in: namespace))
             }
     }
 
     @ViewBuilder
     private var content: some View {
-        if viewModel.isLoading && viewModel.likedTracks.isEmpty {
+        if viewModel.isLoading && viewModel.likedTracks.isEmpty && viewModel.likedPlaylists.isEmpty {
             VStack {
                 Spacer()
                 ProgressView()
@@ -57,9 +86,9 @@ struct LikedView: View {
                 Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let error = viewModel.error, viewModel.likedTracks.isEmpty {
+        } else if let error = viewModel.error, viewModel.likedTracks.isEmpty && viewModel.likedPlaylists.isEmpty {
             errorView(error)
-        } else if viewModel.likedTracks.isEmpty {
+        } else if viewModel.likedTracks.isEmpty && viewModel.likedPlaylists.isEmpty {
             emptyState
         } else {
             likedList
@@ -76,6 +105,7 @@ struct LikedView: View {
                 Task {
                     if let userId = authManager.currentUserId {
                         await viewModel.refresh(userId: userId)
+                        await viewModel.refreshPlaylists(userId: userId)
                     }
                 }
             }
@@ -85,31 +115,35 @@ struct LikedView: View {
 
     private var emptyState: some View {
         ContentUnavailableView(
-            "No Liked Songs",
+            "No Liked Items",
             systemImage: "heart",
-            description: Text("Your liked songs will appear here")
+            description: Text("Your liked songs and playlists will appear here")
         )
     }
 
     private var likedList: some View {
         List {
-            if filteredTracks.isEmpty && !searchText.isEmpty {
-                ContentUnavailableView.search(text: searchText)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets())
-            } else {
-                ForEach(Array(filteredTracks.enumerated()), id: \.element.id) { index, item in
-                    TrackRow(
-                        item.track,
-                        number: index + 1,
-                        showCover: true,
-                        soundCloudTrack: item.soundCloudTrack,
-                        listContext: filteredTracks,
-                        indexInList: index
-                    )
-                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                    .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+            // Tab Picker Section
+            Section {
+                Picker("Liked Items", selection: $selectedTab) {
+                    ForEach(LikedTab.allCases) { tab in
+                        Text(tab.rawValue).tag(tab)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .glassEffect(.regular)
+            }
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+
+            // Content based on selected tab
+            switch selectedTab {
+            case .tracks:
+                tracksContent
+
+            case .playlists:
+                playlistsContent
             }
         }
         .listStyle(.plain)
@@ -128,6 +162,114 @@ struct LikedView: View {
         .task {
             try? await Task.sleep(for: .seconds(1))
             allowDismissalGesture = .all
+        }
+    }
+
+    // MARK: - Tracks Content
+
+    @ViewBuilder
+    private var tracksContent: some View {
+        if filteredTracks.isEmpty && !searchText.isEmpty {
+            ContentUnavailableView.search(text: searchText)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets())
+        } else if filteredTracks.isEmpty {
+            ContentUnavailableView("No liked tracks", systemImage: "music.note")
+                .listRowSeparator(.hidden)
+        } else {
+            ForEach(Array(filteredTracks.enumerated()), id: \.element.id) { index, item in
+                TrackRow(
+                    item.track,
+                    number: index + 1,
+                    showCover: true,
+                    soundCloudTrack: item.soundCloudTrack,
+                    listContext: filteredTracks,
+                    indexInList: index
+                )
+                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+            }
+        }
+    }
+
+    // MARK: - Playlists Content
+
+    @ViewBuilder
+    private var playlistsContent: some View {
+        if viewModel.isLoadingPlaylists && viewModel.likedPlaylists.isEmpty {
+            HStack {
+                Spacer()
+                ProgressView()
+                Spacer()
+            }
+            .listRowSeparator(.hidden)
+        } else if filteredPlaylists.isEmpty && !searchText.isEmpty {
+            ContentUnavailableView.search(text: searchText)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets())
+        } else if filteredPlaylists.isEmpty {
+            ContentUnavailableView("No liked playlists", systemImage: "music.note.list")
+                .listRowSeparator(.hidden)
+        } else {
+            ForEach(filteredPlaylists) { item in
+                playlistRow(item: item)
+            }
+        }
+    }
+
+    // MARK: - Playlist Row
+
+    private func playlistRow(item: PlaylistItem) -> some View {
+        HStack(spacing: 12) {
+            if item.playlist.artwork.starts(with: "http"),
+               let url = URL(string: item.playlist.artwork) {
+                CachedAsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(.systemGray5))
+                        .overlay {
+                            Image(systemName: "music.note.list")
+                                .foregroundStyle(.secondary)
+                        }
+                }
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(.systemGray5))
+                    .frame(width: 56, height: 56)
+                    .overlay {
+                        Image(systemName: "music.note.list")
+                            .foregroundStyle(.secondary)
+                    }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.playlist.name)
+                    .font(.body)
+                    .lineLimit(1)
+
+                Text(item.playlist.creator)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .matchedTransitionSource(id: "liked-\(item.playlist.id)", in: namespace)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            HapticManager.selection()
+            selectedPlaylist = item.playlist
         }
     }
 }
