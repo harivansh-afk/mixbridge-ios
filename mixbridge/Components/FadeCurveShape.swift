@@ -35,11 +35,8 @@ struct FadeCurveShape: Shape {
             }
         }
         
-        if showFadeIn && showFadeOut {
+        if showFadeIn {
             path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
-        } else if showFadeIn {
-            path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
-        }
         
         if showFadeIn {
             // Draw fade-in curve (bottom-left to top-right)
