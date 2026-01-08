@@ -111,7 +111,7 @@ struct AutomixSettingsView: View {
             }
         }
         .listStyle(InsetGroupedListStyle())
-        .listSectionSpacing(12)
+        .listSectionSpacing(23)
         .scrollContentBackground(.hidden)
         .background(.clear)
         .contentMargins(.top, 5, for: .scrollContent)
@@ -148,27 +148,51 @@ struct FadeCurvePicker: View {
 
     var body: some View {
         List {
-            ForEach(FadeCurve.allCases, id: \.self) { curve in
-                Button {
-                    selection = curve
-                    HapticManager.selection()
-                    dismiss()
-                } label: {
-                    HStack {
-                        Text(curve.displayName)
-                        Spacer()
-                        if curve == selection {
-                            Image(systemName: "checkmark")
-                                .foregroundStyle(.blue)
+            // Selection rows
+            Section {
+                ForEach(FadeCurve.allCases, id: \.self) { curve in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selection = curve
                         }
+                        HapticManager.selection()
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(curve.displayName)
+                                    .font(.body)
+                                Text(curve.description)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            if curve == selection {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(.blue)
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                        .padding(.vertical, 2)
                     }
+                    .foregroundStyle(.primary)
                 }
-                .foregroundStyle(.primary)
+            }
+            
+            // Large curve preview
+            Section {
+                FadeCurvePreview(curve: selection)
+                    .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
+            } header: {
+                Text("Preview")
             }
         }
         .listStyle(InsetGroupedListStyle())
+        .listSectionSpacing(23)
         .scrollContentBackground(.hidden)
         .background(.clear)
+        .contentMargins(.top, 5, for: .scrollContent)
         .toolbarBackground(.hidden, for: .navigationBar)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
