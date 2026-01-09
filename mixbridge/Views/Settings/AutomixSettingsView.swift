@@ -182,7 +182,7 @@ struct FadeCurvePicker: View {
             
             // Large curve preview
             Section {
-                FadeCurvePreview(curve: selection)
+                FadeCurveShape.FadeCurvePreview(curve: selection)
                     .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
             } header: {
                 Text("Preview")
