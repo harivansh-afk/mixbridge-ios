@@ -120,6 +120,11 @@ Project-specific coding conventions and style guidelines.
 - Implement `LocalizedError` with `errorDescription` for user-facing messages
 - Use `async throws` pattern, catch at call site
 
+### Claude Code Subagent Naming
+- Plugin-provided subagents use double-namespace format: `plugin-name:agent-name` (e.g., `code-simplifier:code-simplifier`)
+- Built-in agents use simple names: `Explore`, `Plan`, `Bash`, `general-purpose`
+- When Task tool fails with "Agent type not found", check the full list of available agents in the error message
+
 ### Haptic Feedback
 ```swift
 // Light tap (buttons)
@@ -595,6 +600,43 @@ for item in backendItems {
 @_exported import MixBridgeDomain
 ```
 - **Session**: Sync engine review (2026-01-04)
+
+---
+
+## SwiftUI Text Effects
+
+### Simplified Animated Text Pattern
+- **Context**: Creating animated text with shine/glow effects that don't require full glass material
+- **Learning**: Instead of using `glassEffect` (which requires invisible text + glass modifier), layer a simple `Text` with `foregroundStyle(.white.opacity(0.7))` underneath a masked `ShineLayer`. This is simpler, has fewer dependencies, and renders faster.
+- **Example**:
+```swift
+// Simpler approach - opacity-based base text
+ZStack {
+    Text(text)
+        .font(Font(font))
+        .foregroundStyle(.white.opacity(0.7))
+
+    ShineLayer(progress: progress)
+        .mask(TextToShape(value: text, font: font))
+}
+
+// More complex approach - glass effect
+ZStack {
+    ShineLayer(progress: progress)
+        .mask(TextToShape(value: text, font: font))
+
+    Text(text)
+        .font(Font(font))
+        .opacity(0)  // Hidden text, glass shows
+        .glassEffect(.clear, in: TextToShape(value: text, font: font))
+}
+```
+- **Session**: MixingIndicator simplification (2026-01-09)
+
+### Prefer SwiftUI Font over UIFont for Cross-Platform
+- **Context**: Text components using `UIFont` for font specification
+- **Learning**: Use SwiftUI `Font` type (`.system(size:weight:)` or `.custom("name", size:)`) instead of `UIFont.systemFont()` when possible. This removes UIKit dependency and is more idiomatic for SwiftUI components.
+- **Session**: Text components refactor (2026-01-09)
 
 ---
 
