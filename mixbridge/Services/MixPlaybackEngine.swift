@@ -193,6 +193,108 @@ final class MixPlaybackEngine {
         }
     }
 
+    /// Trigger an instant mix transition when user manually presses forward.
+    /// Handles all states: singlePlaying, prewarmingNext, and crossfading.
+    /// Returns true if instant mix was triggered, false if caller should fall back to normal skip.
+    func triggerInstantMix() -> Bool {
+        switch state {
+        case .crossfading:
+            // Already crossfading - snap to the end
+            skipToNext()
+            return true
+
+        case .prewarmingNext:
+            // Next track is prewarming - start instant crossfade if ready
+            if isNextReady {
+                let instantSchedule = MixScheduleInfo(
+                    effectiveCrossfade: 2.0,
+                    fadeStartTime: currentTime,
+                    prewarmStartTime: currentTime,
+                    duration: duration,
+                    isCrossfadeEnabled: true
+                )
+                startCrossfade(schedule: instantSchedule)
+                return true
+            } else {
+                // Not ready yet - fall back to normal skip
+                return false
+            }
+
+        case .singlePlaying:
+            // Need to prewarm and crossfade immediately
+            guard let currentCtx = currentContext,
+                  let nextItem = queueManager.queue.peek() else {
+                return false
+            }
+
+            let nextTrack = nextItem.track
+            nextContext = MixTrackContext(track: nextTrack, soundCloudTrack: nextItem.soundCloudTrack, queueIndex: 0)
+
+            state = .prewarmingNext
+            isNextReady = false
+
+            emitEvent(.prewarmStart(
+                trackId: currentCtx.track.id,
+                nextTrackId: nextTrack.id,
+                crossfadeSeconds: 2.0
+            ))
+
+            logInfo(.playback, "[MixEngine] instant_mix_triggered: prewarming \(nextTrack.title)")
+
+            Task {
+                do {
+                    let streamData = try await streamCache.ensureStream(for: nextTrack.id, priority: .userInitiated)
+                    await prepareAndStartInstantCrossfade(with: streamData)
+                } catch {
+                    logError(.playback, "[MixEngine] Instant mix prewarm failed: \(error)")
+                    abortMixTransition(reason: "instant_mix_failed", shouldFallbackToNext: true)
+                }
+            }
+            return true
+        }
+    }
+
+    private func prepareAndStartInstantCrossfade(with streamData: CachedStreamData) async {
+        guard state == .prewarmingNext else { return }
+
+        let player = AVPlayer()
+        player.automaticallyWaitsToMinimizeStalling = true
+        player.volume = 0
+
+        let item = createPlayerItem(from: streamData)
+        player.replaceCurrentItem(with: item)
+        nextPlayer = player
+
+        // Wait for readiness with timeout
+        let startTime = Date()
+        let timeout: TimeInterval = 5.0
+
+        while !item.isPlaybackLikelyToKeepUp && item.status != .failed {
+            if Date().timeIntervalSince(startTime) > timeout {
+                logWarning(.playback, "[MixEngine] Instant mix timeout waiting for readiness")
+                abortMixTransition(reason: "instant_mix_timeout", shouldFallbackToNext: true)
+                return
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+        }
+
+        guard item.status == .readyToPlay else {
+            abortMixTransition(reason: "instant_mix_not_ready", shouldFallbackToNext: true)
+            return
+        }
+
+        isNextReady = true
+
+        let instantSchedule = MixScheduleInfo(
+            effectiveCrossfade: 2.0,
+            fadeStartTime: currentTime,
+            prewarmStartTime: currentTime,
+            duration: duration,
+            isCrossfadeEnabled: true
+        )
+        startCrossfade(schedule: instantSchedule)
+    }
+
     func handleQueueChanged() {
         if state != .singlePlaying {
             abortMixTransition(reason: "queue_changed", shouldFallbackToNext: false)

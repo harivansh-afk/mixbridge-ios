@@ -314,6 +314,16 @@ final class PlaybackCoordinator: NSObject {
     func playNext(manual: Bool = false) {
         logInfo(.queue, "playNext called (manual=\(manual))")
 
+        // If manual forward in mix mode, trigger instant mix instead of normal skip
+        if manual && mixEnabled && isUsingMixMode {
+            if mixEngine.triggerInstantMix() {
+                logInfo(.queue, "playNext: triggered instant mix")
+                HapticManager.selection()
+                return
+            }
+            // Fall through to normal skip if instant mix failed
+        }
+
         // Pop the next track from queue BEFORE playing
         // This enforces the invariant: current track is never in the queue
         guard let nextItem = queueManager.popNext() else {
