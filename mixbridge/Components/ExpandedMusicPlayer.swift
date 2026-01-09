@@ -479,6 +479,14 @@ struct ExpandedPlayerView: View {
                                 onEditingChanged: onSeek
                             )
                             .padding(.horizontal, horizontalPadding)
+                            .overlay(alignment: .top) {
+                                // Mixing indicator - positioned above progress bar
+                                if playerState.isCrossfading && playerState.mixEnabled {
+                                    MixingIndicator()
+                                        .offset(y: -1)
+                                        .transition(.opacity)
+                                }
+                            }
 
                             PlayerControlsView(
                                 isPlaying: isPlaying,
