@@ -25,6 +25,8 @@ final class LikedPlaylistSync: Sendable {
             let scPlaylists = try await convex.getLikedPlaylists(userId: userId, forceRefresh: forceRefresh)
 
             // 2. Prepare DB payload on MainActor (SoundCloud models are main-actor isolated in this project).
+            // SoundCloud returns playlists ordered by most recently liked first.
+            // Preserve this order by assigning decreasing timestamps.
             let now = Date()
             let cachedOwner = await MainActor.run { SyncConstants.cachedPlaylistOwner }
             let prepared = await MainActor.run { () -> (persistedPlaylists: [PersistedPlaylist], likedPlaylists: [LikedPlaylist], newLikedIds: Set<String>) in
@@ -34,7 +36,11 @@ final class LikedPlaylistSync: Sendable {
                     persisted.libraryOwnerUserId = cachedOwner
                     return persisted
                 }
-                let likedPlaylists = scPlaylists.map { LikedPlaylist(playlistId: String($0.id), likedAt: now) }
+                let likedPlaylists = scPlaylists.enumerated().map { index, playlist in
+                    // Most recent (index 0) gets `now`, older playlists get earlier timestamps
+                    let likedAt = now.addingTimeInterval(-Double(index))
+                    return LikedPlaylist(playlistId: String(playlist.id), likedAt: likedAt)
+                }
                 let newLikedIds = Set(likedPlaylists.map(\.playlistId))
                 return (persistedPlaylists, likedPlaylists, newLikedIds)
             }

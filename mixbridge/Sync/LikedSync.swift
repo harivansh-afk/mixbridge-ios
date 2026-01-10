@@ -26,10 +26,16 @@ final class LikedSync: Sendable {
             let scTracks = try await convex.getLikedTracks(userId: userId, forceRefresh: forceRefresh)
 
             // 2. Prepare DB payload on MainActor (SoundCloud models are main-actor isolated in this project).
+            // SoundCloud returns tracks ordered by most recently liked first.
+            // Preserve this order by assigning decreasing timestamps.
             let now = Date()
             let prepared = await MainActor.run { () -> (persistedTracks: [PersistedTrack], likedTracks: [LikedTrack], newLikedIds: Set<String>) in
                 let persistedTracks = scTracks.map { PersistedTrack(from: $0) }
-                let likedTracks = scTracks.map { LikedTrack(trackId: String($0.id), likedAt: now) }
+                let likedTracks = scTracks.enumerated().map { index, track in
+                    // Most recent (index 0) gets `now`, older tracks get earlier timestamps
+                    let likedAt = now.addingTimeInterval(-Double(index))
+                    return LikedTrack(trackId: String(track.id), likedAt: likedAt)
+                }
                 let newLikedIds = Set(likedTracks.map(\.trackId))
                 return (persistedTracks, likedTracks, newLikedIds)
             }

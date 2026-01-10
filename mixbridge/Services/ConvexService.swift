@@ -488,40 +488,50 @@ final class ConvexService {
 
     /// Like a track
     func likeTrack(trackId: String) async throws {
-        guard let authToken = KeychainManager.shared.getAccessToken() else {
+        guard let userId = KeychainManager.shared.getUserId() else {
             throw ConvexError.unauthorized
         }
 
-        let url = URL(string: "\(apiBaseUrl)/api/soundcloud/likes/\(trackId)")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
-
-        let (_, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
-            throw ConvexError.requestFailed
-        }
+        let _: LikeResponse = try await action(
+            "actions/likes:likeTrack",
+            args: ["userId": userId, "trackId": trackId]
+        )
     }
 
     /// Unlike a track
     func unlikeTrack(trackId: String) async throws {
-        guard let authToken = KeychainManager.shared.getAccessToken() else {
+        guard let userId = KeychainManager.shared.getUserId() else {
             throw ConvexError.unauthorized
         }
 
-        let url = URL(string: "\(apiBaseUrl)/api/soundcloud/likes/\(trackId)")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        let _: LikeResponse = try await action(
+            "actions/likes:unlikeTrack",
+            args: ["userId": userId, "trackId": trackId]
+        )
+    }
 
-        let (_, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
-            throw ConvexError.requestFailed
+    /// Like a playlist
+    func likePlaylist(playlistId: String) async throws {
+        guard let userId = KeychainManager.shared.getUserId() else {
+            throw ConvexError.unauthorized
         }
+
+        let _: LikeResponse = try await action(
+            "actions/likes:likePlaylist",
+            args: ["userId": userId, "playlistId": playlistId]
+        )
+    }
+
+    /// Unlike a playlist
+    func unlikePlaylist(playlistId: String) async throws {
+        guard let userId = KeychainManager.shared.getUserId() else {
+            throw ConvexError.unauthorized
+        }
+
+        let _: LikeResponse = try await action(
+            "actions/likes:unlikePlaylist",
+            args: ["userId": userId, "playlistId": playlistId]
+        )
     }
 
     /// Delete all user data
@@ -587,6 +597,10 @@ struct QueueBatchResult: Codable {
     let _id: String      // Convex queueTracks document ID
     let trackId: String  // SoundCloud track ID
     let position: Int    // Position in queue
+}
+
+struct LikeResponse: Codable {
+    let success: Bool
 }
 
 // MARK: - Errors

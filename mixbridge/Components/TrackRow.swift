@@ -59,6 +59,7 @@ struct TrackRow: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showError = false
+    @State private var isLiked = false
 
     var body: some View {
         let isCurrentTrack = playerState.currentTrack.id == track.id
@@ -77,6 +78,9 @@ struct TrackRow: View {
         .onTapGesture {
             handlePlayTapped()
         }
+        .task {
+            isLiked = await LikedSync.shared.isTrackLiked(trackId: track.id)
+        }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             if isQueueContext {
                 Button {
@@ -86,18 +90,23 @@ struct TrackRow: View {
                 }
                 .tint(.red)
             } else {
-                if QueueManager.shared.hasQueue {
-                    Button {
-                        handlePlayNext()
-                    } label: {
-                        Label("", systemImage: "text.line.first.and.arrowtriangle.forward")
-                    }
-                    .tint(Color(red: 117/255, green: 114/255, blue: 255/255))
+                Button {
+                    isLiked ? handleUnlike() : handleLike()
+                } label: {
+                    Label("", systemImage: isLiked ? "heart.slash" : "heart")
                 }
+                .tint(.pink)
             }
         }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
             if !isQueueContext {
+                Button {
+                    handlePlayNext()
+                } label: {
+                    Label("", systemImage: "text.line.first.and.arrowtriangle.forward")
+                }
+                .tint(Color(red: 117/255, green: 114/255, blue: 255/255))
+
                 Button {
                     handleAddToQueue()
                 } label: {
@@ -207,8 +216,6 @@ struct TrackRow: View {
             Image(systemName: "line.3.horizontal")
                 .font(.title2)
                 .foregroundStyle(.secondary)
-        } else {
-            EmptyView()
         }
     }
 
@@ -275,6 +282,7 @@ struct TrackRow: View {
         if let onLike {
             HapticManager.medium()
             onLike()
+            isLiked = true
         } else {
             Task {
                 isLoading = true
@@ -282,10 +290,9 @@ struct TrackRow: View {
                     if let soundCloudTrack {
                         try await LikedSync.shared.likeTrack(soundCloudTrack)
                     } else {
-                        try await BackgroundExecutor.run {
-                            try await ConvexService.shared.likeTrack(trackId: track.id)
-                        }
+                        try await ConvexService.shared.likeTrack(trackId: track.id)
                     }
+                    isLiked = true
                     HapticManager.success()
                 } catch {
                     HapticManager.error()
@@ -297,14 +304,19 @@ struct TrackRow: View {
         }
     }
 
-    private func handleDelete() {
-        if let onDelete {
-            HapticManager.warning()
-            onDelete()
-        } else {
-            HapticManager.error()
-            errorMessage = "Delete action not configured"
-            showError = true
+    private func handleUnlike() {
+        Task {
+            isLoading = true
+            do {
+                try await LikedSync.shared.unlikeTrack(trackId: track.id)
+                isLiked = false
+                HapticManager.success()
+            } catch {
+                HapticManager.error()
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+            isLoading = false
         }
     }
 }
