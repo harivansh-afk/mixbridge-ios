@@ -152,7 +152,7 @@ struct TrackRow: View {
                 Label("Cancel Download", systemImage: "xmark.circle")
             }
         case .downloaded:
-            Button(role: .destructive) {
+            Button {
                 Task {
                     await downloadManager.deleteDownload(trackId: track.id)
                 }
@@ -161,18 +161,16 @@ struct TrackRow: View {
             }
         }
 
-        // Debug: Diagnose HLS stream
-        if let soundCloudTrack {
-            Button {
-                downloadManager.runDiagnostic(for: soundCloudTrack)
-            } label: {
-                Label("Diagnose Stream", systemImage: "stethoscope")
-            }
-        }
     }
 
     @ViewBuilder
     private var queueContextMenuItems: some View {
+        Button {
+            isLiked ? handleUnlike() : handleLike()
+        } label: {
+            Label(isLiked ? "Unlike" : "Like", systemImage: isLiked ? "heart.slash" : "heart")
+        }
+
         Button {
             handleAddToQueue()
         } label: {
@@ -280,7 +278,7 @@ struct TrackRow: View {
             if downloadStatus == .downloaded {
                 Image(systemName: "arrow.down.circle.fill")
                     .font(.subheadline)
-                    .foregroundStyle(.green)
+                    .foregroundStyle(.secondary)
             }
 
             if isQueueContext {

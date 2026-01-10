@@ -269,7 +269,7 @@ struct LibraryView: View {
             } label: {
                 LibraryNavigationRow(
                     icon: "arrow.down.circle",
-                    title: "Downloaded",
+                    title: "Downloads",
                     iconColor: .primary
                 )
             }
