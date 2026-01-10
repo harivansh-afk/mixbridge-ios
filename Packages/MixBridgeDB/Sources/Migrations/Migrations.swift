@@ -156,6 +156,18 @@ extension MixBridgeDB {
             }
         }
 
+        migrator.registerMigration("v4_downloaded_tracks") { db in
+            // Downloaded tracks table for offline playback
+            try db.create(table: DownloadedTrack.databaseTableName) { t in
+                t.column("trackId", .text).primaryKey()
+                    .references(PersistedTrack.databaseTableName, onDelete: .cascade)
+                t.column("localPath", .text).notNull()
+                t.column("fileSize", .integer).notNull()
+                t.column("downloadedAt", .datetime).notNull().indexed()
+                t.column("expiresAt", .datetime)
+            }
+        }
+
         return migrator
     }
 }
