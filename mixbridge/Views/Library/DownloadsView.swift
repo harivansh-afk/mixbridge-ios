@@ -42,6 +42,8 @@ struct DownloadsView: View {
             }
         }
         .navigationTitle("Downloaded")
+        .searchable(text: $searchText, isPresented: $isSearchPresented, prompt: "Search Downloads")
+        .navigationAllowDismissalGestures(allowDismissalGesture)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if !downloadManager.downloadedTracks.isEmpty {
@@ -96,6 +98,7 @@ struct DownloadsView: View {
                         listContext: trackItems,
                         indexInList: index
                     )
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
                 }
             }
@@ -111,8 +114,6 @@ struct DownloadsView: View {
                 HapticManager.light()
             }
         }
-        .searchable(text: $searchText, isPresented: $isSearchPresented, prompt: "Search Downloads")
-        .navigationAllowDismissalGestures(allowDismissalGesture)
     }
 
 }

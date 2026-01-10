@@ -90,19 +90,18 @@ struct PlaylistDetailView: View {
             }
 
             ToolbarItem(placement: .topBarTrailing) {
-                if !viewModel.trackItems.isEmpty {
-                    Menu {
-                        Button {
-                            downloadAllTracks()
-                        } label: {
-                            Label("Download All", systemImage: "arrow.down.circle")
-                        }
+                Menu {
+                    Button {
+                        downloadAllTracks()
                     } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.body)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.primary)
+                        Label("Download All", systemImage: "arrow.down.circle")
                     }
+                    .disabled(viewModel.trackItems.isEmpty)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
                 }
             }
         }
