@@ -30,7 +30,6 @@ struct DownloadsView: View {
                 ContentUnavailableView(
                     "No Downloads",
                     systemImage: "arrow.down.circle",
-                    description: Text("Download tracks to listen offline. Tap the download button on any track.")
                 )
             } else {
                 List {
