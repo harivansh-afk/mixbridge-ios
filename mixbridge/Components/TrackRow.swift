@@ -98,21 +98,21 @@ struct TrackRow: View {
                 .tint(.pink)
             }
         }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
             if !isQueueContext {
-                Button {
-                    handlePlayNext()
-                } label: {
-                    Label("", systemImage: "text.line.first.and.arrowtriangle.forward")
-                }
-                .tint(Color(red: 117/255, green: 114/255, blue: 255/255))
-
                 Button {
                     handleAddToQueue()
                 } label: {
                     Label("", systemImage: "text.line.last.and.arrowtriangle.forward")
                 }
                 .tint(.orange)
+
+                Button {
+                    handlePlayNext()
+                } label: {
+                    Label("", systemImage: "text.line.first.and.arrowtriangle.forward")
+                }
+                .tint(Color(red: 117/255, green: 114/255, blue: 255/255))
             }
         }
         .alert("Error", isPresented: $showError) {
