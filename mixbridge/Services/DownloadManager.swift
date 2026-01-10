@@ -218,10 +218,49 @@ final class DownloadManager: ObservableObject {
         downloadTasks[trackId] = task
     }
 
-    /// Download multiple tracks
+    /// Download multiple tracks with throttled concurrency
+    /// Limits to 3 concurrent downloads to avoid overwhelming network/memory
     func downloadTracks(_ tracks: [SoundCloudTrack]) {
-        for track in tracks {
-            downloadTrack(track)
+        let maxConcurrent = 3
+
+        Task {
+            await withTaskGroup(of: Void.self) { group in
+                var activeCount = 0
+                var trackIndex = 0
+
+                while trackIndex < tracks.count {
+                    // Start new downloads up to the limit
+                    while activeCount < maxConcurrent && trackIndex < tracks.count {
+                        let track = tracks[trackIndex]
+                        let trackId = String(track.id)
+
+                        // Skip if already downloading or downloaded
+                        if downloadStatuses[trackId] == .downloaded ||
+                           downloadStatuses[trackId] == .downloading(progress: 0) {
+                            trackIndex += 1
+                            continue
+                        }
+
+                        downloadStatuses[trackId] = .downloading(progress: 0)
+
+                        group.addTask { [weak self] in
+                            await self?.performDownload(track: track)
+                        }
+
+                        activeCount += 1
+                        trackIndex += 1
+                    }
+
+                    // Wait for one to complete before starting next
+                    if activeCount >= maxConcurrent {
+                        await group.next()
+                        activeCount -= 1
+                    }
+                }
+
+                // Wait for remaining downloads
+                await group.waitForAll()
+            }
         }
     }
 

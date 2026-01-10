@@ -13,6 +13,7 @@ struct PlaylistDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
     @Environment(QueueManager.self) private var queueManager
+    @StateObject private var downloadManager = DownloadManager.shared
 
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
@@ -85,6 +86,23 @@ struct PlaylistDetailView: View {
                         .font(.body)
                         .fontWeight(.semibold)
                         .foregroundStyle(.primary)
+                }
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                if !viewModel.trackItems.isEmpty {
+                    Menu {
+                        Button {
+                            downloadAllTracks()
+                        } label: {
+                            Label("Download All", systemImage: "arrow.down.circle")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.body)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+                    }
                 }
             }
         }
@@ -215,6 +233,13 @@ struct PlaylistDetailView: View {
             }
         }
         .listSectionSeparator(.hidden)
+    }
+
+    private func downloadAllTracks() {
+        let soundCloudTracks = viewModel.trackItems.compactMap { $0.soundCloudTrack }
+        guard !soundCloudTracks.isEmpty else { return }
+        HapticManager.medium()
+        downloadManager.downloadTracks(soundCloudTracks)
     }
 }
 
