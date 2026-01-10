@@ -110,6 +110,7 @@ enum LogCategory: String, CaseIterable, Codable, Identifiable {
     case queue
     case db
     case sync
+    case downloads
 
     var id: String { rawValue }
 
@@ -126,6 +127,7 @@ enum LogCategory: String, CaseIterable, Codable, Identifiable {
         case .queue: return "Queue"
         case .db: return "Database"
         case .sync: return "Sync"
+        case .downloads: return "Downloads"
         }
     }
 }

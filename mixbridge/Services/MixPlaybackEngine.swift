@@ -680,10 +680,17 @@ final class MixPlaybackEngine {
             return AVPlayerItem(url: URL(string: "about:blank")!)
         }
 
-        let headers = ["Authorization": "OAuth \(streamData.accessToken)"]
-        let asset = AVURLAsset(url: url, options: [
-            "AVURLAssetHTTPHeaderFieldsKey": headers
-        ])
+        let asset: AVURLAsset
+        if streamData.streamType == "local" {
+            // Local file - no headers needed
+            asset = AVURLAsset(url: url)
+        } else {
+            // Remote stream - add OAuth headers
+            let headers = ["Authorization": "OAuth \(streamData.accessToken)"]
+            asset = AVURLAsset(url: url, options: [
+                "AVURLAssetHTTPHeaderFieldsKey": headers
+            ])
+        }
 
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = 10

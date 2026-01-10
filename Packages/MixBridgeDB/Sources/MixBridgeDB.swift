@@ -38,6 +38,7 @@ extension MixBridgeDB {
 extension MixBridgeDB {
     public func deleteAll() async throws {
         try await writer.write { db in
+            try DownloadedTrack.deleteAll(db)
             try LikedTrack.deleteAll(db)
             try LikedPlaylist.deleteAll(db)
             try PlayHistory.deleteAll(db)

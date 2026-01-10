@@ -514,6 +514,57 @@ final class PlaybackCoordinator: NSObject {
         status = .loading
 
         do {
+            // Check for downloaded file first - use local file with fake stream data
+            if let localURL = await DownloadManager.shared.getLocalFileURL(trackId: context.track.id) {
+                logInfo(.playback, "[MixMode] Playing from local file: \(context.track.title)")
+
+                // Create a pseudo CachedStreamData for local file
+                let localStream = CachedStreamData(
+                    url: localURL.absoluteString,
+                    streamType: "local",
+                    accessToken: ""
+                )
+
+                // Stop regular playback and switch to mix mode
+                player.pause()
+                player.removeAllItems()
+                itemContextMap.removeAll()
+
+                mixEngine.crossfadeSeconds = crossfadeSeconds
+                mixEngine.prewarmSeconds = prewarmSeconds
+                mixEngine.fadeCurve = fadeCurve
+
+                guard isIntendedToPlay else {
+                    status = .paused
+                    return
+                }
+
+                mixEngine.play(context: context, streamData: localStream, startTime: startTime)
+                isUsingMixMode = true
+                currentContext = context
+                handleTrackStartedPlaying(context: context)
+                retryAttempts.removeValue(forKey: context.track.id)
+
+                if let userId = AuthManager.shared.currentUserId,
+                   autoplayEnabled,
+                   let scTrack = context.soundCloudTrack {
+                    let sessionId = positionTracker.startSession(
+                        trackId: context.track.id,
+                        queueIndex: context.queueIndex,
+                        duration: Double(scTrack.duration) / 1000.0
+                    )
+                    Task.detached(priority: .utility) {
+                        try? await HistorySync.shared.addToHistory(
+                            scTrack,
+                            userId: userId,
+                            sessionId: sessionId,
+                            queueIndex: context.queueIndex
+                        )
+                    }
+                }
+                return
+            }
+
             logDebug(.playback, "[MixMode] Fetching stream URL\(forceRefreshURL ? " (force refresh)" : "")...")
 
             let stream: CachedStreamData
@@ -616,6 +667,16 @@ final class PlaybackCoordinator: NSObject {
     }
 
     private func prepareItem(for context: PlaybackContext, forceRefresh: Bool = false) async throws -> AVPlayerItem {
+        // Check for downloaded file first - instant offline playback
+        if let localURL = await DownloadManager.shared.getLocalFileURL(trackId: context.track.id) {
+            logInfo(.playback, "Playing from local file: \(context.track.title)")
+            let asset = AVURLAsset(url: localURL)
+            let item = AVPlayerItem(asset: asset)
+            item.preferredForwardBufferDuration = 10
+            return item
+        }
+
+        // Fall back to streaming
         let stream: CachedStreamData
 
         if forceRefresh {

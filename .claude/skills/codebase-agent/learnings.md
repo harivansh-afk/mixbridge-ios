@@ -528,6 +528,12 @@ return trackIds.compactMap { tracksDict[$0] }
 ```
 - **Session**: MixBridge view loading fixes (2026-01-04)
 
+### Don't Use AVAssetExportSession for HLS with Per-Segment Auth
+- **Context**: Downloading HLS streams where each segment requires authentication
+- **Learning**: `AVAssetExportSession` cannot be used to download HLS streams when OAuth headers are required for segment requests. The headers only apply to the manifest, causing segment requests to fail with auth errors. The asset appears to load (`isPlayable: true`) but has 0 tracks.
+- **What to do instead**: Use progressive streams when available, or `AVAssetDownloadURLSession` for true HLS offline.
+- **Session**: HLS offline download implementation (2026-01-10)
+
 ---
 
 ## Sync Engine Architecture
@@ -637,6 +643,58 @@ ZStack {
 - **Context**: Text components using `UIFont` for font specification
 - **Learning**: Use SwiftUI `Font` type (`.system(size:weight:)` or `.custom("name", size:)`) instead of `UIFont.systemFont()` when possible. This removes UIKit dependency and is more idiomatic for SwiftUI components.
 - **Session**: Text components refactor (2026-01-09)
+
+---
+
+## HLS / Audio Streaming
+
+### HLS OAuth Headers Only Apply to Manifest, Not Segments
+- **Context**: Downloading HLS streams that require OAuth authentication
+- **Learning**: When using `AVURLAsset` with `AVURLAssetHTTPHeaderFieldsKey` to add OAuth headers, the headers are ONLY applied to the initial HLS manifest (`.m3u8`) request, not to the subsequent segment (`.ts`) requests. This causes `AVFoundation` to report 0 tracks because segments fail to load.
+- **Diagnosis**: Error `-12939` (HTTP auth error) and `-12174` (asset inspection failed) in console logs while `isPlayable` returns `true` indicates this exact issue.
+- **Session**: HLS offline download implementation (2026-01-10)
+
+### AVAssetExportSession Cannot Export Protected HLS Without Full Download
+- **Context**: Attempting to use `AVAssetExportSession` to convert HLS to M4A for offline storage
+- **Learning**: `AVAssetExportSession` reads HLS streams progressively and cannot export unless all segments are accessible. If authentication fails on segments (see above), the asset loads with 0 tracks and export fails with "No audio track found".
+- **Session**: HLS offline download implementation (2026-01-10)
+
+### Check for Progressive Stream URLs Before HLS
+- **Context**: Implementing offline downloads for streaming services like SoundCloud
+- **Learning**: Many streaming services offer both HLS and progressive (direct HTTP) stream URLs. Progressive URLs are much simpler to download - just a standard `URLSession.download()` with OAuth headers. Check if the stream URL contains `/http` or lacks `.m3u8` to identify progressive streams.
+- **Example**:
+```swift
+func isProgressiveStream(_ url: URL) -> Bool {
+    let path = url.path.lowercased()
+    return !path.contains(".m3u8") || path.contains("/http")
+}
+
+// Progressive download is simple
+var request = URLRequest(url: streamURL)
+request.setValue("OAuth \(token)", forHTTPHeaderField: "Authorization")
+let (localURL, _) = try await URLSession.shared.download(for: request)
+```
+- **Session**: HLS offline download implementation (2026-01-10)
+
+### SoundCloud Stream Types and Authentication
+- **Context**: Working with SoundCloud API stream URLs
+- **Learning**: SoundCloud provides two stream types: `/hls` (HLS manifest) and `/http` (progressive AAC). Both require OAuth headers, but progressive URLs work with simple `URLSession.download()` while HLS requires `AVAssetDownloadURLSession` with proper delegate setup. When the URL is resolved through the API, CDN URLs use query param auth instead.
+- **Session**: HLS offline download implementation (2026-01-10)
+
+### HLS Diagnostic Pattern for Debugging Downloads
+- **Context**: Debugging why HLS downloads fail
+- **Learning**: Build a diagnostic function that logs key `AVURLAsset` properties: `isPlayable`, `hasProtectedContent`, track count (with and without headers), and `isExportable`. This quickly identifies whether the issue is DRM, authentication, or URL problems.
+- **Key checks**:
+  - `isPlayable: false` = URL or auth issue
+  - `hasProtectedContent: true` = DRM, need FairPlay
+  - `tracks.count: 0` = Segment authentication failing
+  - `isExportable: false` = Cannot be converted offline
+- **Session**: HLS offline download implementation (2026-01-10)
+
+### For True HLS Offline, Use AVAssetDownloadURLSession
+- **Context**: When progressive streams are not available and HLS is required
+- **Learning**: Apple's official API for HLS offline download is `AVAssetDownloadURLSession`, not `AVAssetExportSession`. It handles segment authentication properly and stores the asset in a format AVPlayer can play offline. See Apple sample code: "Using AVFoundation to play and persist HTTP live streams".
+- **Session**: HLS offline download implementation (2026-01-10)
 
 ---
 
