@@ -147,6 +147,9 @@ struct LikedView: View {
             }
         }
         .listStyle(.plain)
+        .onChange(of: selectedTab) { _, _ in
+            HapticManager.selection()
+        }
         .onScrollPhaseChange { oldPhase, newPhase, context in
             guard oldPhase == .interacting, newPhase != .interacting else { return }
             let geometry = context.geometry

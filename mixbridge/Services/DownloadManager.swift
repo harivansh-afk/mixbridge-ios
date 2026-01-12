@@ -35,6 +35,7 @@ final class DownloadManager: ObservableObject {
 
     @Published private(set) var downloadStatuses: [String: DownloadStatus] = [:]
     @Published private(set) var downloadedTracks: [DownloadedTrackInfo] = []
+    @Published private(set) var downloadedPlaylists: [DownloadedPlaylistInfo] = []
     @Published private(set) var isLoading: Bool = false
 
     private let db = MixBridgeDB.shared
@@ -207,6 +208,57 @@ final class DownloadManager: ObservableObject {
             }
         } catch {
             return 0
+        }
+    }
+
+    /// Check if all tracks in a playlist are downloaded
+    func isPlaylistFullyDownloaded(playlistId: String) async -> Bool {
+        do {
+            let (trackCount, downloadedCount) = try await db.reader.read { db -> (Int, Int) in
+                // Get all track IDs in the playlist
+                let trackIds = try PlaylistTrack
+                    .filter(PlaylistTrack.Columns.playlistId == playlistId)
+                    .select(PlaylistTrack.Columns.trackId)
+                    .fetchAll(db)
+                    .map { $0.trackId }
+
+                guard !trackIds.isEmpty else { return (0, 0) }
+
+                // Count how many are downloaded
+                let downloadedCount = try DownloadedTrack
+                    .filter(keys: trackIds)
+                    .fetchCount(db)
+
+                return (trackIds.count, downloadedCount)
+            }
+
+            return trackCount > 0 && downloadedCount == trackCount
+        } catch {
+            logError(.downloads, "Failed to check playlist download status: \(error)")
+            return false
+        }
+    }
+
+    /// Get download progress for a playlist (downloaded / total tracks)
+    func playlistDownloadProgress(playlistId: String) async -> (downloaded: Int, total: Int) {
+        do {
+            return try await db.reader.read { db in
+                let trackIds = try PlaylistTrack
+                    .filter(PlaylistTrack.Columns.playlistId == playlistId)
+                    .select(PlaylistTrack.Columns.trackId)
+                    .fetchAll(db)
+                    .map { $0.trackId }
+
+                guard !trackIds.isEmpty else { return (0, 0) }
+
+                let downloadedCount = try DownloadedTrack
+                    .filter(keys: trackIds)
+                    .fetchCount(db)
+
+                return (downloadedCount, trackIds.count)
+            }
+        } catch {
+            return (0, 0)
         }
     }
 
@@ -407,7 +459,7 @@ final class DownloadManager: ObservableObject {
     private func loadDownloadedTracks() async {
         isLoading = true
         defer { isLoading = false }
-        
+
         do {
             let downloads = try await db.reader.read { db in
                 try DownloadedTrack
@@ -418,7 +470,7 @@ final class DownloadManager: ObservableObject {
             // Verify files exist and clean up stale entries
             var validDownloads: [DownloadedTrack] = []
             var staleTrackIds: [String] = []
-            
+
             for download in downloads {
                 if FileManager.default.fileExists(atPath: download.localPath) {
                     validDownloads.append(download)
@@ -428,7 +480,7 @@ final class DownloadManager: ObservableObject {
                     downloadStatuses[download.trackId] = .notDownloaded
                 }
             }
-            
+
             // Clean up stale database entries
             if !staleTrackIds.isEmpty {
                 _ = try? await db.writer.write { db in
@@ -453,8 +505,60 @@ final class DownloadManager: ObservableObject {
                     fileSize: download.fileSize
                 )
             }
+
+            // Also load downloaded playlists
+            await loadDownloadedPlaylists()
         } catch {
             logError(.downloads, "Failed to load downloaded tracks: \(error)")
+        }
+    }
+
+    private func loadDownloadedPlaylists() async {
+        do {
+            // Get all downloaded track IDs
+            let downloadedTrackIds = Set(downloadedTracks.map { $0.track.id })
+
+            // Find playlists where all tracks are downloaded
+            let playlistsWithDownloads = try await db.reader.read { db -> [DownloadedPlaylistInfo] in
+                // Get all playlists that have tracks
+                let playlists = try PersistedPlaylist.fetchAll(db)
+
+                return try playlists.compactMap { playlist -> DownloadedPlaylistInfo? in
+                    // Get track IDs for this playlist
+                    let playlistTrackIds = try PlaylistTrack
+                        .filter(PlaylistTrack.Columns.playlistId == playlist.id)
+                        .order(PlaylistTrack.Columns.position)
+                        .fetchAll(db)
+                        .map { $0.trackId }
+
+                    guard !playlistTrackIds.isEmpty else { return nil }
+
+                    // Count downloaded tracks
+                    let downloadedCount = playlistTrackIds.filter { downloadedTrackIds.contains($0) }.count
+
+                    // Only include if fully downloaded
+                    guard downloadedCount == playlistTrackIds.count else { return nil }
+
+                    // Calculate total file size for downloaded tracks in this playlist
+                    let totalSize = try DownloadedTrack
+                        .filter(keys: playlistTrackIds)
+                        .select(sum(DownloadedTrack.Columns.fileSize))
+                        .fetchOne(db) ?? 0
+
+                    return DownloadedPlaylistInfo(
+                        playlist: playlist.toPlaylist(),
+                        soundCloudPlaylist: playlist.soundCloudPlaylist,
+                        trackCount: playlistTrackIds.count,
+                        downloadedTrackCount: downloadedCount,
+                        totalFileSize: totalSize
+                    )
+                }
+            }
+
+            downloadedPlaylists = playlistsWithDownloads
+            logInfo(.downloads, "Found \(downloadedPlaylists.count) fully downloaded playlists")
+        } catch {
+            logError(.downloads, "Failed to load downloaded playlists: \(error)")
         }
     }
 }
@@ -471,6 +575,24 @@ struct DownloadedTrackInfo: Identifiable, Equatable {
 
     static func == (lhs: DownloadedTrackInfo, rhs: DownloadedTrackInfo) -> Bool {
         lhs.id == rhs.id
+    }
+}
+
+struct DownloadedPlaylistInfo: Identifiable, Equatable {
+    let playlist: Playlist
+    let soundCloudPlaylist: SoundCloudPlaylist?
+    let trackCount: Int
+    let downloadedTrackCount: Int
+    let totalFileSize: Int64
+
+    var id: String { playlist.id }
+
+    var isFullyDownloaded: Bool {
+        trackCount > 0 && downloadedTrackCount == trackCount
+    }
+
+    static func == (lhs: DownloadedPlaylistInfo, rhs: DownloadedPlaylistInfo) -> Bool {
+        lhs.id == rhs.id && lhs.downloadedTrackCount == rhs.downloadedTrackCount
     }
 }
 
