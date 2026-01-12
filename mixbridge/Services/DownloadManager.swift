@@ -2,146 +2,14 @@
 //  DownloadManager.swift
 //  mixbridge
 //
-//  Manages offline track downloads using existing stream endpoints.
-//  Uses AVAssetExportSession to download HLS streams as M4A files.
+//  Manages offline track downloads using yt-dlp backend for signed URLs.
+//  Downloads HLS streams as M4A files without needing OAuth headers.
 //
 
 import Foundation
 import AVFoundation
 import MixBridgeDB
 import Combine
-
-// MARK: - HLS URL Resolver
-
-enum StreamResolveError: Error {
-    case missingFinalURL
-    case notM3U8Response
-    case httpError(Int)
-}
-
-/// Result of resolving SoundCloud HLS URL
-struct ResolvedHLSStream {
-    let url: URL
-    let playlistContent: String
-}
-
-/// Resolves SoundCloud API HLS URL to signed CDN URL
-/// The API URL requires OAuth headers, but the resolved CDN URL has auth in query params
-func resolveSoundCloudHLS(apiHLSURL: URL, accessToken: String) async throws -> ResolvedHLSStream {
-    var request = URLRequest(url: apiHLSURL)
-    request.setValue("OAuth \(accessToken)", forHTTPHeaderField: "Authorization")
-    request.setValue("*/*", forHTTPHeaderField: "Accept")
-
-    let (data, response) = try await URLSession.shared.data(for: request)
-
-    guard let httpResponse = response as? HTTPURLResponse else {
-        throw StreamResolveError.missingFinalURL
-    }
-
-    if httpResponse.statusCode != 200 {
-        throw StreamResolveError.httpError(httpResponse.statusCode)
-    }
-
-    guard let finalURL = response.url else {
-        throw StreamResolveError.missingFinalURL
-    }
-
-    guard let content = String(data: data, encoding: .utf8) else {
-        throw StreamResolveError.notM3U8Response
-    }
-
-    // Sanity check: the body should be an m3u8 playlist
-    if !content.hasPrefix("#EXTM3U") {
-        print("Response is not m3u8: \(content.prefix(100))")
-        throw StreamResolveError.notM3U8Response
-    }
-
-    return ResolvedHLSStream(url: finalURL, playlistContent: content)
-}
-
-// MARK: - HLS Download Diagnostic
-
-/// Test function to diagnose HLS download capability
-/// Call this from a button or debug menu to see console output
-func diagnoseHLSDownload(streamURL: URL, accessToken: String) async {
-    print("=== HLS Download Diagnostic ===")
-    print("Original API URL: \(streamURL)")
-
-    // Step 1: Try to resolve the API URL to a signed CDN URL
-    print("\n--- Step 1: Resolving API URL ---")
-    var resolvedURL: URL = streamURL
-    var playlistContent: String = ""
-    do {
-        let resolved = try await resolveSoundCloudHLS(apiHLSURL: streamURL, accessToken: accessToken)
-        resolvedURL = resolved.url
-        playlistContent = resolved.playlistContent
-        print("Resolved CDN URL: \(resolvedURL)")
-        print("Host changed: \(streamURL.host ?? "?") -> \(resolvedURL.host ?? "?")")
-
-        if resolvedURL.host != streamURL.host {
-            print("SUCCESS: URL was redirected to CDN (auth likely in query params)")
-        } else {
-            print("WARNING: URL host unchanged - may still need headers for segments")
-        }
-
-        // Print the playlist content to understand its structure
-        print("\n--- Playlist Content (m3u8) ---")
-        print(playlistContent)
-        print("--- End Playlist Content ---\n")
-    } catch {
-        print("FAILED to resolve: \(error)")
-        print("Falling back to original URL with headers...")
-    }
-
-    // Step 2: Test the resolved URL WITHOUT headers (CDN should have auth in query)
-    print("\n--- Step 2: Testing resolved URL WITHOUT headers ---")
-    let assetNoHeaders = AVURLAsset(url: resolvedURL)
-    do {
-        let tracks = try await assetNoHeaders.load(.tracks)
-        print("Tracks (no headers): \(tracks.count)")
-        if tracks.count > 0 {
-            print("SUCCESS: CDN URL works without headers - offline download WILL work!")
-            for track in tracks {
-                print("   - Track: \(track.mediaType.rawValue)")
-            }
-        } else {
-            print("WARNING: 0 tracks - CDN URL may still need auth")
-        }
-    } catch {
-        print("FAILED (no headers): \(error.localizedDescription)")
-    }
-
-    // Step 3: Test with headers (for comparison)
-    print("\n--- Step 3: Testing with OAuth headers ---")
-    let headers = ["Authorization": "OAuth \(accessToken)"]
-    let assetWithHeaders = AVURLAsset(url: resolvedURL, options: [
-        "AVURLAssetHTTPHeaderFieldsKey": headers
-    ])
-    do {
-        let tracks = try await assetWithHeaders.load(.tracks)
-        print("Tracks (with headers): \(tracks.count)")
-    } catch {
-        print("FAILED (with headers): \(error.localizedDescription)")
-    }
-
-    // Step 4: Check other properties
-    print("\n--- Step 4: Asset Properties ---")
-    do {
-        let hasProtectedContent = try await assetNoHeaders.load(.hasProtectedContent)
-        print("Has DRM: \(hasProtectedContent)")
-    } catch {
-        print("DRM check failed: \(error.localizedDescription)")
-    }
-
-    do {
-        let isExportable = try await assetNoHeaders.load(.isExportable)
-        print("Is Exportable: \(isExportable)")
-    } catch {
-        print("Exportable check failed: \(error.localizedDescription)")
-    }
-
-    print("\n=== End Diagnostic ===")
-}
 
 /// Download status for a track
 enum DownloadStatus: Equatable, Sendable {
@@ -168,10 +36,10 @@ final class DownloadManager: ObservableObject {
 
     @Published private(set) var downloadStatuses: [String: DownloadStatus] = [:]
     @Published private(set) var downloadedTracks: [DownloadedTrackInfo] = []
+    @Published private(set) var isLoading: Bool = false
 
     private let db = MixBridgeDB.shared
     private let convexService = ConvexService.shared
-    private let streamCache = StreamURLCache.shared
 
     private var downloadTasks: [String: Task<Void, Never>] = [:]
     private var exportSessions: [String: AVAssetExportSession] = [:]
@@ -182,33 +50,13 @@ final class DownloadManager: ObservableObject {
         }
     }
 
-    // MARK: - Diagnostic
-
-    /// Run diagnostic on a track to check HLS download capability
-    /// Check Xcode console for output
-    func runDiagnostic(for track: SoundCloudTrack) {
-        let trackId = String(track.id)
-        Task {
-            do {
-                let streamData = try await streamCache.ensureStream(for: trackId, priority: .userInitiated)
-                guard let streamURL = URL(string: streamData.url) else {
-                    print("DIAGNOSTIC: Invalid stream URL")
-                    return
-                }
-                await diagnoseHLSDownload(streamURL: streamURL, accessToken: streamData.accessToken)
-            } catch {
-                print("DIAGNOSTIC: Failed to get stream - \(error)")
-            }
-        }
-    }
-
     // MARK: - Public API
 
     /// Download a track for offline playback
     func downloadTrack(_ track: SoundCloudTrack) {
         let trackId = String(track.id)
 
-        guard downloadStatuses[trackId] != .downloading(progress: 0) else { return }
+        guard !isDownloading(trackId: trackId) else { return }
 
         downloadStatuses[trackId] = .downloading(progress: 0)
 
@@ -219,7 +67,6 @@ final class DownloadManager: ObservableObject {
     }
 
     /// Download multiple tracks with throttled concurrency
-    /// Limits to 3 concurrent downloads to avoid overwhelming network/memory
     func downloadTracks(_ tracks: [SoundCloudTrack]) {
         let maxConcurrent = 3
 
@@ -229,36 +76,38 @@ final class DownloadManager: ObservableObject {
                 var trackIndex = 0
 
                 while trackIndex < tracks.count {
-                    // Start new downloads up to the limit
                     while activeCount < maxConcurrent && trackIndex < tracks.count {
                         let track = tracks[trackIndex]
                         let trackId = String(track.id)
 
-                        // Skip if already downloading or downloaded
-                        if downloadStatuses[trackId] == .downloaded ||
-                           downloadStatuses[trackId] == .downloading(progress: 0) {
+                        if downloadStatuses[trackId] == .downloaded || isDownloading(trackId: trackId) {
                             trackIndex += 1
                             continue
                         }
 
                         downloadStatuses[trackId] = .downloading(progress: 0)
+                        
+                        let capturedTrack = track
+                        let capturedTrackId = trackId
+                        let taskForGroup = Task {
+                            await self.performDownload(track: capturedTrack)
+                        }
+                        downloadTasks[capturedTrackId] = taskForGroup
 
-                        group.addTask { [weak self] in
-                            await self?.performDownload(track: track)
+                        group.addTask {
+                            _ = await taskForGroup.value
                         }
 
                         activeCount += 1
                         trackIndex += 1
                     }
 
-                    // Wait for one to complete before starting next
                     if activeCount >= maxConcurrent {
                         await group.next()
                         activeCount -= 1
                     }
                 }
 
-                // Wait for remaining downloads
                 await group.waitForAll()
             }
         }
@@ -271,6 +120,14 @@ final class DownloadManager: ObservableObject {
         exportSessions[trackId]?.cancelExport()
         exportSessions.removeValue(forKey: trackId)
         downloadStatuses[trackId] = .notDownloaded
+        
+        // Clean up any partial file
+        Task {
+            if let downloadsDir = try? getDownloadsDirectory() {
+                let partialFile = downloadsDir.appendingPathComponent("\(trackId).m4a")
+                try? FileManager.default.removeItem(at: partialFile)
+            }
+        }
     }
 
     /// Delete a downloaded track
@@ -281,7 +138,7 @@ final class DownloadManager: ObservableObject {
                 try? FileManager.default.removeItem(at: fileURL)
             }
 
-            try await db.writer.write { db in
+            _ = try await db.writer.write { db in
                 try DownloadedTrack.deleteOne(db, key: trackId)
             }
 
@@ -299,12 +156,14 @@ final class DownloadManager: ObservableObject {
                 try DownloadedTrack.fetchAll(db)
             }
 
+            // Delete files first
             for download in downloads {
                 let fileURL = URL(fileURLWithPath: download.localPath)
                 try? FileManager.default.removeItem(at: fileURL)
             }
 
-            try await db.writer.write { db in
+            // Then clear database
+            _ = try await db.writer.write { db in
                 try DownloadedTrack.deleteAll(db)
             }
 
@@ -319,6 +178,14 @@ final class DownloadManager: ObservableObject {
     func isDownloaded(trackId: String) -> Bool {
         downloadStatuses[trackId] == .downloaded
     }
+    
+    /// Check if a track is currently downloading (any progress)
+    func isDownloading(trackId: String) -> Bool {
+        if case .downloading = downloadStatuses[trackId] {
+            return true
+        }
+        return false
+    }
 
     /// Get the local file URL for a downloaded track
     func getLocalFileURL(trackId: String) async -> URL? {
@@ -327,6 +194,10 @@ final class DownloadManager: ObservableObject {
         }
         let url = URL(fileURLWithPath: downloaded.localPath)
         guard FileManager.default.fileExists(atPath: url.path) else {
+            // File missing - clean up stale database entry
+            Task {
+                await cleanupStaleDownload(trackId: trackId)
+            }
             return nil
         }
         return url
@@ -344,6 +215,13 @@ final class DownloadManager: ObservableObject {
     }
 
     // MARK: - Private
+    
+    private func cleanupStaleDownload(trackId: String) async {
+        _ = try? await db.writer.write { db in
+            try DownloadedTrack.deleteOne(db, key: trackId)
+        }
+        downloadStatuses[trackId] = .notDownloaded
+    }
 
     private func performDownload(track: SoundCloudTrack) async {
         let trackId = String(track.id)
@@ -351,178 +229,122 @@ final class DownloadManager: ObservableObject {
         do {
             logInfo(.downloads, "Starting download for: \(track.title)")
 
-            let streamData = try await streamCache.ensureStream(for: trackId, priority: .userInitiated)
+            // Build SoundCloud URL from track permalink_url
+            guard let soundcloudUrl = track.permalink_url else {
+                throw DownloadError.invalidURL
+            }
+            
+            // Check disk space before downloading (require at least 50MB free)
+            let downloadsDir = try getDownloadsDirectory()
+            if let freeSpace = try? URL(fileURLWithPath: NSHomeDirectory())
+                .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+                .volumeAvailableCapacityForImportantUsage,
+               freeSpace < 50_000_000 {
+                throw DownloadError.insufficientStorage
+            }
+            
+            // Get signed stream URL via yt-dlp (no OAuth headers needed!)
+            let ytdlpResponse = try await convexService.getYtDlpStreamURL(soundcloudUrl: soundcloudUrl)
 
-            guard let streamURL = URL(string: streamData.url) else {
+            guard let streamURL = URL(string: ytdlpResponse.stream_url) else {
                 throw DownloadError.invalidURL
             }
 
-            let downloadsDir = try getDownloadsDirectory()
-
-            // Determine file extension based on stream type
-            // Progressive streams are typically AAC (.m4a) or MP3
-            let fileExtension = streamURL.pathExtension.isEmpty ? "m4a" : streamURL.pathExtension
+            // Determine file extension based on format
+            let fileExtension = ytdlpResponse.format.contains("mp3") ? "mp3" : "m4a"
             let destinationURL = downloadsDir.appendingPathComponent("\(trackId).\(fileExtension)")
 
-            try? FileManager.default.removeItem(at: destinationURL)
+            // Remove any existing files (both .mp3 and .m4a)
+            try? FileManager.default.removeItem(at: downloadsDir.appendingPathComponent("\(trackId).mp3"))
+            try? FileManager.default.removeItem(at: downloadsDir.appendingPathComponent("\(trackId).m4a"))
 
-            // Check if this is a progressive (http) stream or HLS
-            let isProgressiveStream = streamData.url.contains("/http") ||
-                                      streamData.streamType == "http" ||
-                                      !streamData.url.contains(".m3u8")
-
-            if isProgressiveStream {
-                // Use simple URLSession download for progressive streams
-                logInfo(.downloads, "Using progressive download for: \(track.title)")
-                try await downloadProgressiveStream(
-                    url: streamURL,
-                    accessToken: streamData.accessToken,
-                    destination: destinationURL,
-                    trackId: trackId
-                )
+            if ytdlpResponse.is_direct {
+                // Direct HTTP URL - download file directly
+                logInfo(.downloads, "Downloading via direct HTTP URL (format: \(ytdlpResponse.format))")
+                try await downloadDirectFile(from: streamURL, to: destinationURL, trackId: trackId)
             } else {
-                // Fall back to HLS approach (may not work for all streams)
-                logInfo(.downloads, "Using HLS download for: \(track.title)")
-                let headers = ["Authorization": "OAuth \(streamData.accessToken)"]
-                let asset = AVURLAsset(url: streamURL, options: [
-                    "AVURLAssetHTTPHeaderFieldsKey": headers
-                ])
-                try await exportAsset(asset, to: destinationURL, trackId: trackId)
+                // HLS-only track - use server-side download endpoint (returns MP3)
+                logInfo(.downloads, "Downloading via server (HLS track)")
+                let mp3Destination = downloadsDir.appendingPathComponent("\(trackId).mp3")
+                try await downloadViaServer(soundcloudUrl: soundcloudUrl, to: mp3Destination, trackId: trackId)
             }
 
+            // Find the actual downloaded file (could be .mp3 or .m4a)
+            let mp3Path = downloadsDir.appendingPathComponent("\(trackId).mp3")
+            let m4aPath = downloadsDir.appendingPathComponent("\(trackId).m4a")
+            let actualPath = FileManager.default.fileExists(atPath: mp3Path.path) ? mp3Path :
+                             FileManager.default.fileExists(atPath: m4aPath.path) ? m4aPath : nil
+
             guard !Task.isCancelled else {
-                try? FileManager.default.removeItem(at: destinationURL)
+                try? FileManager.default.removeItem(at: mp3Path)
+                try? FileManager.default.removeItem(at: m4aPath)
                 downloadStatuses[trackId] = .notDownloaded
+                downloadTasks.removeValue(forKey: trackId)
                 return
             }
 
-            let fileSize = (try? FileManager.default.attributesOfItem(atPath: destinationURL.path)[.size] as? Int64) ?? 0
-
-            guard fileSize > 0 else {
-                throw DownloadError.exportFailed
+            // Verify file exists and get size
+            guard let finalPath = actualPath, FileManager.default.fileExists(atPath: finalPath.path) else {
+                throw DownloadError.saveFailed
+            }
+            
+            let attrs = try FileManager.default.attributesOfItem(atPath: finalPath.path)
+            guard let fileSize = attrs[.size] as? Int64, fileSize > 0 else {
+                try? FileManager.default.removeItem(at: finalPath)
+                throw DownloadError.saveFailed
             }
 
+            // Persist track metadata if needed
             try await persistTrackIfNeeded(track)
 
-            let downloaded = DownloadedTrack(
+            // Save download record
+            let downloadRecord = DownloadedTrack(
                 trackId: trackId,
-                localPath: destinationURL.path,
+                localPath: finalPath.path,
                 fileSize: fileSize,
                 downloadedAt: Date()
             )
 
-            try await db.writer.write { db in
-                try downloaded.save(db)
+            _ = try await db.writer.write { db in
+                try downloadRecord.save(db)
             }
 
             downloadStatuses[trackId] = .downloaded
-            exportSessions.removeValue(forKey: trackId)
+            downloadTasks.removeValue(forKey: trackId)
             await loadDownloadedTracks()
 
-            logInfo(.downloads, "Downloaded track: \(track.title) (\(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)))")
-        } catch is CancellationError {
-            downloadStatuses[trackId] = .notDownloaded
-            exportSessions.removeValue(forKey: trackId)
+            logInfo(.downloads, "Download complete: \(track.title) (\(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)))")
         } catch {
             logError(.downloads, "Download failed for \(track.title): \(error)")
-            downloadStatuses[trackId] = .failed(error)
-            exportSessions.removeValue(forKey: trackId)
-        }
-
-        downloadTasks.removeValue(forKey: trackId)
-    }
-
-    /// Download a progressive (non-HLS) stream directly using URLSession
-    private func downloadProgressiveStream(
-        url: URL,
-        accessToken: String,
-        destination: URL,
-        trackId: String
-    ) async throws {
-        var request = URLRequest(url: url)
-        request.setValue("OAuth \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        // Get expected content length first with HEAD request
-        var headRequest = request
-        headRequest.httpMethod = "HEAD"
-        let (_, headResponse) = try await URLSession.shared.data(for: headRequest)
-        let expectedLength = (headResponse as? HTTPURLResponse)?.expectedContentLength ?? -1
-
-        // Download with progress tracking using bytes stream
-        let (asyncBytes, response) = try await URLSession.shared.bytes(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw DownloadError.downloadFailed
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            logError(.downloads, "Download failed with status: \(httpResponse.statusCode)")
-            throw DownloadError.downloadFailed
-        }
-
-        let totalBytes = expectedLength > 0 ? expectedLength : httpResponse.expectedContentLength
-
-        // Create output file
-        FileManager.default.createFile(atPath: destination.path, contents: nil)
-        let fileHandle = try FileHandle(forWritingTo: destination)
-
-        var downloadedBytes: Int64 = 0
-        var buffer = Data()
-        let bufferSize = 65536 // 64KB chunks
-
-        for try await byte in asyncBytes {
-            try Task.checkCancellation()
-
-            buffer.append(byte)
-            downloadedBytes += 1
-
-            // Write in chunks for efficiency
-            if buffer.count >= bufferSize {
-                try fileHandle.write(contentsOf: buffer)
-                buffer.removeAll(keepingCapacity: true)
-
-                // Update progress
-                if totalBytes > 0 {
-                    let progress = Double(downloadedBytes) / Double(totalBytes)
-                    downloadStatuses[trackId] = .downloading(progress: progress)
-                }
+            
+            // Clean up partial file on failure
+            if let downloadsDir = try? getDownloadsDirectory() {
+                let partialFile = downloadsDir.appendingPathComponent("\(trackId).m4a")
+                try? FileManager.default.removeItem(at: partialFile)
             }
+            
+            downloadStatuses[trackId] = .failed(error)
+            downloadTasks.removeValue(forKey: trackId)
         }
-
-        // Write remaining buffer
-        if !buffer.isEmpty {
-            try fileHandle.write(contentsOf: buffer)
-        }
-
-        try fileHandle.close()
-
-        logInfo(.downloads, "Downloaded \(ByteCountFormatter.string(fromByteCount: downloadedBytes, countStyle: .file))")
     }
 
     private func exportAsset(_ asset: AVURLAsset, to outputURL: URL, trackId: String) async throws {
-        // First, ensure the asset is playable (forces HLS manifest to load)
         let isPlayable = try await asset.load(.isPlayable)
         guard isPlayable else {
             logError(.downloads, "Asset is not playable")
             throw DownloadError.exportFailed
         }
         
-        // Load all tracks first
         let allTracks = try await asset.load(.tracks)
         logInfo(.downloads, "Asset has \(allTracks.count) tracks")
         
-        // Find audio tracks
         let audioTracks = allTracks.filter { $0.mediaType == .audio }
-        logInfo(.downloads, "Found \(audioTracks.count) audio tracks")
         
         guard let audioTrack = audioTracks.first else {
             logError(.downloads, "No audio track found in asset")
             throw DownloadError.noAudioTrack
         }
         
-        logInfo(.downloads, "Found audio track, creating audio-only composition")
-        
-        // Create a composition with just the audio track
         let composition = AVMutableComposition()
         guard let compositionTrack = composition.addMutableTrack(
             withMediaType: .audio,
@@ -538,52 +360,86 @@ final class DownloadManager: ObservableObject {
         
         logInfo(.downloads, "Audio duration: \(CMTimeGetSeconds(duration))s")
         
-        // Now export the audio-only composition
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            guard let exportSession = AVAssetExportSession(
-                asset: composition,
-                presetName: AVAssetExportPresetAppleM4A
-            ) else {
-                continuation.resume(throwing: DownloadError.exportFailed)
-                return
-            }
+        // Use modern async export API (iOS 18+)
+        guard let exportSession = AVAssetExportSession(
+            asset: composition,
+            presetName: AVAssetExportPresetAppleM4A
+        ) else {
+            throw DownloadError.exportFailed
+        }
 
-            exportSession.outputURL = outputURL
-            exportSession.outputFileType = .m4a
-
-            self.exportSessions[trackId] = exportSession
-
-            let progressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] timer in
-                guard let self else {
-                    timer.invalidate()
-                    return
-                }
+        exportSession.outputURL = outputURL
+        exportSession.outputFileType = .m4a
+        exportSessions[trackId] = exportSession
+        
+        // Start progress monitoring
+        let progressTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard let self, !Task.isCancelled else { break }
                 let progress = Double(exportSession.progress)
-                Task { @MainActor in
-                    self.downloadStatuses[trackId] = .downloading(progress: progress)
-                }
-            }
-            RunLoop.main.add(progressTimer, forMode: .common)
-
-            exportSession.exportAsynchronously {
-                progressTimer.invalidate()
-
-                switch exportSession.status {
-                case .completed:
-                    logInfo(.downloads, "Export completed successfully")
-                    continuation.resume()
-                case .cancelled:
-                    continuation.resume(throwing: CancellationError())
-                case .failed:
-                    logError(.downloads, "Export failed: \(exportSession.error?.localizedDescription ?? "unknown")")
-                    continuation.resume(throwing: exportSession.error ?? DownloadError.exportFailed)
-                default:
-                    continuation.resume(throwing: DownloadError.exportFailed)
-                }
+                self.downloadStatuses[trackId] = .downloading(progress: progress)
             }
         }
+        
+        defer {
+            progressTask.cancel()
+            exportSessions.removeValue(forKey: trackId)
+        }
+        
+        // Use the modern async export method
+        try await exportSession.export(to: outputURL, as: .m4a)
+        
+        logInfo(.downloads, "Export completed successfully")
     }
 
+    private static let ytdlpAPIURL = "https://exemplary-mindfulness-production.up.railway.app"
+    
+    private func downloadDirectFile(from url: URL, to destinationURL: URL, trackId: String) async throws {
+        let (tempURL, response) = try await URLSession.shared.download(from: url)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw DownloadError.networkError
+        }
+        
+        // Move downloaded file to destination
+        try FileManager.default.moveItem(at: tempURL, to: destinationURL)
+        
+        logInfo(.downloads, "Direct download complete: \(destinationURL.lastPathComponent)")
+    }
+    
+    private func downloadViaServer(soundcloudUrl: String, to destinationURL: URL, trackId: String) async throws {
+        guard let url = URL(string: "\(Self.ytdlpAPIURL)/download") else {
+            throw DownloadError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["url": soundcloudUrl])
+        request.timeoutInterval = 120 // HLS download can take time
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw DownloadError.networkError
+        }
+        
+        guard httpResponse.statusCode == 200 else {
+            logError(.downloads, "Server download failed: HTTP \(httpResponse.statusCode)")
+            throw DownloadError.networkError
+        }
+        
+        guard !data.isEmpty else {
+            throw DownloadError.saveFailed
+        }
+        
+        // Write MP3 data directly (server already converts to MP3)
+        try data.write(to: destinationURL)
+        
+        logInfo(.downloads, "Server download complete: \(destinationURL.lastPathComponent)")
+    }
+    
     private func getDownloadsDirectory() throws -> URL {
         let fileManager = FileManager.default
         let appSupportURL = try fileManager.url(
@@ -611,13 +467,16 @@ final class DownloadManager: ObservableObject {
 
         if !exists {
             let persisted = PersistedTrack(from: scTrack)
-            try await db.writer.write { db in
+            _ = try await db.writer.write { db in
                 try persisted.save(db)
             }
         }
     }
 
     private func loadDownloadedTracks() async {
+        isLoading = true
+        defer { isLoading = false }
+        
         do {
             let downloads = try await db.reader.read { db in
                 try DownloadedTrack
@@ -625,18 +484,36 @@ final class DownloadManager: ObservableObject {
                     .fetchAll(db)
             }
 
+            // Verify files exist and clean up stale entries
+            var validDownloads: [DownloadedTrack] = []
+            var staleTrackIds: [String] = []
+            
             for download in downloads {
-                downloadStatuses[download.trackId] = .downloaded
+                if FileManager.default.fileExists(atPath: download.localPath) {
+                    validDownloads.append(download)
+                    downloadStatuses[download.trackId] = .downloaded
+                } else {
+                    staleTrackIds.append(download.trackId)
+                    downloadStatuses[download.trackId] = .notDownloaded
+                }
+            }
+            
+            // Clean up stale database entries
+            if !staleTrackIds.isEmpty {
+                _ = try? await db.writer.write { db in
+                    try DownloadedTrack.filter(keys: staleTrackIds).deleteAll(db)
+                }
+                logInfo(.downloads, "Cleaned up \(staleTrackIds.count) stale download entries")
             }
 
-            let trackIds = downloads.map { $0.trackId }
+            let trackIds = validDownloads.map { $0.trackId }
             let tracks = try await db.reader.read { db in
                 try PersistedTrack.filter(keys: trackIds).fetchAll(db)
             }
 
             let trackMap = Dictionary(uniqueKeysWithValues: tracks.map { ($0.id, $0) })
 
-            downloadedTracks = downloads.compactMap { download in
+            downloadedTracks = validDownloads.compactMap { download in
                 guard let track = trackMap[download.trackId] else { return nil }
                 return DownloadedTrackInfo(
                     track: track.toTrack(),
@@ -672,6 +549,8 @@ enum DownloadError: LocalizedError {
     case exportFailed
     case noAudioTrack
     case saveFailed
+    case insufficientStorage
+    case networkError
 
     var errorDescription: String? {
         switch self {
@@ -680,6 +559,8 @@ enum DownloadError: LocalizedError {
         case .exportFailed: return "Failed to export audio"
         case .noAudioTrack: return "No audio track found"
         case .saveFailed: return "Failed to save file"
+        case .insufficientStorage: return "Not enough storage space"
+        case .networkError: return "Network error"
         }
     }
 }
