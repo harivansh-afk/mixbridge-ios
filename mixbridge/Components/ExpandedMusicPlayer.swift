@@ -583,7 +583,6 @@ struct ExpandedPlayerView: View {
                                     .listRowSeparator(.hidden)
                                 }
                                 .onMove(perform: moveQueueItem)
-                                .onDelete(perform: deleteQueueItem)
                             }
                             .listStyle(.plain)
                             .scrollContentBackground(.hidden)
@@ -873,19 +872,6 @@ struct ExpandedPlayerView: View {
         // Background sync to backend
         Task {
             await queueManager.syncMoveToBackend(from: fromIndex, to: destination)
-        }
-    }
-
-    // Delete queue item (for swipe to delete) - SYNCHRONOUS local update
-    private func deleteQueueItem(at offsets: IndexSet) {
-        for index in offsets {
-            // Immediate local mutation
-            if let removedItem = queueManager.removeAtLocal(index: index) {
-                // Background sync to backend
-                Task {
-                    await queueManager.syncRemoveToBackend(item: removedItem, originalIndex: index)
-                }
-            }
         }
     }
 
