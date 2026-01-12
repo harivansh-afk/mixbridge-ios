@@ -7,6 +7,22 @@
 
 import SwiftUI
 
+// MARK: - Search Source
+
+enum SearchSource: String, CaseIterable, Identifiable {
+    case soundcloud = "SoundCloud"
+    case library = "Library"
+
+    var id: String { rawValue }
+
+    var placeholder: String {
+        switch self {
+        case .soundcloud: return "Search SoundCloud"
+        case .library: return "Search your library"
+        }
+    }
+}
+
 // MARK: - Search Tab
 
 enum SearchTab: String, CaseIterable, Identifiable {
@@ -31,14 +47,85 @@ struct SearchView: View {
     @State private var selectedPlaylist: Playlist?
     @State private var selectedArtist: ArtistInfo?
     @State private var selectedTab: SearchTab = .tracks
+    @State private var searchSource: SearchSource = .soundcloud
+    @State private var viewModel = LikedViewModel()
+    @State private var libraryViewModel = LibraryViewModel()
     @Namespace private var namespace
+
+    private var filteredLibraryTracks: [TrackItem] {
+        guard !searchText.isEmpty else { return [] }
+        return viewModel.likedTracks.filter {
+            $0.track.title.localizedCaseInsensitiveContains(searchText) ||
+            $0.track.artist.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
+    private var filteredLibraryPlaylists: [Playlist] {
+        guard !searchText.isEmpty else { return [] }
+
+        // Combine liked playlists and user's own library playlists
+        let likedPlaylists = viewModel.likedPlaylists.map { $0.playlist }
+        let ownPlaylists = libraryViewModel.playlists
+
+        // Deduplicate by ID
+        var seen = Set<String>()
+        var allPlaylists: [Playlist] = []
+        for playlist in likedPlaylists + ownPlaylists {
+            if !seen.contains(playlist.id) {
+                seen.insert(playlist.id)
+                allPlaylists.append(playlist)
+            }
+        }
+
+        return allPlaylists.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText) ||
+            $0.creator.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
+    private var filteredLibraryArtists: [ArtistInfo] {
+        guard !searchText.isEmpty else { return [] }
+        let artists = buildArtistsFromTracks(viewModel.likedTracks)
+        return artists.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
+    private func buildArtistsFromTracks(_ tracks: [TrackItem]) -> [ArtistInfo] {
+        var artistsDict: [String: ArtistInfo] = [:]
+
+        for item in tracks {
+            let artistName = item.track.artist
+            let artistId = String(item.soundCloudTrack.user.id)
+            let avatarUrl = item.soundCloudTrack.user.avatar_url?.upgradeArtworkQuality()
+
+            if var existing = artistsDict[artistName] {
+                existing.trackCount += 1
+                existing.trackItems.append(item)
+                artistsDict[artistName] = existing
+            } else {
+                var artistInfo = ArtistInfo(
+                    id: artistId,
+                    name: artistName,
+                    avatarUrl: avatarUrl,
+                    trackCount: 1
+                )
+                artistInfo.trackItems = [item]
+                artistsDict[artistName] = artistInfo
+            }
+        }
+
+        return artistsDict.values.sorted { $0.trackCount > $1.trackCount }
+    }
 
     var body: some View {
         NavigationStack {
             content
                 .navigationTitle("Search")
-                .searchable(text: $searchText, prompt: "Search")
+                .searchable(text: $searchText, prompt: searchSource.placeholder)
                 .onChange(of: searchText) { oldValue, newValue in
+                    guard searchSource == .soundcloud else { return }
+
                     searchTask?.cancel()
 
                     if newValue.isEmpty {
@@ -54,39 +141,252 @@ struct SearchView: View {
                         await performSearch(query: newValue)
                     }
                 }
+                .onChange(of: searchSource) { _, _ in
+                    HapticManager.selection()
+                    searchResult = nil
+                    lastSearchedQuery = ""
+                }
+                .task {
+                    await viewModel.observeDatabase()
+                }
+                .task {
+                    await viewModel.observePlaylistsDatabase()
+                }
+                .task {
+                    if let userId = authManager.currentUserId {
+                        await libraryViewModel.observeDatabase(userId: userId)
+                    }
+                }
+                .task {
+                    if let userId = authManager.currentUserId {
+                        await viewModel.refresh(userId: userId)
+                        await viewModel.refreshPlaylists(userId: userId)
+                        await libraryViewModel.refresh(userId: userId)
+                    }
+                }
         }
     }
 
     @ViewBuilder
     private var content: some View {
-        if searchText.isEmpty {
-            emptyState
-        } else if isSearching {
-            VStack {
-                Spacer()
-                ProgressView()
-                    .scaleEffect(1.5)
-                Spacer()
+        Group {
+            if searchText.isEmpty {
+                emptyState
+            } else if searchSource == .library {
+                libraryResultsView
+            } else if isSearching {
+                VStack {
+                    Spacer()
+                    ProgressView()
+                        .scaleEffect(1.5)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error {
+                errorView(error)
+            } else if let results = searchResult {
+                resultsView(results: results)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let error {
-            errorView(error)
-        } else if let results = searchResult {
-            resultsView(results: results)
         }
+        .animation(.default, value: searchText.isEmpty)
+        .animation(.default, value: searchSource)
     }
 
     private var emptyState: some View {
-        Group {
+        VStack(spacing: 0) {
+            Picker("Search Source", selection: $searchSource) {
+                ForEach(SearchSource.allCases) { source in
+                    Text(source.rawValue).tag(source)
+                }
+            }
+            .pickerStyle(.segmented)
+            .glassEffect(.regular)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
             if recentSearchManager.recentSearches.isEmpty {
+                Spacer()
                 ContentUnavailableView(
-                    "Search for music",
+                    searchSource == .soundcloud ? "Search SoundCloud" : "Search your library",
                     systemImage: "magnifyingglass"
                 )
+                Spacer()
             } else {
                 recentSearchesView
             }
         }
+    }
+
+    private var libraryResultsView: some View {
+        let listContext = Array(filteredLibraryTracks)
+        let hasContent: Bool = {
+            switch selectedTab {
+            case .tracks: return !filteredLibraryTracks.isEmpty
+            case .playlists: return !filteredLibraryPlaylists.isEmpty
+            case .artists: return !filteredLibraryArtists.isEmpty
+            }
+        }()
+
+        return VStack(spacing: 0) {
+            Picker("Library Results", selection: $selectedTab) {
+                ForEach(SearchTab.allCases) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .glassEffect(.regular)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            if hasContent {
+                List {
+                    switch selectedTab {
+                    case .tracks:
+                        ForEach(Array(filteredLibraryTracks.enumerated()), id: \.element.id) { index, item in
+                            TrackRow(
+                                item.track,
+                                number: index + 1,
+                                showCover: true,
+                                soundCloudTrack: item.soundCloudTrack,
+                                listContext: listContext,
+                                indexInList: index
+                            )
+                            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                        }
+
+                    case .playlists:
+                        ForEach(filteredLibraryPlaylists, id: \.id) { playlist in
+                            libraryPlaylistRow(playlist: playlist)
+                        }
+
+                    case .artists:
+                        ForEach(Array(filteredLibraryArtists.enumerated()), id: \.element.id) { index, artist in
+                            libraryArtistRow(artist: artist, index: index)
+                        }
+                    }
+                }
+                .listStyle(.plain)
+            } else {
+                Spacer()
+                switch selectedTab {
+                case .tracks:
+                    ContentUnavailableView("No tracks found", systemImage: "music.note")
+                case .playlists:
+                    ContentUnavailableView("No playlists found", systemImage: "music.note.list")
+                case .artists:
+                    ContentUnavailableView("No artists found", systemImage: "person.2")
+                }
+                Spacer()
+            }
+        }
+        .onChange(of: selectedTab) { _, _ in
+            HapticManager.selection()
+        }
+        .navigationDestination(item: $selectedPlaylist) { playlist in
+            PlaylistDetailView(playlist: playlist)
+                .navigationTransition(.zoom(sourceID: "library-\(playlist.id)", in: namespace))
+        }
+        .navigationDestination(item: $selectedArtist) { artist in
+            ArtistDetailView(artist: artist)
+                .navigationTransition(.zoom(sourceID: "library-artist-\(artist.id)", in: namespace))
+        }
+    }
+
+    private func libraryPlaylistRow(playlist: Playlist) -> some View {
+        HStack(spacing: 12) {
+            if !playlist.artwork.isEmpty,
+               let url = URL(string: playlist.artwork) {
+                CachedAsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.gray.opacity(0.3))
+                }
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: 56, height: 56)
+                    .overlay {
+                        Image(systemName: "music.note.list")
+                            .foregroundStyle(.secondary)
+                    }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(playlist.name)
+                    .font(.body)
+                    .lineLimit(1)
+                Text(playlist.creator)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .contentShape(Rectangle())
+        .matchedTransitionSource(id: "library-\(playlist.id)", in: namespace)
+        .onTapGesture {
+            HapticManager.selection()
+            selectedPlaylist = playlist
+        }
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+    }
+
+    private func libraryArtistRow(artist: ArtistInfo, index: Int) -> some View {
+        HStack(spacing: 12) {
+            if let avatarUrl = artist.avatarUrl,
+               let url = URL(string: avatarUrl) {
+                CachedAsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Circle()
+                        .fill(Color.gray.opacity(0.3))
+                }
+                .frame(width: 48, height: 48)
+                .clipShape(Circle())
+            } else {
+                Circle()
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: 48, height: 48)
+                    .overlay {
+                        Image(systemName: "person.fill")
+                            .foregroundStyle(.secondary)
+                    }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(artist.name)
+                    .font(.body)
+                    .lineLimit(1)
+                Text("\(artist.trackCount) \(artist.trackCount == 1 ? "track" : "tracks")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .contentShape(Rectangle())
+        .matchedTransitionSource(id: "library-artist-\(artist.id)", in: namespace)
+        .onTapGesture {
+            HapticManager.selection()
+            selectedArtist = artist
+        }
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
     }
 
     private func errorView(_ error: Error) -> some View {
@@ -103,7 +403,7 @@ struct SearchView: View {
     }
 
     private var recentSearchesView: some View {
-        List {
+        VStack(spacing: 0) {
             HStack {
                 Text("Recent")
                     .font(.title2)
@@ -118,97 +418,102 @@ struct SearchView: View {
                 }
                 .font(.caption)
             }
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 8, trailing: 16))
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
 
-            ForEach(recentSearchManager.recentSearches, id: \.self) { query in
-                HStack(spacing: 12) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .foregroundStyle(.secondary)
+            List {
+                ForEach(recentSearchManager.recentSearches, id: \.self) { query in
+                    HStack(spacing: 12) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .foregroundStyle(.secondary)
 
-                    Text(query)
-                        .foregroundStyle(.primary)
+                        Text(query)
+                            .foregroundStyle(.primary)
 
-                    Spacer()
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        searchText = query
+                        HapticManager.selection()
+                    }
                 }
-                .frame(maxWidth: .infinity)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    searchText = query
-                    HapticManager.selection()
+                .onDelete { indexSet in
+                    for index in indexSet {
+                        recentSearchManager.removeSearch(recentSearchManager.recentSearches[index])
+                    }
+                    HapticManager.light()
                 }
             }
-            .onDelete { indexSet in
-                for index in indexSet {
-                    recentSearchManager.removeSearch(recentSearchManager.recentSearches[index])
-                }
-                HapticManager.light()
-            }
+            .listStyle(.plain)
         }
-        .listStyle(.plain)
     }
 
     private func resultsView(results: SearchResult) -> some View {
         let trackItems = results.tracks.prefix(20).map { TrackItem(soundCloudTrack: $0) }
         let listContext = Array(trackItems)
-
-        return List {
-            // Tab Picker Section
-            Section {
-                Picker("Search Results", selection: $selectedTab) {
-                    ForEach(SearchTab.allCases) { tab in
-                        Text(tab.rawValue).tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .glassEffect(.regular)
-            }
-            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
-
-            // Content based on selected tab
+        let hasContent: Bool = {
             switch selectedTab {
-            case .tracks:
-                if results.tracks.isEmpty {
+            case .tracks: return !results.tracks.isEmpty
+            case .playlists: return !results.playlists.isEmpty
+            case .artists: return !results.users.isEmpty
+            }
+        }()
+
+        return VStack(spacing: 0) {
+            Picker("Search Results", selection: $selectedTab) {
+                ForEach(SearchTab.allCases) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .glassEffect(.regular)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            if hasContent {
+                List {
+                    switch selectedTab {
+                    case .tracks:
+                        ForEach(Array(trackItems.enumerated()), id: \.element.id) { index, item in
+                            TrackRow(
+                                item.track,
+                                number: index + 1,
+                                showCover: true,
+                                soundCloudTrack: item.soundCloudTrack,
+                                listContext: listContext,
+                                indexInList: index
+                            )
+                            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                        }
+
+                    case .playlists:
+                        ForEach(results.playlists.prefix(15), id: \.id) { scPlaylist in
+                            playlistRow(scPlaylist: scPlaylist)
+                        }
+
+                    case .artists:
+                        ForEach(Array(results.users.prefix(15).enumerated()), id: \.element.id) { index, scUser in
+                            artistRow(scUser: scUser, index: index, total: min(results.users.count, 15))
+                        }
+                    }
+                }
+                .listStyle(.plain)
+            } else {
+                Spacer()
+                switch selectedTab {
+                case .tracks:
                     ContentUnavailableView("No tracks found", systemImage: "music.note")
-                        .listRowSeparator(.hidden)
-                } else {
-                    ForEach(Array(trackItems.enumerated()), id: \.element.id) { index, item in
-                        TrackRow(
-                            item.track,
-                            number: index + 1,
-                            showCover: true,
-                            soundCloudTrack: item.soundCloudTrack,
-                            listContext: listContext,
-                            indexInList: index
-                        )
-                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                    }
-                }
-
-            case .playlists:
-                if results.playlists.isEmpty {
+                case .playlists:
                     ContentUnavailableView("No playlists found", systemImage: "music.note.list")
-                        .listRowSeparator(.hidden)
-                } else {
-                    ForEach(results.playlists.prefix(15), id: \.id) { scPlaylist in
-                        playlistRow(scPlaylist: scPlaylist)
-                    }
-                }
-
-            case .artists:
-                if results.users.isEmpty {
+                case .artists:
                     ContentUnavailableView("No artists found", systemImage: "person.2")
-                        .listRowSeparator(.hidden)
-                } else {
-                    ForEach(Array(results.users.prefix(15).enumerated()), id: \.element.id) { index, scUser in
-                        artistRow(scUser: scUser, index: index, total: min(results.users.count, 15))
-                    }
                 }
+                Spacer()
             }
         }
-        .listStyle(.plain)
         .onChange(of: selectedTab) { _, _ in
             HapticManager.selection()
         }
