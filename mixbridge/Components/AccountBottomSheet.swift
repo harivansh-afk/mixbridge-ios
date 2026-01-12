@@ -87,6 +87,9 @@ struct AccountBottomSheet: View {
                             }
                         }
                         .pickerStyle(.segmented)
+                    .onChange(of: themeMode) { _, _ in
+                        HapticManager.selection()
+                    }
                     }
                     .glassEffect(.regular)
                 }
