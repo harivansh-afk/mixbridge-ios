@@ -263,6 +263,18 @@ struct LibraryView: View {
 
             Divider()
                 .padding(.leading, 60)
+
+            NavigationLink {
+                DownloadsView()
+            } label: {
+                LibraryNavigationRow(
+                    icon: "arrow.down.circle",
+                    title: "Downloads",
+                    iconColor: .primary
+                )
+            }
+            .buttonStyle(.plain)
+            .haptic(.selection)
         }
     }
 

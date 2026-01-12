@@ -60,6 +60,11 @@ struct TrackRow: View {
     @State private var errorMessage: String?
     @State private var showError = false
     @State private var isLiked = false
+    @StateObject private var downloadManager = DownloadManager.shared
+
+    private var downloadStatus: DownloadStatus {
+        downloadManager.downloadStatuses[track.id] ?? .notDownloaded
+    }
 
     var body: some View {
         let isCurrentTrack = playerState.currentTrack.id == track.id
@@ -81,7 +86,7 @@ struct TrackRow: View {
         .task {
             isLiked = await LikedSync.shared.isTrackLiked(trackId: track.id)
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
             if isQueueContext {
                 Button {
                     onRemoveFromQueue?()
@@ -90,16 +95,6 @@ struct TrackRow: View {
                 }
                 .tint(.red)
             } else {
-                Button {
-                    isLiked ? handleUnlike() : handleLike()
-                } label: {
-                    Label("", systemImage: isLiked ? "heart.slash" : "heart")
-                }
-                .tint(.pink)
-            }
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            if !isQueueContext {
                 Button {
                     handleAddToQueue()
                 } label: {
@@ -115,11 +110,78 @@ struct TrackRow: View {
                 .tint(Color(red: 117/255, green: 114/255, blue: 255/255))
             }
         }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            if !isQueueContext {
+                Button {
+                    isLiked ? handleUnlike() : handleLike()
+                } label: {
+                    Label("", systemImage: isLiked ? "heart.slash" : "heart")
+                }
+                .tint(.pink)
+            }
+        }
         .alert("Error", isPresented: $showError) {
             Button("OK", role: .cancel) {}
         } message: {
             if let errorMessage {
                 Text(errorMessage)
+            }
+        }
+        .contextMenu {
+            if !isQueueContext {
+                downloadContextMenuItems
+                Divider()
+                queueContextMenuItems
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var downloadContextMenuItems: some View {
+        switch downloadStatus {
+        case .notDownloaded, .failed:
+            Button {
+                handleDownload()
+            } label: {
+                Label("Download", systemImage: "arrow.down.circle")
+            }
+        case .downloading:
+            Button {
+                downloadManager.cancelDownload(trackId: track.id)
+            } label: {
+                Label("Cancel Download", systemImage: "xmark.circle")
+            }
+        case .downloaded:
+            Button {
+                Task {
+                    await downloadManager.deleteDownload(trackId: track.id)
+                }
+            } label: {
+                Label("Remove Download", systemImage: "trash")
+            }
+        }
+
+    }
+
+    @ViewBuilder
+    private var queueContextMenuItems: some View {
+        Button {
+            isLiked ? handleUnlike() : handleLike()
+        } label: {
+            Label(isLiked ? "Unlike" : "Like", systemImage: isLiked ? "heart.slash" : "heart")
+        }
+
+        Button {
+            handleAddToQueue()
+        } label: {
+            Label("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
+        }
+
+        if QueueManager.shared.hasQueue {
+            Button {
+                handlePlayNext()
+            } label: {
+                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
             }
         }
     }
@@ -212,10 +274,18 @@ struct TrackRow: View {
 
     @ViewBuilder
     private var trailingActions: some View {
-        if isQueueContext {
-            Image(systemName: "line.3.horizontal")
-                .font(.title2)
-                .foregroundStyle(.secondary)
+        HStack(spacing: 8) {
+            if downloadStatus == .downloaded {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            if isQueueContext {
+                Image(systemName: "line.3.horizontal")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -317,6 +387,28 @@ struct TrackRow: View {
                 showError = true
             }
             isLoading = false
+        }
+    }
+
+    private func handleDownload() {
+        guard let soundCloudTrack else {
+            errorMessage = "Unable to download track"
+            showError = true
+            return
+        }
+
+        HapticManager.medium()
+        downloadManager.downloadTrack(soundCloudTrack)
+    }
+
+    private func handleDelete() {
+        if let onDelete {
+            HapticManager.warning()
+            onDelete()
+        } else {
+            HapticManager.error()
+            errorMessage = "Delete action not configured"
+            showError = true
         }
     }
 }

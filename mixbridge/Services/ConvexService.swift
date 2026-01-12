@@ -556,6 +556,22 @@ final class ConvexService {
             "trackId": trackId
         ])
     }
+
+    // MARK: - yt-dlp Stream URL (For Downloads)
+
+    /// Get signed stream URL via yt-dlp for offline downloads
+    /// Returns a CDN URL with auth baked into query params (no OAuth headers needed)
+    func getYtDlpStreamURL(soundcloudUrl: String) async throws -> YtDlpStreamResponse {
+        return try await action("actions/ytdlp:getStreamUrl", args: [
+            "soundcloudUrl": soundcloudUrl
+        ])
+    }
+}
+
+struct YtDlpStreamResponse: Codable {
+    let stream_url: String
+    let format: String
+    let is_direct: Bool
 }
 
 // MARK: - Response Types
