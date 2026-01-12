@@ -252,16 +252,18 @@ struct SearchView: View {
                                 indexInList: index
                             )
                             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                            .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+                            .listRowSeparator(index == filteredLibraryTracks.count - 1 ? .hidden : .visible, edges: .bottom)
                         }
 
                     case .playlists:
-                        ForEach(filteredLibraryPlaylists, id: \.id) { playlist in
-                            libraryPlaylistRow(playlist: playlist)
+                        ForEach(Array(filteredLibraryPlaylists.enumerated()), id: \.element.id) { index, playlist in
+                            libraryPlaylistRow(playlist: playlist, index: index, total: filteredLibraryPlaylists.count)
                         }
 
                     case .artists:
                         ForEach(Array(filteredLibraryArtists.enumerated()), id: \.element.id) { index, artist in
-                            libraryArtistRow(artist: artist, index: index)
+                            libraryArtistRow(artist: artist, index: index, total: filteredLibraryArtists.count)
                         }
                     }
                 }
@@ -292,7 +294,7 @@ struct SearchView: View {
         }
     }
 
-    private func libraryPlaylistRow(playlist: Playlist) -> some View {
+    private func libraryPlaylistRow(playlist: Playlist, index: Int, total: Int) -> some View {
         HStack(spacing: 12) {
             if !playlist.artwork.isEmpty,
                let url = URL(string: playlist.artwork) {
@@ -339,9 +341,11 @@ struct SearchView: View {
             selectedPlaylist = playlist
         }
         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+        .listRowSeparator(index == total - 1 ? .hidden : .visible, edges: .bottom)
     }
 
-    private func libraryArtistRow(artist: ArtistInfo, index: Int) -> some View {
+    private func libraryArtistRow(artist: ArtistInfo, index: Int, total: Int) -> some View {
         HStack(spacing: 12) {
             if let avatarUrl = artist.avatarUrl,
                let url = URL(string: avatarUrl) {
@@ -387,6 +391,8 @@ struct SearchView: View {
             selectedArtist = artist
         }
         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+        .listRowSeparator(index == total - 1 ? .hidden : .visible, edges: .bottom)
     }
 
     private func errorView(_ error: Error) -> some View {
@@ -487,11 +493,14 @@ struct SearchView: View {
                                 indexInList: index
                             )
                             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                            .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+                            .listRowSeparator(index == trackItems.count - 1 ? .hidden : .visible, edges: .bottom)
                         }
 
                     case .playlists:
-                        ForEach(results.playlists.prefix(15), id: \.id) { scPlaylist in
-                            playlistRow(scPlaylist: scPlaylist)
+                        let playlists = Array(results.playlists.prefix(15))
+                        ForEach(Array(playlists.enumerated()), id: \.element.id) { index, scPlaylist in
+                            playlistRow(scPlaylist: scPlaylist, index: index, total: playlists.count)
                         }
 
                     case .artists:
@@ -531,7 +540,7 @@ struct SearchView: View {
 
     // MARK: - Playlist Row
 
-    private func playlistRow(scPlaylist: SoundCloudPlaylist) -> some View {
+    private func playlistRow(scPlaylist: SoundCloudPlaylist, index: Int, total: Int) -> some View {
         let playlist = Playlist(
             id: String(scPlaylist.id),
             name: scPlaylist.title,
@@ -592,6 +601,8 @@ struct SearchView: View {
             HapticManager.selection()
             selectedPlaylist = playlist
         }
+        .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+        .listRowSeparator(index == total - 1 ? .hidden : .visible, edges: .bottom)
     }
 
     // MARK: - Artist Row (matches AllArtistsView)
@@ -639,6 +650,7 @@ struct SearchView: View {
         }
         .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
         .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+        .listRowSeparator(index == total - 1 ? .hidden : .visible, edges: .bottom)
         .matchedTransitionSource(id: "search-artist-\(artist.id)", in: namespace)
         .contentShape(Rectangle())
         .onTapGesture {

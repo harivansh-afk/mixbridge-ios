@@ -374,6 +374,8 @@ struct ArtistAllSongsView: View {
                     listContext: trackItems,
                     indexInList: index
                 )
+                .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+                .listRowSeparator(index == trackItems.count - 1 ? .hidden : .visible, edges: .bottom)
             }
         }
         .listStyle(.plain)

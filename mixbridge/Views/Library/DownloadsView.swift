@@ -132,6 +132,7 @@ struct DownloadsView: View {
                 )
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                 .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+                .listRowSeparator(index == downloadManager.downloadedTracks.count - 1 ? .hidden : .visible, edges: .bottom)
             }
         }
     }
@@ -144,15 +145,15 @@ struct DownloadsView: View {
             ContentUnavailableView("No downloaded playlists", systemImage: "music.note.list")
                 .listRowSeparator(.hidden)
         } else {
-            ForEach(downloadManager.downloadedPlaylists) { item in
-                playlistRow(item: item)
+            ForEach(Array(downloadManager.downloadedPlaylists.enumerated()), id: \.element.id) { index, item in
+                playlistRow(item: item, index: index, total: downloadManager.downloadedPlaylists.count)
             }
         }
     }
 
     // MARK: - Playlist Row
 
-    private func playlistRow(item: DownloadedPlaylistInfo) -> some View {
+    private func playlistRow(item: DownloadedPlaylistInfo, index: Int, total: Int) -> some View {
         HStack(spacing: 12) {
             if item.playlist.artwork.starts(with: "http"),
                let url = URL(string: item.playlist.artwork) {
@@ -218,6 +219,8 @@ struct DownloadsView: View {
             HapticManager.selection()
             selectedPlaylist = item.playlist
         }
+        .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+        .listRowSeparator(index == total - 1 ? .hidden : .visible, edges: .bottom)
     }
 }
 
