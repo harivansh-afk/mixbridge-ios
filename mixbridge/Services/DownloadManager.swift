@@ -39,7 +39,6 @@ final class DownloadManager: ObservableObject {
     @Published private(set) var isLoading: Bool = false
 
     private let db = MixBridgeDB.shared
-    private let convexService = ConvexService.shared
 
     private var downloadTasks: [String: Task<Void, Never>] = [:]
 
@@ -291,10 +290,10 @@ final class DownloadManager: ObservableObject {
                 throw DownloadError.insufficientStorage
             }
             
-            // Get signed stream URL via yt-dlp (no OAuth headers needed!)
-            let ytdlpResponse = try await convexService.getYtDlpStreamURL(soundcloudUrl: soundcloudUrl)
+            // Get signed stream URL via Railway yt-dlp API directly (no OAuth headers needed!)
+            let ytdlpResponse = try await getStreamURL(soundcloudUrl: soundcloudUrl)
 
-            guard let streamURL = URL(string: ytdlpResponse.stream_url) else {
+            guard let streamURL = URL(string: ytdlpResponse.streamURL) else {
                 throw DownloadError.invalidURL
             }
 
@@ -306,7 +305,7 @@ final class DownloadManager: ObservableObject {
             try? FileManager.default.removeItem(at: downloadsDir.appendingPathComponent("\(trackId).mp3"))
             try? FileManager.default.removeItem(at: downloadsDir.appendingPathComponent("\(trackId).m4a"))
 
-            if ytdlpResponse.is_direct {
+            if ytdlpResponse.isDirect {
                 // Direct HTTP URL - download file directly
                 logInfo(.downloads, "Downloading via direct HTTP URL (format: \(ytdlpResponse.format))")
                 try await downloadDirectFile(from: streamURL, to: destinationURL, trackId: trackId)
@@ -377,7 +376,40 @@ final class DownloadManager: ObservableObject {
     }
 
     private static let ytdlpAPIURL = "https://exemplary-mindfulness-production.up.railway.app"
-    
+
+    /// Get stream URL directly from Railway yt-dlp API
+    private func getStreamURL(soundcloudUrl: String) async throws -> StreamURLResponse {
+        // Validate it's a SoundCloud URL
+        guard soundcloudUrl.contains("soundcloud.com") else {
+            throw DownloadError.invalidURL
+        }
+
+        guard let url = URL(string: "\(Self.ytdlpAPIURL)/stream") else {
+            throw DownloadError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["url": soundcloudUrl])
+        request.timeoutInterval = 30
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw DownloadError.networkError
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            logError(.downloads, "Stream URL request failed: HTTP \(httpResponse.statusCode)")
+            throw DownloadError.networkError
+        }
+
+        let decoded = try JSONDecoder().decode(StreamURLResponse.self, from: data)
+        logInfo(.downloads, "Extracted \(decoded.format) stream for download")
+        return decoded
+    }
+
     private func downloadDirectFile(from url: URL, to destinationURL: URL, trackId: String) async throws {
         let (tempURL, response) = try await URLSession.shared.download(from: url)
         
@@ -564,6 +596,19 @@ final class DownloadManager: ObservableObject {
 }
 
 // MARK: - Supporting Types
+
+/// Response from Railway yt-dlp API /stream endpoint
+private struct StreamURLResponse: Codable {
+    let streamURL: String
+    let format: String
+    let isDirect: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case streamURL = "stream_url"
+        case format
+        case isDirect = "is_direct"
+    }
+}
 
 struct DownloadedTrackInfo: Identifiable, Equatable {
     let track: Track
