@@ -191,6 +191,7 @@ struct LikedView: View {
                 )
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                 .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+                .listRowSeparator(index == filteredTracks.count - 1 ? .hidden : .visible, edges: .bottom)
             }
         }
     }
@@ -214,15 +215,15 @@ struct LikedView: View {
             ContentUnavailableView("No liked playlists", systemImage: "music.note.list")
                 .listRowSeparator(.hidden)
         } else {
-            ForEach(filteredPlaylists) { item in
-                playlistRow(item: item)
+            ForEach(Array(filteredPlaylists.enumerated()), id: \.element.id) { index, item in
+                playlistRow(item: item, index: index, total: filteredPlaylists.count)
             }
         }
     }
 
     // MARK: - Playlist Row
 
-    private func playlistRow(item: PlaylistItem) -> some View {
+    private func playlistRow(item: PlaylistItem, index: Int, total: Int) -> some View {
         HStack(spacing: 12) {
             if item.playlist.artwork.starts(with: "http"),
                let url = URL(string: item.playlist.artwork) {
@@ -274,6 +275,8 @@ struct LikedView: View {
             HapticManager.selection()
             selectedPlaylist = item.playlist
         }
+        .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+        .listRowSeparator(index == total - 1 ? .hidden : .visible, edges: .bottom)
     }
 }
 

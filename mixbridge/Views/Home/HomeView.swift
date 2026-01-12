@@ -158,6 +158,8 @@ struct HomeView: View {
                         indexInList: index
                     )
                     .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                    .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+                    .listRowSeparator(index == listContext.count - 1 ? .hidden : .visible, edges: .bottom)
                 }
             }
         }

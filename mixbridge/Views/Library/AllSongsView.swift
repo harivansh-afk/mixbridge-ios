@@ -55,6 +55,7 @@ struct AllSongsView: View {
                             )
                             .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                             .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
+                            .listRowSeparator(index == filteredTracks.count - 1 ? .hidden : .visible, edges: .bottom)
                         }
                     }
                 }
