@@ -490,6 +490,22 @@ return trackIds.compactMap { tracksDict[$0] }
 - **Learning**: Auto-synthesized CodingKeys are private. When GRDB extensions in another package need to reference CodingKeys for Column definitions, you must add explicit `public enum CodingKeys` to the model in the Domain package.
 - **Session**: MixBridge package build errors (2026-01-04)
 
+### GRDB sum() Returns Int, Not Int64
+- **Context**: Using GRDB's `select(sum(Column))` for aggregate queries where the result is assigned to an `Int64` property
+- **Learning**: GRDB's `sum()` aggregate infers Swift `Int` by default, even when summing `Int64` columns like `fileSize`. If the receiving struct/parameter expects `Int64`, you must explicitly cast: `Int64(totalSize)`.
+- **Example**:
+```swift
+// Query returns Int
+let totalSize: Int = try DownloadedTrack.select(sum(DownloadedTrack.Columns.fileSize)).fetchOne(db) ?? 0
+
+// If DownloadedPlaylistInfo.totalFileSize is Int64, must cast
+DownloadedPlaylistInfo(
+    ...
+    totalFileSize: Int64(totalSize)  // Explicit cast required
+)
+```
+- **Session**: Download manager Int64 fix (2026-01-12)
+
 ---
 
 ## Failures (What to Avoid) - GRDB Specific
