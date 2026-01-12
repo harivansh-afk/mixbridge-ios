@@ -37,7 +37,7 @@ struct DownloadsView: View {
             .navigationTitle("Downloaded")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    if !downloadManager.downloadedTracks.isEmpty {
+                    if !downloadManager.downloadedTracks.isEmpty || !downloadManager.downloadedPlaylists.isEmpty {
                         Menu {
                             Button {
                                 showingDeleteAllAlert = true
