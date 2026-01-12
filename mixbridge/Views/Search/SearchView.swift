@@ -209,6 +209,9 @@ struct SearchView: View {
             }
         }
         .listStyle(.plain)
+        .onChange(of: selectedTab) { _, _ in
+            HapticManager.selection()
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(item: $selectedPlaylist) { playlist in
