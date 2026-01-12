@@ -550,7 +550,7 @@ final class DownloadManager: ObservableObject {
                         soundCloudPlaylist: playlist.soundCloudPlaylist,
                         trackCount: playlistTrackIds.count,
                         downloadedTrackCount: downloadedCount,
-                        totalFileSize: totalSize
+                        totalFileSize: Int64(totalSize)
                     )
                 }
             }
