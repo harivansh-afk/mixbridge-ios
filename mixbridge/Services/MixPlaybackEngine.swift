@@ -243,6 +243,19 @@ final class MixPlaybackEngine {
 
             Task {
                 do {
+                    // Check for downloaded file first - instant offline playback
+                    if let localURL = await DownloadManager.shared.getLocalFileURL(trackId: nextTrack.id) {
+                        logInfo(.playback, "[MixEngine] Instant mix from local file: \(nextTrack.title)")
+                        let localStream = CachedStreamData(
+                            url: localURL.absoluteString,
+                            streamType: "local",
+                            accessToken: ""
+                        )
+                        await prepareAndStartInstantCrossfade(with: localStream)
+                        return
+                    }
+
+                    // Fall back to streaming
                     let streamData = try await streamCache.ensureStream(for: nextTrack.id, priority: .userInitiated)
                     await prepareAndStartInstantCrossfade(with: streamData)
                 } catch {
@@ -407,12 +420,22 @@ final class MixPlaybackEngine {
 
         logInfo(.playback, "[MixEngine] mix_prewarm_start: \(nextTrack.title)")
 
-        // Check if we need to refresh the stream
-        let deadline = Date().addingTimeInterval(crossfadeSeconds + 15)
-
         Task {
             do {
-                // Force refresh if stream is expiring
+                // Check for downloaded file first - instant offline playback
+                if let localURL = await DownloadManager.shared.getLocalFileURL(trackId: nextTrack.id) {
+                    logInfo(.playback, "[MixEngine] Prewarming from local file: \(nextTrack.title)")
+                    let localStream = CachedStreamData(
+                        url: localURL.absoluteString,
+                        streamType: "local",
+                        accessToken: ""
+                    )
+                    prepareNextPlayer(with: localStream)
+                    return
+                }
+
+                // Fall back to streaming - check if we need to refresh
+                let deadline = Date().addingTimeInterval(crossfadeSeconds + 15)
                 let needsRefresh = await streamCache.isStreamExpiring(for: nextTrack.id, before: deadline)
                 let streamData: CachedStreamData
 
@@ -705,8 +728,20 @@ final class MixPlaybackEngine {
 
         currentItemObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             Task { @MainActor in
-                if item.status == .failed {
+                guard let self else { return }
+                switch item.status {
+                case .readyToPlay:
+                    // Duration is now available - notify delegate for UI update
+                    let dur = CMTimeGetSeconds(item.duration)
+                    if dur.isFinite && dur > 0 {
+                        self.delegate?.mixEngineDidUpdateTime(self, currentTime: self.currentTime, duration: dur)
+                    }
+                case .failed:
                     logError(.playback, "[MixEngine] Current item failed: \(item.error?.localizedDescription ?? "unknown")")
+                case .unknown:
+                    break
+                @unknown default:
+                    break
                 }
             }
         }

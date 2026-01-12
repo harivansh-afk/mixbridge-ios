@@ -544,6 +544,10 @@ final class PlaybackCoordinator: NSObject {
                 currentContext = context
                 handleTrackStartedPlaying(context: context)
                 retryAttempts.removeValue(forKey: context.track.id)
+                
+                // Publish snapshot immediately so UI reflects the new track
+                status = .playing
+                publishSnapshot()
 
                 if let userId = AuthManager.shared.currentUserId,
                    autoplayEnabled,
@@ -638,6 +642,9 @@ final class PlaybackCoordinator: NSObject {
             }
 
             status = .playing
+            
+            // Publish snapshot immediately so UI reflects the new track
+            publishSnapshot()
 
         } catch {
             if Task.isCancelled || error is CancellationError {
