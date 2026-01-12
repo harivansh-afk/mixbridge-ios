@@ -945,9 +945,11 @@ final class PlaybackCoordinator: NSObject {
         // When switching tracks, avoid reporting the previous item’s time/duration during the loading gap.
         let isLoading = (status == .loading)
         let effectiveTime = isLoading ? 0 : (currentTime.isFinite ? currentTime : 0)
+        // Use AVPlayer duration only if valid (> 0), otherwise fall back to track metadata duration.
+        // This fixes local file playback where AVPlayer may not immediately report duration.
         let effectiveDuration = isLoading
             ? (currentContext?.track.duration ?? 0)
-            : (duration.isFinite ? duration : (currentContext?.track.duration ?? 0))
+            : (duration.isFinite && duration > 0 ? duration : (currentContext?.track.duration ?? 0))
 
         let effectiveStatus: PlayerState.PlaybackStatus = {
             if case .failed = status { return status }

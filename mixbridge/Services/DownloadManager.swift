@@ -3,13 +3,12 @@
 //  mixbridge
 //
 //  Manages offline track downloads using yt-dlp backend for signed URLs.
-//  Downloads HLS streams as M4A files without needing OAuth headers.
+//  Downloads MP3/M4A files directly without needing OAuth headers.
 //
 
 import Foundation
-import AVFoundation
-import MixBridgeDB
 import Combine
+import MixBridgeDB
 
 /// Download status for a track
 enum DownloadStatus: Equatable, Sendable {
@@ -42,7 +41,6 @@ final class DownloadManager: ObservableObject {
     private let convexService = ConvexService.shared
 
     private var downloadTasks: [String: Task<Void, Never>] = [:]
-    private var exportSessions: [String: AVAssetExportSession] = [:]
 
     private init() {
         Task {
@@ -117,15 +115,13 @@ final class DownloadManager: ObservableObject {
     func cancelDownload(trackId: String) {
         downloadTasks[trackId]?.cancel()
         downloadTasks.removeValue(forKey: trackId)
-        exportSessions[trackId]?.cancelExport()
-        exportSessions.removeValue(forKey: trackId)
         downloadStatuses[trackId] = .notDownloaded
         
-        // Clean up any partial file
+        // Clean up any partial files (could be .mp3 or .m4a)
         Task {
             if let downloadsDir = try? getDownloadsDirectory() {
-                let partialFile = downloadsDir.appendingPathComponent("\(trackId).m4a")
-                try? FileManager.default.removeItem(at: partialFile)
+                try? FileManager.default.removeItem(at: downloadsDir.appendingPathComponent("\(trackId).mp3"))
+                try? FileManager.default.removeItem(at: downloadsDir.appendingPathComponent("\(trackId).m4a"))
             }
         }
     }
@@ -317,80 +313,15 @@ final class DownloadManager: ObservableObject {
         } catch {
             logError(.downloads, "Download failed for \(track.title): \(error)")
             
-            // Clean up partial file on failure
+            // Clean up partial files on failure (could be .mp3 or .m4a)
             if let downloadsDir = try? getDownloadsDirectory() {
-                let partialFile = downloadsDir.appendingPathComponent("\(trackId).m4a")
-                try? FileManager.default.removeItem(at: partialFile)
+                try? FileManager.default.removeItem(at: downloadsDir.appendingPathComponent("\(trackId).mp3"))
+                try? FileManager.default.removeItem(at: downloadsDir.appendingPathComponent("\(trackId).m4a"))
             }
             
             downloadStatuses[trackId] = .failed(error)
             downloadTasks.removeValue(forKey: trackId)
         }
-    }
-
-    private func exportAsset(_ asset: AVURLAsset, to outputURL: URL, trackId: String) async throws {
-        let isPlayable = try await asset.load(.isPlayable)
-        guard isPlayable else {
-            logError(.downloads, "Asset is not playable")
-            throw DownloadError.exportFailed
-        }
-        
-        let allTracks = try await asset.load(.tracks)
-        logInfo(.downloads, "Asset has \(allTracks.count) tracks")
-        
-        let audioTracks = allTracks.filter { $0.mediaType == .audio }
-        
-        guard let audioTrack = audioTracks.first else {
-            logError(.downloads, "No audio track found in asset")
-            throw DownloadError.noAudioTrack
-        }
-        
-        let composition = AVMutableComposition()
-        guard let compositionTrack = composition.addMutableTrack(
-            withMediaType: .audio,
-            preferredTrackID: kCMPersistentTrackID_Invalid
-        ) else {
-            throw DownloadError.exportFailed
-        }
-        
-        let duration = try await asset.load(.duration)
-        let timeRange = CMTimeRange(start: .zero, duration: duration)
-        
-        try compositionTrack.insertTimeRange(timeRange, of: audioTrack, at: .zero)
-        
-        logInfo(.downloads, "Audio duration: \(CMTimeGetSeconds(duration))s")
-        
-        // Use modern async export API (iOS 18+)
-        guard let exportSession = AVAssetExportSession(
-            asset: composition,
-            presetName: AVAssetExportPresetAppleM4A
-        ) else {
-            throw DownloadError.exportFailed
-        }
-
-        exportSession.outputURL = outputURL
-        exportSession.outputFileType = .m4a
-        exportSessions[trackId] = exportSession
-        
-        // Start progress monitoring
-        let progressTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(500))
-                guard let self, !Task.isCancelled else { break }
-                let progress = Double(exportSession.progress)
-                self.downloadStatuses[trackId] = .downloading(progress: progress)
-            }
-        }
-        
-        defer {
-            progressTask.cancel()
-            exportSessions.removeValue(forKey: trackId)
-        }
-        
-        // Use the modern async export method
-        try await exportSession.export(to: outputURL, as: .m4a)
-        
-        logInfo(.downloads, "Export completed successfully")
     }
 
     private static let ytdlpAPIURL = "https://exemplary-mindfulness-production.up.railway.app"
@@ -546,8 +477,6 @@ struct DownloadedTrackInfo: Identifiable, Equatable {
 enum DownloadError: LocalizedError {
     case invalidURL
     case downloadFailed
-    case exportFailed
-    case noAudioTrack
     case saveFailed
     case insufficientStorage
     case networkError
@@ -556,8 +485,6 @@ enum DownloadError: LocalizedError {
         switch self {
         case .invalidURL: return "Invalid stream URL"
         case .downloadFailed: return "Download failed"
-        case .exportFailed: return "Failed to export audio"
-        case .noAudioTrack: return "No audio track found"
         case .saveFailed: return "Failed to save file"
         case .insufficientStorage: return "Not enough storage space"
         case .networkError: return "Network error"
