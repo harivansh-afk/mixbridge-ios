@@ -135,6 +135,7 @@ struct AllArtistsView: View {
             }
         }
         .navigationTitle("Artists")
+        .navigationBarTitleDisplayMode(.large)
         .navigationDestination(item: $selectedArtist) { artist in
             ArtistDetailView(artist: artist)
                 .navigationTransition(.zoom(sourceID: "artist-\(artist.id)", in: namespace))

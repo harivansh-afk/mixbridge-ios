@@ -75,6 +75,7 @@ struct AllSongsView: View {
             }
         }
         .navigationTitle("Songs")
+        .navigationBarTitleDisplayMode(.large)
         // Start database observation
         .task {
             await viewModel.observeDatabase()
