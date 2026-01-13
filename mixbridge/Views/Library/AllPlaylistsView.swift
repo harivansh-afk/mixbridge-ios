@@ -133,6 +133,7 @@ struct AllPlaylistsView: View {
             }
         }
         .navigationTitle("Playlists")
+        .navigationBarTitleDisplayMode(.large)
         // Start database observation
         .task {
             if let userId = authManager.currentUserId {
