@@ -11,7 +11,7 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
     public enum CodingKeys: String, CodingKey {
         case id, name, creator, creatorId, artwork, trackCount, duration
         case description, genre, createdAt, lastUpdated, soundCloudData
-        case libraryOwnerUserId
+        case libraryOwnerUserId, isUserCreated
     }
 
     public var id: String
@@ -31,6 +31,9 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
     /// If nil, the playlist is cached (e.g. search/artist) and should not appear in Library lists.
     public var libraryOwnerUserId: String?
 
+    /// True if this is a user-created playlist (not from SoundCloud)
+    public var isUserCreated: Bool
+
     public init(
         id: String,
         name: String,
@@ -44,7 +47,8 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
         createdAt: Date = Date(),
         lastUpdated: Date = Date(),
         soundCloudData: Data? = nil,
-        libraryOwnerUserId: String? = nil
+        libraryOwnerUserId: String? = nil,
+        isUserCreated: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -59,5 +63,6 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
         self.lastUpdated = lastUpdated
         self.soundCloudData = soundCloudData
         self.libraryOwnerUserId = libraryOwnerUserId
+        self.isUserCreated = isUserCreated
     }
 }

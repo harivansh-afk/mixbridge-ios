@@ -1,4 +1,5 @@
 import Foundation
+import MixBridgeDomain
 
 /// Convex client for all data operations
 /// Calls Convex actions that handle caching and SoundCloud API fetching automatically
@@ -542,6 +543,60 @@ final class ConvexService {
         )
     }
 
+    // MARK: - Custom Playlists
+
+    /// Get all custom playlists for a user
+    func getCustomPlaylists(userId: String) async throws -> [ConvexCustomPlaylist] {
+        try await query("customPlaylists:getAll", args: ["userId": userId])
+    }
+
+    /// Create a custom playlist
+    func createCustomPlaylist(userId: String, playlistId: String, name: String, description: String?) async throws {
+        var args: [String: Any] = [
+            "userId": userId,
+            "playlistId": playlistId,
+            "name": name
+        ]
+        if let description = description {
+            args["description"] = description
+        }
+        try await mutation("customPlaylists:create", args: args)
+    }
+
+    /// Delete a custom playlist
+    func deleteCustomPlaylist(userId: String, playlistId: String) async throws {
+        try await mutation("customPlaylists:remove", args: [
+            "userId": userId,
+            "playlistId": playlistId
+        ])
+    }
+
+    /// Add a track to a custom playlist
+    func addTrackToCustomPlaylist(userId: String, playlistId: String, track: PersistedTrack) async throws {
+        let trackData: [String: Any] = [
+            "id": track.id,
+            "title": track.title,
+            "artist": track.artist,
+            "artwork_url": track.artwork,
+            "duration": track.duration
+        ]
+        try await mutation("customPlaylists:addTrack", args: [
+            "userId": userId,
+            "playlistId": playlistId,
+            "trackId": track.id,
+            "trackData": trackData
+        ])
+    }
+
+    /// Remove a track from a custom playlist
+    func removeTrackFromCustomPlaylist(userId: String, playlistId: String, trackId: String) async throws {
+        try await mutation("customPlaylists:removeTrack", args: [
+            "userId": userId,
+            "playlistId": playlistId,
+            "trackId": trackId
+        ])
+    }
+
     // MARK: - Stream URL (Direct CDN Access)
 
     /// Get stream URL with OAuth token for direct SoundCloud CDN access
@@ -602,6 +657,16 @@ struct QueueBatchResult: Codable {
 
 struct LikeResponse: Codable {
     let success: Bool
+}
+
+struct ConvexCustomPlaylist: Codable {
+    let playlistId: String
+    let name: String
+    let description: String?
+    let artwork: String?
+    let trackIds: [String]
+    let createdAt: Int
+    let updatedAt: Int
 }
 
 // MARK: - Errors

@@ -81,6 +81,12 @@ final class LibraryViewModel {
     /// Preload tracks for a playlist in background
     func preloadPlaylistTracks(userId: String, playlistId: String) async {
         do {
+            // Check if this is a user-created playlist - skip preload for those
+            let playlist = try await db.reader.read { db in
+                try PersistedPlaylist.fetchOne(db, key: playlistId)
+            }
+            guard let playlist = playlist, !playlist.isUserCreated else { return }
+
             // If we already have any cached tracks, avoid re-syncing on every cell onAppear.
             let hasAnyLocalTracks = try await db.reader.read { db in
                 try PlaylistTrack
