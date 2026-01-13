@@ -118,15 +118,11 @@ struct PlaylistDetailView: View {
                 }
             }
         }
-        .confirmationDialog(
-            "Delete Playlist",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete") {
+        .alert("Delete Playlist?", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
                 deletePlaylist()
             }
-            Button("Cancel", role: .cancel) {}
         } message: {
             Text("Are you sure you want to delete \"\(playlist.name)\"? This action cannot be undone.")
         }

@@ -8,13 +8,16 @@
 //
 
 import SwiftUI
+import PhotosUI
 
 struct CreatePlaylistSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
-    
+
     @State private var viewModel = CreatePlaylistViewModel()
-    
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var customArtworkImage: Image?
+
     var onCreated: ((String) -> Void)?
     
     var body: some View {
@@ -83,46 +86,54 @@ struct CreatePlaylistSheet: View {
     }
     
     // MARK: - Artwork Preview
-    
+
     private var artworkPreview: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(.secondarySystemBackground))
-            
-            if viewModel.selectedTracks.isEmpty {
-                // Placeholder when no tracks selected
-                VStack(spacing: 12) {
-                    Image(systemName: "music.note.list")
-                        .font(.system(size: 60))
-                        .foregroundStyle(.tertiary)
-                }
-            } else if let firstArtwork = viewModel.selectedTracks.first?.track.artwork,
-                      !firstArtwork.isEmpty {
-                // Show first track's artwork
-                CachedAsyncImagePhase(url: URL(string: firstArtwork)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    default:
-                        placeholderArtwork
+        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(.secondarySystemBackground))
+
+                if let customArtworkImage {
+                    customArtworkImage
+                        .resizable()
+                        .scaledToFill()
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                } else if let firstArtwork = viewModel.selectedTracks.first?.track.artwork,
+                          !firstArtwork.isEmpty {
+                    CachedAsyncImagePhase(url: URL(string: firstArtwork)) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        default:
+                            placeholderArtwork
+                        }
                     }
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                } else {
+                    placeholderArtwork
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            } else {
-                placeholderArtwork
+            }
+            .frame(width: 200, height: 200)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
+        }
+        .buttonStyle(.plain)
+        .onChange(of: selectedPhotoItem) { _, newItem in
+            Task {
+                if let data = try? await newItem?.loadTransferable(type: Data.self),
+                   let uiImage = UIImage(data: data) {
+                    customArtworkImage = Image(uiImage: uiImage)
+                }
             }
         }
-        .frame(width: 200, height: 200)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
     }
-    
+
     private var placeholderArtwork: some View {
         ZStack {
             Color(.secondarySystemBackground)
-            Image(systemName: "music.note.list")
+            Image(systemName: "camera.fill")
                 .font(.system(size: 40))
                 .foregroundStyle(.tertiary)
         }
