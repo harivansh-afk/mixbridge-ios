@@ -21,7 +21,10 @@ struct PlaylistDetailView: View {
 
     init(playlist: Playlist) {
         self.playlist = playlist
-        self._viewModel = State(initialValue: PlaylistDetailViewModel(playlistId: playlist.id))
+        self._viewModel = State(initialValue: PlaylistDetailViewModel(
+            playlistId: playlist.id,
+            isUserCreated: playlist.isUserCreated
+        ))
     }
 
     var body: some View {
@@ -97,12 +100,48 @@ struct PlaylistDetailView: View {
                         Label("Download All", systemImage: "arrow.down.circle")
                     }
                     .disabled(viewModel.trackItems.isEmpty)
+                    
+                    if playlist.isUserCreated {
+                        Divider()
+                        
+                        Button {
+                            showDeleteConfirmation = true
+                        } label: {
+                            Label("Delete Playlist", systemImage: "trash")
+                        }
+                    }
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.body)
                         .fontWeight(.semibold)
                         .foregroundStyle(.primary)
                 }
+            }
+        }
+        .alert("Delete Playlist?", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                deletePlaylist()
+            }
+        } message: {
+            Text("Are you sure you want to delete \"\(playlist.name)\"? This action cannot be undone.")
+        }
+    }
+    
+    @State private var showDeleteConfirmation = false
+    
+    private func deletePlaylist() {
+        guard let userId = authManager.currentUserId else { return }
+        HapticManager.medium()
+        
+        Task {
+            do {
+                try await PlaylistSync.shared.deleteUserPlaylist(userId: userId, playlistId: playlist.id)
+                await MainActor.run {
+                    dismiss()
+                }
+            } catch {
+                logError(.sync, "Failed to delete playlist: \(error)")
             }
         }
     }
@@ -138,7 +177,8 @@ struct PlaylistDetailView: View {
             .fill(Color(.systemGray5))
             .frame(width: artworkSize, height: artworkSize)
             .overlay {
-                Image(systemName: "music.note.list")
+                Image("music-note")
+                    .renderingMode(.template)
                     .font(.system(size: 60))
                     .foregroundStyle(.secondary)
             }

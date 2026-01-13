@@ -91,7 +91,8 @@ struct AllArtistsView: View {
                                         .fill(Color(.systemGray5))
                                         .frame(width: 44, height: 44)
                                         .overlay {
-                                            Image(systemName: "music.mic")
+                                            Image("microphone")
+                                                .renderingMode(.template)
                                                 .foregroundStyle(.secondary)
                                         }
                                 }

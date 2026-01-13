@@ -168,6 +168,12 @@ extension MixBridgeDB {
             }
         }
 
+        migrator.registerMigration("v5_user_created_playlists") { db in
+            try db.alter(table: PersistedPlaylist.databaseTableName) { t in
+                t.add(column: "isUserCreated", .boolean).notNull().defaults(to: false)
+            }
+        }
+
         return migrator
     }
 }

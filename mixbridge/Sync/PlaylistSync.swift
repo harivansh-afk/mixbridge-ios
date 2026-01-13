@@ -60,16 +60,16 @@ final class PlaylistSync: Sendable {
                     .filter(PersistedPlaylist.Columns.libraryOwnerUserId == nil)
                     .updateAll(db, PersistedPlaylist.Columns.libraryOwnerUserId.set(to: userId))
 
-                // Get current local playlist IDs
-                let currentLocalIds = try PersistedPlaylist
+                // Get current local SoundCloud playlist IDs (exclude user-created playlists)
+                let soundCloudPlaylistIds = try PersistedPlaylist
                     .filter(PersistedPlaylist.Columns.libraryOwnerUserId == userId)
+                    .filter(PersistedPlaylist.Columns.isUserCreated == false)
                     .fetchAll(db)
                     .map(\.id)
 
-                // Remove playlists no longer in backend (unfollowed/deleted)
-                for playlistId in currentLocalIds where !prepared.newPlaylistIds.contains(playlistId) {
-                    // Keep the cached playlist row, but remove it from the user's Library scope.
-                    // This prevents cached/search playlists from disappearing while still updating the Library UI.
+                // Remove SoundCloud playlists no longer in backend (unfollowed/deleted)
+                // User-created playlists are preserved since they don't come from SoundCloud
+                for playlistId in soundCloudPlaylistIds where !prepared.newPlaylistIds.contains(playlistId) {
                     try PersistedPlaylist
                         .filter(PersistedPlaylist.Columns.id == playlistId)
                         .updateAll(db, PersistedPlaylist.Columns.libraryOwnerUserId.set(to: prepared.cachedOwner))
@@ -209,6 +209,274 @@ final class PlaylistSync: Sendable {
                 .reduce(into: [String: PersistedTrack]()) { $0[$1.id] = $1 }
 
             return trackIds.compactMap { tracksDict[$0] }
+        }
+    }
+
+    // MARK: - User-Created Playlists
+
+    /// Create a new user playlist locally and sync to Convex
+    func createUserPlaylist(userId: String, name: String, description: String? = nil) async throws -> String {
+        let playlistId = UUID().uuidString
+        let now = Date()
+        print("🎵 [PlaylistSync] Creating playlist: \(name) with id: \(playlistId)")
+
+        let playlist = PersistedPlaylist(
+            id: playlistId,
+            name: name,
+            creator: "You",
+            creatorId: 0,
+            artwork: "",
+            trackCount: 0,
+            duration: 0,
+            description: description,
+            createdAt: now,
+            lastUpdated: now,
+            libraryOwnerUserId: userId,
+            isUserCreated: true
+        )
+
+        do {
+            try await db.writer.write { db in
+                try playlist.insert(db)
+            }
+            print("🎵 [PlaylistSync] Successfully inserted playlist into DB")
+        } catch {
+            print("🎵 [PlaylistSync] DB insert failed: \(error)")
+            throw error
+        }
+
+        Task {
+            do {
+                try await convex.createCustomPlaylist(
+                    userId: userId,
+                    playlistId: playlistId,
+                    name: name,
+                    description: description
+                )
+                print("🎵 [PlaylistSync] Convex sync successful")
+            } catch {
+                print("🎵 [PlaylistSync] Convex sync failed: \(error)")
+            }
+        }
+
+        logInfo(.sync, "Created user playlist: \(name)")
+        return playlistId
+    }
+
+    /// Create a new user playlist with tracks atomically (Apple Music-style flow)
+    /// Ensures no empty playlists are created - artwork inherits from first track
+    func createUserPlaylistWithTracks(
+        userId: String,
+        name: String,
+        description: String? = nil,
+        tracks: [PersistedTrack]
+    ) async throws -> String {
+        guard !tracks.isEmpty else {
+            throw PlaylistSyncError.emptyPlaylistNotAllowed
+        }
+        
+        let playlistId = UUID().uuidString
+        let now = Date()
+        let firstTrackArtwork = tracks.first?.artwork ?? ""
+        let totalDuration = tracks.reduce(0) { $0 + Int($1.duration * 1000) }
+        
+        logInfo(.sync, "Creating playlist '\(name)' with \(tracks.count) tracks")
+        
+        let playlist = PersistedPlaylist(
+            id: playlistId,
+            name: name,
+            creator: "You",
+            creatorId: 0,
+            artwork: firstTrackArtwork,
+            trackCount: tracks.count,
+            duration: totalDuration,
+            description: description,
+            createdAt: now,
+            lastUpdated: now,
+            libraryOwnerUserId: userId,
+            isUserCreated: true
+        )
+        
+        try await db.writer.write { db in
+            try playlist.insert(db)
+            
+            for (index, track) in tracks.enumerated() {
+                try track.upsert(db)
+                
+                let junction = PlaylistTrack(
+                    playlistId: playlistId,
+                    trackId: track.id,
+                    position: index,
+                    addedAt: now
+                )
+                try junction.insert(db)
+            }
+        }
+        
+        Task {
+            do {
+                try await convex.createCustomPlaylist(
+                    userId: userId,
+                    playlistId: playlistId,
+                    name: name,
+                    description: description
+                )
+                
+                for track in tracks {
+                    try await convex.addTrackToCustomPlaylist(
+                        userId: userId,
+                        playlistId: playlistId,
+                        track: track
+                    )
+                }
+                logInfo(.sync, "Synced playlist '\(name)' with \(tracks.count) tracks to Convex")
+            } catch {
+                logError(.sync, "Failed to sync playlist to Convex: \(error)")
+            }
+        }
+        
+        return playlistId
+    }
+    
+    /// Delete a user-created playlist
+    func deleteUserPlaylist(userId: String, playlistId: String) async throws {
+        try await db.writer.write { db in
+            try PlaylistTrack
+                .filter(PlaylistTrack.Columns.playlistId == playlistId)
+                .deleteAll(db)
+            try PersistedPlaylist
+                .filter(PersistedPlaylist.Columns.id == playlistId)
+                .deleteAll(db)
+        }
+
+        Task {
+            try? await convex.deleteCustomPlaylist(userId: userId, playlistId: playlistId)
+        }
+
+        logInfo(.sync, "Deleted user playlist: \(playlistId)")
+    }
+
+    /// Add a track to a user-created playlist
+    func addTrackToUserPlaylist(userId: String, playlistId: String, track: PersistedTrack) async throws {
+        let now = Date()
+
+        try await db.writer.write { db in
+            try track.upsert(db)
+
+            let currentCount = try PlaylistTrack
+                .filter(PlaylistTrack.Columns.playlistId == playlistId)
+                .fetchCount(db)
+
+            let junction = PlaylistTrack(
+                playlistId: playlistId,
+                trackId: track.id,
+                position: currentCount,
+                addedAt: now
+            )
+            try junction.insert(db)
+
+            try PersistedPlaylist
+                .filter(PersistedPlaylist.Columns.id == playlistId)
+                .updateAll(db,
+                    PersistedPlaylist.Columns.trackCount.set(to: currentCount + 1),
+                    PersistedPlaylist.Columns.lastUpdated.set(to: now)
+                )
+
+            if currentCount == 0 {
+                try PersistedPlaylist
+                    .filter(PersistedPlaylist.Columns.id == playlistId)
+                    .updateAll(db, PersistedPlaylist.Columns.artwork.set(to: track.artwork))
+            }
+        }
+
+        Task {
+            try? await convex.addTrackToCustomPlaylist(
+                userId: userId,
+                playlistId: playlistId,
+                track: track
+            )
+        }
+
+        logInfo(.sync, "Added track \(track.id) to playlist \(playlistId)")
+    }
+
+    /// Remove a track from a user-created playlist
+    func removeTrackFromUserPlaylist(userId: String, playlistId: String, trackId: String) async throws {
+        try await db.writer.write { db in
+            try PlaylistTrack
+                .filter(PlaylistTrack.Columns.playlistId == playlistId)
+                .filter(PlaylistTrack.Columns.trackId == trackId)
+                .deleteAll(db)
+
+            let remainingTracks = try PlaylistTrack
+                .filter(PlaylistTrack.Columns.playlistId == playlistId)
+                .order(PlaylistTrack.Columns.position)
+                .fetchAll(db)
+
+            for (index, var track) in remainingTracks.enumerated() {
+                track.position = index
+                try track.update(db)
+            }
+
+            let newCount = remainingTracks.count
+            try PersistedPlaylist
+                .filter(PersistedPlaylist.Columns.id == playlistId)
+                .updateAll(db,
+                    PersistedPlaylist.Columns.trackCount.set(to: newCount),
+                    PersistedPlaylist.Columns.lastUpdated.set(to: Date())
+                )
+        }
+
+        Task {
+            try? await convex.removeTrackFromCustomPlaylist(
+                userId: userId,
+                playlistId: playlistId,
+                trackId: trackId
+            )
+        }
+
+        logInfo(.sync, "Removed track \(trackId) from playlist \(playlistId)")
+    }
+
+    /// Sync user-created playlists from Convex
+    func syncUserPlaylists(userId: String) async throws {
+        let remotePlaylists = try await convex.getCustomPlaylists(userId: userId)
+
+        try await db.writer.write { db in
+            for remote in remotePlaylists {
+                let existing = try PersistedPlaylist.fetchOne(db, key: remote.playlistId)
+                if existing == nil {
+                    let playlist = PersistedPlaylist(
+                        id: remote.playlistId,
+                        name: remote.name,
+                        creator: "You",
+                        creatorId: 0,
+                        artwork: remote.artwork ?? "",
+                        trackCount: remote.trackIds.count,
+                        description: remote.description,
+                        createdAt: Date(timeIntervalSince1970: Double(remote.createdAt) / 1000),
+                        lastUpdated: Date(timeIntervalSince1970: Double(remote.updatedAt) / 1000),
+                        libraryOwnerUserId: userId,
+                        isUserCreated: true
+                    )
+                    try playlist.insert(db)
+                }
+            }
+        }
+
+        logInfo(.sync, "Synced \(remotePlaylists.count) user playlists from Convex")
+    }
+}
+
+// MARK: - Errors
+
+enum PlaylistSyncError: LocalizedError {
+    case emptyPlaylistNotAllowed
+    
+    var errorDescription: String? {
+        switch self {
+        case .emptyPlaylistNotAllowed:
+            return "Playlists must contain at least one track"
         }
     }
 }

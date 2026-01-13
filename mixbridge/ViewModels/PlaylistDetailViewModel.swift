@@ -22,6 +22,7 @@ final class PlaylistDetailViewModel {
     // MARK: - Configuration
 
     let playlistId: String
+    let isUserCreated: Bool
 
     // MARK: - Dependencies
 
@@ -30,8 +31,9 @@ final class PlaylistDetailViewModel {
 
     // MARK: - Initialization
 
-    init(playlistId: String) {
+    init(playlistId: String, isUserCreated: Bool = false) {
         self.playlistId = playlistId
+        self.isUserCreated = isUserCreated
     }
 
     // MARK: - Database Observation
@@ -89,6 +91,12 @@ final class PlaylistDetailViewModel {
     /// Refresh playlist tracks from Convex backend
     /// Call this on pull-to-refresh or first appear
     func refresh(userId: String, forceRefresh: Bool = false) async {
+        // User-created playlists don't need SoundCloud sync
+        guard !isUserCreated else {
+            hasAttemptedLoad = true
+            return
+        }
+
         // Only show loading if truly empty
         isLoading = trackItems.isEmpty
 

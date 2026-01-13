@@ -9,6 +9,7 @@ struct AllPlaylistsView: View {
     @State private var searchText = ""
     @State private var isSearchPresented = false
     @State private var scrollOffset: CGFloat = 0
+    @State private var showCreateSheet = false
     @Namespace private var namespace
 
     private let revealThreshold: CGFloat = 90
@@ -19,6 +20,8 @@ struct AllPlaylistsView: View {
             $0.name.localizedCaseInsensitiveContains(searchText)
         }
     }
+
+
 
     var body: some View {
         Group {
@@ -133,6 +136,19 @@ struct AllPlaylistsView: View {
             }
         }
         .navigationTitle("Playlists")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showCreateSheet = true
+                    HapticManager.light()
+                } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .sheet(isPresented: $showCreateSheet) {
+            CreatePlaylistSheet()
+        }
         .navigationBarTitleDisplayMode(.large)
         // Start database observation
         .task {
@@ -179,6 +195,7 @@ struct AllPlaylistsView: View {
             .buttonStyle(.bordered)
         }
     }
+
 }
 
 #Preview {

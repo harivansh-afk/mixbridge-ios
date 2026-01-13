@@ -733,3 +733,108 @@ private var artists: [ArtistInfo] {
 }
 ```
 - **Session**: MixBridge artists view fix (2026-01-04)
+
+---
+
+## SwiftUI List Styling for Apple Music-Style UIs
+
+### Use Native List with InsetGroupedListStyle Over Custom VStack
+- **Context**: Creating track picker UIs that need to match Apple Music's visual style
+- **Learning**: Don't build custom VStack/LazyVStack layouts with manual dividers and backgrounds. Use SwiftUI's native `List` with `.listStyle(InsetGroupedListStyle())` and `.listSectionSpacing()` for proper section spacing. This provides automatic dark mode support, proper touch targets, and consistent styling.
+- **Example**:
+```swift
+// Bad - manual layout that doesn't match Apple Music
+VStack(spacing: 0) {
+    ForEach(items) { item in
+        Row(item)
+        Divider()
+    }
+    .background(Color(.secondarySystemGroupedBackground))
+}
+
+// Good - native List with proper styling
+List {
+    Section {
+        ForEach(items) { item in
+            Row(item)
+        }
+    }
+}
+.listStyle(InsetGroupedListStyle())
+.listSectionSpacing(16)
+```
+- **Session**: Playlist track picker UI refinement (2026-01-13)
+
+### Background Blending with .listRowBackground
+- **Context**: Making certain List sections blend into the background while keeping others styled
+- **Learning**: Use `.listRowBackground(Color.clear)` to make specific sections blend into the system background. Apply this selectively to sections that should appear "flat" while keeping other sections with the grouped background.
+- **Session**: Playlist track picker UI refinement (2026-01-13)
+
+### Dynamic Navigation Title for Selection Count
+- **Context**: Showing selection count in navigation title like Apple Music does
+- **Learning**: Use a computed property for `navigationTitle` that reflects current selection state: "Add to 'Playlist Name'" when empty, "X songs added to 'Playlist Name'" when tracks are selected. Quote the playlist name for clarity.
+- **Example**:
+```swift
+private var navigationTitle: String {
+    let count = viewModel.selectedCount
+    if count == 0 {
+        return "Add to \"\(viewModel.playlistName)\""
+    } else {
+        let songText = count == 1 ? "song" : "songs"
+        return "\(count) \(songText) added to \"\(viewModel.playlistName)\""
+    }
+}
+```
+- **Session**: Playlist track picker UI refinement (2026-01-13)
+
+---
+
+## UI Iteration Workflow
+
+### Rapid UI Refinement Through Screenshot Feedback
+- **Context**: Iterating on UI designs with user providing screenshots
+- **Learning**: When user provides screenshots showing issues, make incremental changes rather than large rewrites. Address one visual concern at a time (icon colors, background blending, spacing) and verify each change before moving on. This prevents regression and allows quick course correction.
+- **Session**: Playlist track picker UI refinement (2026-01-13)
+
+### Colorful vs White Icons in Selection UIs
+- **Context**: Icon styling for library navigation rows in selection contexts
+- **Learning**: In playlist/track selection UIs, use white icons with consistent styling rather than colorful filled icons. The colorful icons can be distracting when the focus should be on track selection. Use `.foregroundStyle(.white)` consistently.
+- **Session**: Playlist track picker UI refinement (2026-01-13)
+
+---
+
+## SwiftUI Sheet and Dialog Patterns
+
+### Use confirmationDialog for Deletion Instead of Tooltip
+- **Context**: Confirmation UI for destructive actions like playlist deletion
+- **Learning**: Don't use custom tooltip views for confirmation dialogs. Use SwiftUI's native `.confirmationDialog()` modifier which provides a standard iOS bottom sheet with proper accessibility, animation, and theming.
+- **Example**:
+```swift
+.confirmationDialog(
+    "Delete Playlist",
+    isPresented: $showDeleteConfirmation,
+    titleVisibility: .visible
+) {
+    Button("Delete", role: .destructive) {
+        performDelete()
+    }
+    Button("Cancel", role: .cancel) {}
+} message: {
+    Text("Are you sure you want to delete this playlist?")
+}
+```
+- **Session**: Playlist deletion confirmation fix (2026-01-13)
+
+### Camera Icon Placeholder for Image Upload
+- **Context**: Allowing users to upload custom playlist artwork
+- **Learning**: For image upload placeholders, center a camera icon (`camera.fill`) within the placeholder area. Make the entire area tappable to trigger image picker. Don't combine with existing placeholder imagery - the camera icon alone indicates the action clearly.
+- **Session**: Playlist creation image upload (2026-01-13)
+
+---
+
+## Section Spacing and Padding
+
+### listSectionSpacing vs Individual Padding
+- **Context**: Adding padding around List sections
+- **Learning**: Use `.listSectionSpacing(16)` at the List level for consistent section spacing. For internal section padding (top/bottom of content within a section), use `.listRowInsets()` or wrap content in a container with padding. Note: Applying padding to individual rows may create unwanted spacing between all items.
+- **Session**: Playlist track picker UI refinement (2026-01-13)

@@ -11,13 +11,21 @@ struct LibraryNavigationRow: View {
     let icon: String
     let title: String
     let iconColor: Color
+    var isSystemImage: Bool = true
 
     var body: some View {
         HStack(spacing: 16) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(iconColor)
-                .frame(width: 28)
+            Group {
+                if isSystemImage {
+                    Image(systemName: icon)
+                } else {
+                    Image(icon)
+                        .renderingMode(.template)
+                }
+            }
+            .font(.title3)
+            .foregroundStyle(iconColor)
+            .frame(width: 28, height: 28)
 
             Text(title)
                 .font(.body)
@@ -38,27 +46,38 @@ struct LibraryNavigationRow: View {
 #Preview("Light Mode") {
     VStack(spacing: 0) {
         LibraryNavigationRow(
-            icon: "music.note.list",
+            icon: "heart",
+            title: "Liked",
+            iconColor: .primary,
+            isSystemImage: false
+        )
+
+        LibraryNavigationRow(
+            icon: "music-note",
             title: "Playlists",
-            iconColor: .red
+            iconColor: .primary,
+            isSystemImage: false
         )
 
         LibraryNavigationRow(
-            icon: "music.mic",
+            icon: "microphone",
             title: "Artists",
-            iconColor: .red
+            iconColor: .primary,
+            isSystemImage: false
         )
 
         LibraryNavigationRow(
-            icon: "arrow.down.circle",
-            title: "Downloaded",
-            iconColor: .red
-        )
-
-        LibraryNavigationRow(
-            icon: "music.note",
+            icon: "music-note-simple",
             title: "Songs",
-            iconColor: .red
+            iconColor: .primary,
+            isSystemImage: false
+        )
+
+        LibraryNavigationRow(
+            icon: "arrow-circle-down",
+            title: "Downloaded",
+            iconColor: .primary,
+            isSystemImage: false
         )
     }
     .preferredColorScheme(.light)
@@ -67,27 +86,38 @@ struct LibraryNavigationRow: View {
 #Preview("Dark Mode") {
     VStack(spacing: 0) {
         LibraryNavigationRow(
-            icon: "music.note.list",
+            icon: "heart",
+            title: "Liked",
+            iconColor: .primary,
+            isSystemImage: false
+        )
+
+        LibraryNavigationRow(
+            icon: "music-note",
             title: "Playlists",
-            iconColor: .red
+            iconColor: .primary,
+            isSystemImage: false
         )
 
         LibraryNavigationRow(
-            icon: "music.mic",
+            icon: "microphone",
             title: "Artists",
-            iconColor: .red
+            iconColor: .primary,
+            isSystemImage: false
         )
 
         LibraryNavigationRow(
-            icon: "arrow.down.circle",
-            title: "Downloaded",
-            iconColor: .red
-        )
-
-        LibraryNavigationRow(
-            icon: "music.note",
+            icon: "music-note-simple",
             title: "Songs",
-            iconColor: .red
+            iconColor: .primary,
+            isSystemImage: false
+        )
+
+        LibraryNavigationRow(
+            icon: "arrow-circle-down",
+            title: "Downloaded",
+            iconColor: .primary,
+            isSystemImage: false
         )
     }
     .preferredColorScheme(.dark)

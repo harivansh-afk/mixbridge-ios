@@ -75,7 +75,8 @@ struct PlayerArtworkView: View {
         ZStack {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(Color(.systemGray6))
-            Image(systemName: "music.note")
+            Image("music-note-simple")
+                .renderingMode(.template)
                 .font(.system(size: (size ?? 100) * 0.35))
                 .foregroundStyle(.gray.opacity(0.6))
         }
