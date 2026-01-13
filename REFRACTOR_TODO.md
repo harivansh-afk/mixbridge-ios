@@ -11,7 +11,7 @@ This is the step-by-step refactor queue. Goal: one focused PR at a time, easy to
 
 ## PR Queue (in order)
 
-### PR 01 — Inject `PlayerState` via environment (reduce singleton coupling)
+### PR 01 — Inject `PlayerState` via environment (reduce singleton coupling) ✅
 
 - Add `PlayerState.shared` to app environment in `mixbridge/mixbridgeApp.swift`.
 - Replace direct `PlayerState.shared` usages in views with `@Environment(PlayerState.self)` / `@Bindable`.
@@ -109,4 +109,3 @@ This is the step-by-step refactor queue. Goal: one focused PR at a time, easy to
 - GRDB observation coalescing / removeDuplicates/debounce for heavy tables (only after profiling).
 - Metal/MTKView frame pacing improvements (only if instruments shows GPU/display bottlenecks).
 - Accessibility sweep (replace gesture-only affordances with semantic controls).
-
