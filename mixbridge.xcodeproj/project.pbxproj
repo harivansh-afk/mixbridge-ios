@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		5EF67A772ECA7D4C00D6673D /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 5EF67A782ECA7D4C00D6673D /* Lottie */; };
 		5EF67A7A2ECA7D4D00D6673D /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 5EF67A7B2ECA7D4D00D6673D /* GRDB */; };
+		5EF67A822F0C000000D6673D /* Inject in Frameworks */ = {isa = PBXBuildFile; productRef = 5EF67A812F0C000000D6673D /* Inject */; };
 		5EFB14BB2F0A8A33007C9E1A /* MixBridgeDB in Frameworks */ = {isa = PBXBuildFile; productRef = 5EFB14BA2F0A8A33007C9E1A /* MixBridgeDB */; };
 /* End PBXBuildFile section */
 
@@ -56,6 +57,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5EF67A772ECA7D4C00D6673D /* Lottie in Frameworks */,
+				5EF67A822F0C000000D6673D /* Inject in Frameworks */,
 				5EFB14BB2F0A8A33007C9E1A /* MixBridgeDB in Frameworks */,
 				5EF67A7A2ECA7D4D00D6673D /* GRDB in Frameworks */,
 			);
@@ -103,6 +105,7 @@
 			packageProductDependencies = (
 				5EF67A782ECA7D4C00D6673D /* Lottie */,
 				5EF67A7B2ECA7D4D00D6673D /* GRDB */,
+				5EF67A812F0C000000D6673D /* Inject */,
 				5EFB14BA2F0A8A33007C9E1A /* MixBridgeDB */,
 			);
 			productName = mixbridge;
@@ -136,6 +139,7 @@
 			packageReferences = (
 				5EF67A792ECA7D4C00D6673D /* XCRemoteSwiftPackageReference "lottie-spm" */,
 				5EF67A7C2ECA7D4D00D6673D /* XCRemoteSwiftPackageReference "GRDB" */,
+				5EF67A802F0C000000D6673D /* XCRemoteSwiftPackageReference "Inject" */,
 				5EFB14B92F0A8A33007C9E1A /* XCLocalSwiftPackageReference "Packages/MixBridgeDB" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -298,6 +302,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = G2U3K77U5W;
 				ENABLE_PREVIEWS = YES;
+				EMIT_FRONTEND_COMMAND_LINES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = mixbridge/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "";
@@ -313,6 +318,10 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.5;
+				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = (
+					"-Xlinker",
+					"-interposable",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.hari.mixbridge;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -411,6 +420,14 @@
 				minimumVersion = 7.0.0;
 			};
 		};
+		5EF67A802F0C000000D6673D /* XCRemoteSwiftPackageReference "Inject" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/krzysztofzablocki/Inject.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.2;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -423,6 +440,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5EF67A7C2ECA7D4D00D6673D /* XCRemoteSwiftPackageReference "GRDB" */;
 			productName = GRDB;
+		};
+		5EF67A812F0C000000D6673D /* Inject */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5EF67A802F0C000000D6673D /* XCRemoteSwiftPackageReference "Inject" */;
+			productName = Inject;
 		};
 		5EFB14BA2F0A8A33007C9E1A /* MixBridgeDB */ = {
 			isa = XCSwiftPackageProductDependency;
