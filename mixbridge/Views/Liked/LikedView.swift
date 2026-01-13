@@ -235,7 +235,8 @@ struct LikedView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color(.systemGray5))
                         .overlay {
-                            Image(systemName: "music.note.list")
+                            Image("music-note")
+                                .renderingMode(.template)
                                 .foregroundStyle(.secondary)
                         }
                 }
@@ -246,7 +247,8 @@ struct LikedView: View {
                     .fill(Color(.systemGray5))
                     .frame(width: 56, height: 56)
                     .overlay {
-                        Image(systemName: "music.note.list")
+                        Image("music-note")
+                            .renderingMode(.template)
                             .foregroundStyle(.secondary)
                     }
             }

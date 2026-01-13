@@ -163,9 +163,10 @@ struct LibraryView: View {
                 LikedView()
             } label: {
                 LibraryNavigationRow(
-                    icon: "heart.fill",
+                    icon: "heart",
                     title: "Liked",
-                    iconColor: .primary
+                    iconColor: .primary,
+                    isSystemImage: false
                 )
             }
             .buttonStyle(.plain)
@@ -178,9 +179,10 @@ struct LibraryView: View {
                 AllPlaylistsView()
             } label: {
                 LibraryNavigationRow(
-                    icon: "music.note.list",
+                    icon: "music-note",
                     title: "Playlists",
-                    iconColor: .primary
+                    iconColor: .primary,
+                    isSystemImage: false
                 )
             }
             .buttonStyle(.plain)
@@ -193,9 +195,10 @@ struct LibraryView: View {
                 AllArtistsView()
             } label: {
                 LibraryNavigationRow(
-                    icon: "music.mic",
+                    icon: "microphone",
                     title: "Artists",
-                    iconColor: .primary
+                    iconColor: .primary,
+                    isSystemImage: false
                 )
             }
             .buttonStyle(.plain)
@@ -208,9 +211,10 @@ struct LibraryView: View {
                 AllSongsView()
             } label: {
                 LibraryNavigationRow(
-                    icon: "music.note",
+                    icon: "music-note-simple",
                     title: "Songs",
-                    iconColor: .primary
+                    iconColor: .primary,
+                    isSystemImage: false
                 )
             }
             .buttonStyle(.plain)
@@ -223,9 +227,10 @@ struct LibraryView: View {
                 DownloadsView()
             } label: {
                 LibraryNavigationRow(
-                    icon: "arrow.down.circle",
+                    icon: "arrow-circle-down",
                     title: "Downloads",
-                    iconColor: .primary
+                    iconColor: .primary,
+                    isSystemImage: false
                 )
             }
             .buttonStyle(.plain)

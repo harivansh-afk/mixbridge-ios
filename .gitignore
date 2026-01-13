@@ -74,3 +74,4 @@ docs/syntax
 # Claude Code session locks
 .claude/hooks/locks/
 .worktrees/
+.wt-origin

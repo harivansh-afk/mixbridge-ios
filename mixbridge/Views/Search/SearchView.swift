@@ -333,7 +333,8 @@ struct SearchView: View {
                     .fill(Color.gray.opacity(0.3))
                     .frame(width: 56, height: 56)
                     .overlay {
-                        Image(systemName: "music.note.list")
+                        Image("music-note")
+                            .renderingMode(.template)
                             .foregroundStyle(.secondary)
                     }
             }
@@ -563,7 +564,8 @@ struct SearchView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color(.systemGray5))
                         .overlay {
-                            Image(systemName: "music.note.list")
+                            Image("music-note")
+                                .renderingMode(.template)
                                 .foregroundStyle(.secondary)
                         }
                 }
@@ -574,7 +576,8 @@ struct SearchView: View {
                     .fill(Color(.systemGray5))
                     .frame(width: 56, height: 56)
                     .overlay {
-                        Image(systemName: "music.note.list")
+                        Image("music-note")
+                            .renderingMode(.template)
                             .foregroundStyle(.secondary)
                     }
             }
@@ -634,7 +637,8 @@ struct SearchView: View {
                     .fill(Color(.systemGray5))
                     .frame(width: 44, height: 44)
                     .overlay {
-                        Image(systemName: "music.mic")
+                        Image("microphone")
+                            .renderingMode(.template)
                             .foregroundStyle(.secondary)
                     }
             }

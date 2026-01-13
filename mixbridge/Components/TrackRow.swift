@@ -220,7 +220,8 @@ struct TrackRow: View {
                             .fill(Color(.systemGray6))
                             .frame(width: coverSize, height: coverSize)
                             .overlay(
-                                Image(systemName: "music.note")
+                                Image("music-note-simple")
+                                    .renderingMode(.template)
                                     .font(.system(size: coverSize * 0.45))
                                     .foregroundColor(.gray.opacity(0.7))
                             )
@@ -233,7 +234,8 @@ struct TrackRow: View {
                     .fill(Color(.systemGray6))
                     .frame(width: coverSize, height: coverSize)
                     .overlay(
-                        Image(systemName: "music.note")
+                        Image("music-note-simple")
+                            .renderingMode(.template)
                             .font(.system(size: coverSize * 0.45))
                             .foregroundColor(.gray.opacity(0.7))
                     )
@@ -247,7 +249,8 @@ struct TrackRow: View {
                 .fill(Color(.systemGray6))
                 .frame(width: coverSize, height: coverSize)
                 .overlay(
-                    Image(systemName: "music.note")
+                    Image("music-note-simple")
+                        .renderingMode(.template)
                         .font(.system(size: coverSize * 0.45))
                         .foregroundColor(.gray.opacity(0.7))
                 )
