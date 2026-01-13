@@ -24,7 +24,7 @@ struct TrackRow: View {
     var listContext: [TrackItem]?
     var indexInList: Int?
 
-    private var playerState = PlayerState.shared
+    @Environment(PlayerState.self) private var playerState
 
     private let coverSize: CGFloat = 44
 
@@ -304,12 +304,12 @@ struct TrackRow: View {
 
         // If list context is provided, use smart queue management
         if let context = listContext, let index = indexInList {
-            PlayerState.shared.playFromList(items: context, startIndex: index)
+            playerState.playFromList(items: context, startIndex: index)
             return
         }
 
         // Fallback: single track play (no queue context)
-        PlayerState.shared.play(track: track, soundCloudTrack: soundCloudTrack)
+        playerState.play(track: track, soundCloudTrack: soundCloudTrack)
     }
 
     private func handleAddToQueue() {
@@ -423,6 +423,7 @@ struct TrackRow: View {
         TrackRow(Track.sampleTracks[2], number: 3, showCover: true)
     }
     .listStyle(.plain)
+    .environment(PlayerState.shared)
     .preferredColorScheme(.light)
 }
 
@@ -433,5 +434,6 @@ struct TrackRow: View {
         TrackRow(Track.sampleTracks[2], number: 3, showCover: true)
     }
     .listStyle(.plain)
+    .environment(PlayerState.shared)
     .preferredColorScheme(.dark)
 }

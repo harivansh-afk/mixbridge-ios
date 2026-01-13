@@ -15,7 +15,7 @@ struct ExpandedMusicPlayer: View {
     @Binding var isPresented: Bool
     let namespace: Namespace.ID
 
-    @Bindable private var playerState = PlayerState.shared
+    @Environment(PlayerState.self) private var playerState
 
     init(isPresented: Binding<Bool>, namespace: Namespace.ID) {
         self._isPresented = isPresented
@@ -81,6 +81,8 @@ struct ExpandedMusicPlayer: View {
     }
 
     var body: some View {
+        @Bindable var playerState = playerState
+
         ExpandedPlayerView(
             currentTrack: playerState.currentTrack,
             currentQueueIndex: playerState.currentQueueIndex,
@@ -153,8 +155,7 @@ struct ExpandedPlayerView: View {
     // Queue access for proper track mapping
     private var queueManager = QueueManager.shared
 
-    // Player state access for Mix Mode toggle
-    @Bindable private var playerState = PlayerState.shared
+    @Environment(PlayerState.self) private var playerState
 
     // Bindings
     @Binding var playbackPosition: Double
@@ -1025,8 +1026,7 @@ struct HexagonArtworkFace: View {
     var isCurrentTrack: Bool = false // Whether this is the center/current track
     var contentSpacing: CGFloat = 20 // Spacing between artwork and title
 
-    // Access to PlayerState for crossfade visual state
-    @Bindable private var playerState = PlayerState.shared
+    @Environment(PlayerState.self) private var playerState
 
     // Crossfade handoff: if crossfade visuals end before `currentTrack` updates,
     // keep showing the destination artwork until the track swap arrives.
@@ -1166,6 +1166,7 @@ struct HexagonArtworkFace: View {
         previewQueueTracks: Track.sampleTracks,
         initialShowQueue: true
     )
+    .environment(PlayerState.shared)
     .preferredColorScheme(.dark)
 }
 
@@ -1203,5 +1204,6 @@ struct HexagonArtworkFace: View {
     }
     .frame(height: 280 + queueExpansion)
     .background(Color.blue.opacity(0.3))
+    .environment(PlayerState.shared)
     .preferredColorScheme(.dark)
 }

@@ -13,6 +13,7 @@ struct PlaylistDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
     @Environment(QueueManager.self) private var queueManager
+    @Environment(PlayerState.self) private var playerState
     @StateObject private var downloadManager = DownloadManager.shared
 
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
@@ -207,11 +208,11 @@ struct PlaylistDetailView: View {
         PlaylistActionButtons(
             onPlay: {
                 guard !viewModel.trackItems.isEmpty else { return }
-                PlayerState.shared.playFromList(items: viewModel.trackItems, startIndex: 0)
+                playerState.playFromList(items: viewModel.trackItems, startIndex: 0)
             },
             onShuffle: {
                 guard !viewModel.trackItems.isEmpty else { return }
-                PlayerState.shared.playFromList(items: viewModel.trackItems, startIndex: 0, shuffle: true)
+                playerState.playFromList(items: viewModel.trackItems, startIndex: 0, shuffle: true)
             }
         )
     }
@@ -292,6 +293,7 @@ struct PlaylistDetailView: View {
     }
     .environment(AuthManager.shared)
     .environment(QueueManager.shared)
+    .environment(PlayerState.shared)
     .preferredColorScheme(.light)
 }
 
@@ -305,5 +307,6 @@ struct PlaylistDetailView: View {
     }
     .environment(AuthManager.shared)
     .environment(QueueManager.shared)
+    .environment(PlayerState.shared)
     .preferredColorScheme(.dark)
 }
