@@ -11,19 +11,15 @@ struct ContentView: View {
 
     @State private var expandMiniPlayer: Bool = false
     @Namespace private var animation
-    private var playerState = PlayerState.shared
     @State private var selectedTab = 1
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(PlayerState.self) private var playerState
 
     @ViewBuilder
     var body: some View {
         NativeTabView(selectedTab: $selectedTab)
             .tabBarMinimizeBehavior(.onScrollDown)
-            .modifier(MiniPlayerModifier(
-                playerState: playerState,
-                namespace: animation,
-                expandMiniPlayer: $expandMiniPlayer
-            ))
+            .modifier(MiniPlayerModifier(namespace: animation, expandMiniPlayer: $expandMiniPlayer))
             .fullScreenCover(isPresented: $expandMiniPlayer) {
                 ExpandedMusicPlayer(
                     isPresented: $expandMiniPlayer,
@@ -34,10 +30,10 @@ struct ContentView: View {
 }
 
 struct MiniPlayerModifier: ViewModifier {
-    var playerState: PlayerState
     var namespace: Namespace.ID
     @Binding var expandMiniPlayer: Bool
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(PlayerState.self) private var playerState
 
     func body(content: Content) -> some View {
         if playerState.hasActiveTrack {
@@ -143,6 +139,7 @@ struct NativeTabView: View {
         .environment(AuthManager.shared)
         .environment(UserProfileManager.shared)
         .environment(QueueManager.shared)
+        .environment(PlayerState.shared)
         .preferredColorScheme(.light)
 }
 
@@ -151,5 +148,6 @@ struct NativeTabView: View {
         .environment(AuthManager.shared)
         .environment(UserProfileManager.shared)
         .environment(QueueManager.shared)
+        .environment(PlayerState.shared)
         .preferredColorScheme(.dark)
 }

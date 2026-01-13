@@ -4,6 +4,7 @@ struct ArtistDetailView: View {
     let artist: ArtistInfo
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
+    @Environment(PlayerState.self) private var playerState
     @Namespace private var namespace
 
     @State private var fetchedTrackItems: [TrackItem] = []
@@ -154,11 +155,11 @@ struct ArtistDetailView: View {
         PlaylistActionButtons(
             onPlay: {
                 guard !combinedTrackItems.isEmpty else { return }
-                PlayerState.shared.playFromList(items: combinedTrackItems, startIndex: 0)
+                playerState.playFromList(items: combinedTrackItems, startIndex: 0)
             },
             onShuffle: {
                 guard !combinedTrackItems.isEmpty else { return }
-                PlayerState.shared.playFromList(items: combinedTrackItems, startIndex: 0, shuffle: true)
+                playerState.playFromList(items: combinedTrackItems, startIndex: 0, shuffle: true)
             }
         )
     }
@@ -412,6 +413,7 @@ struct ArtistAllSongsView: View {
         ))
     }
     .environment(AuthManager.shared)
+    .environment(PlayerState.shared)
     .preferredColorScheme(.light)
 }
 
@@ -425,5 +427,6 @@ struct ArtistAllSongsView: View {
         ))
     }
     .environment(AuthManager.shared)
+    .environment(PlayerState.shared)
     .preferredColorScheme(.dark)
 }
