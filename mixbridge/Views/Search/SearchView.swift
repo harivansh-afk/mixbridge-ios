@@ -222,10 +222,9 @@ struct SearchView: View {
             .padding(.vertical, 8)
 
             if recentSearchManager.recentSearches.isEmpty {
-                ContentUnavailableView(
-                    searchSource == .soundcloud ? "Search SoundCloud" : "Search your library",
-                    systemImage: "magnifyingglass"
-                )
+                ContentUnavailableView {
+                    Label(searchSource == .soundcloud ? "Search SoundCloud" : "Search Your Library", systemImage: "magnifyingglass")
+                }
                 .padding(.top, 100)
             } else {
                 recentSearchesView
@@ -288,11 +287,17 @@ struct SearchView: View {
                     Group {
                         switch selectedTab {
                         case .tracks:
-                            ContentUnavailableView("No tracks found", systemImage: "music.note")
+                            ContentUnavailableView {
+                                Label("No tracks found", systemImage: "music.note")
+                            }
                         case .playlists:
-                            ContentUnavailableView("No playlists found", systemImage: "music.note.list")
+                            ContentUnavailableView {
+                                Label("No playlists found", systemImage: "music.note.list")
+                            }
                         case .artists:
-                            ContentUnavailableView("No artists found", systemImage: "person.2")
+                            ContentUnavailableView {
+                                Label("No artists found", systemImage: "person.2")
+                            }
                         }
                     }
                     .padding(.top, 100)
@@ -514,11 +519,17 @@ struct SearchView: View {
                     Group {
                         switch selectedTab {
                         case .tracks:
-                            ContentUnavailableView("No tracks found", systemImage: "music.note")
+                            ContentUnavailableView {
+                                Label("No tracks found", systemImage: "music.note")
+                            }
                         case .playlists:
-                            ContentUnavailableView("No playlists found", systemImage: "music.note.list")
+                            ContentUnavailableView {
+                                Label("No playlists found", systemImage: "music.note.list")
+                            }
                         case .artists:
-                            ContentUnavailableView("No artists found", systemImage: "person.2")
+                            ContentUnavailableView {
+                                Label("No artists found", systemImage: "person.2")
+                            }
                         }
                     }
                     .padding(.top, 100)
