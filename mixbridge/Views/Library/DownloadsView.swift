@@ -35,6 +35,7 @@ struct DownloadsView: View {
     var body: some View {
         content
             .navigationTitle("Downloaded")
+            .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     if !downloadManager.downloadedTracks.isEmpty || !downloadManager.downloadedPlaylists.isEmpty {

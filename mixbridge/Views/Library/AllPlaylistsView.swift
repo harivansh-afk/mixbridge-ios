@@ -149,6 +149,7 @@ struct AllPlaylistsView: View {
         .sheet(isPresented: $showCreateSheet) {
             CreatePlaylistSheet()
         }
+        .navigationBarTitleDisplayMode(.large)
         // Start database observation
         .task {
             if let userId = authManager.currentUserId {
