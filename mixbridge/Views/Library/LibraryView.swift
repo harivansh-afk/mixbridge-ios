@@ -9,8 +9,6 @@ import SwiftUI
 
 struct LibraryView: View {
     @State private var viewModel = LibraryViewModel()
-    @State private var showingAccount = false
-    @State private var accountSheetDetent: PresentationDetent = .medium
     @Environment(UserProfileManager.self) private var profileManager
     @Environment(AuthManager.self) private var authManager
     @Namespace private var namespace
@@ -28,7 +26,8 @@ struct LibraryView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 24) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            headerView
                             if !viewModel.playlists.isEmpty {
                                 playlistGridSection
                             }
@@ -37,18 +36,10 @@ struct LibraryView: View {
                                 recentlyAddedGridSection
                             }
                         }
-                        .padding(.top, 8)
                     }
                     .refreshable {
                         await loadPlaylists(forceRefresh: true)
                     }
-                }
-            }
-            .navigationTitle("Library")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    profileAvatar
                 }
             }
             // Start database observation
@@ -64,56 +55,20 @@ struct LibraryView: View {
                     await viewModel.refresh(userId: userId)
                 }
             }
-            .sheet(isPresented: $showingAccount, onDismiss: {
-                accountSheetDetent = .medium
-            }) {
-                AccountBottomSheet(
-                    isPresented: $showingAccount,
-                    selectedDetent: $accountSheetDetent,
-                    userName: profileManager.displayName,
-                    userEmail: nil,
-                    profileImage: nil
-                )
-                .presentationDetents([.medium, .large], selection: $accountSheetDetent)
-                .presentationDragIndicator(.hidden)
-                .interactiveDismissDisabled(false)
-            }
-        }
-    }
-
-    private var profileAvatar: some View {
-        HStack {
-            if let avatarUrl = profileManager.avatarUrl,
-               let url = URL(string: avatarUrl) {
-                CachedAsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                } placeholder: {
-                    Color.clear
-                }
-                .frame(width: 35, height: 35)
-                .clipShape(Circle())
-                .onTapGesture {
-                    HapticManager.light()
-                    showingAccount.toggle()
-                }
-            } else {
-                ProfileCircleView(
-                    profileImage: nil,
-                    userName: profileManager.displayName,
-                )
-                .onTapGesture {
-                    HapticManager.light()
-                    showingAccount.toggle()
-                }
-            }
         }
     }
 
     private func loadPlaylists(forceRefresh: Bool = false) async {
         guard let userId = authManager.currentUserId else { return }
         await viewModel.refresh(userId: userId, forceRefresh: forceRefresh)
+    }
+
+    private var headerView: some View {
+        Text("Library")
+            .font(.largeTitle)
+            .fontWeight(.bold)
+            .padding(.horizontal)
+            .padding(.top, 4)
     }
 
     private var recentlyAddedPlaylists: [Playlist] {
