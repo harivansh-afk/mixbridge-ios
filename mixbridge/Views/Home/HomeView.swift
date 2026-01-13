@@ -10,7 +10,6 @@ import SwiftUI
 struct HomeView: View {
     @State private var viewModel = HomeViewModel()
     @State private var showingAccount = false
-    @State private var accountSheetDetent: PresentationDetent = .medium
     @Environment(AuthManager.self) private var authManager
     @Environment(UserProfileManager.self) private var profileManager
     @Environment(QueueManager.self) private var queueManager
@@ -18,31 +17,21 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("Home")
-                .navigationBarTitleDisplayMode(.large)
                 .refreshable {
                     if let userId = authManager.currentUserId {
                         await viewModel.refresh(userId: userId)
                     }
                 }
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        profileAvatar
-                    }
-                }
-            .sheet(isPresented: $showingAccount, onDismiss: {
-                accountSheetDetent = .medium
-            }) {
+            .sheet(isPresented: $showingAccount) {
                 AccountBottomSheet(
                     isPresented: $showingAccount,
-                    selectedDetent: $accountSheetDetent,
+                    selectedDetent: .constant(.large),
                     userName: profileManager.displayName,
                     userEmail: nil,
                     profileImage: nil
                 )
-                .presentationDetents([.medium, .large], selection: $accountSheetDetent)
+                .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
-                .interactiveDismissDisabled(false)
             }
             // Start database observation
             .task {
@@ -56,6 +45,19 @@ struct HomeView: View {
                 }
             }
         }
+    }
+
+    private var headerView: some View {
+        HStack {
+            Text("Home")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+
+            Spacer()
+
+            profileAvatar
+        }
+        .padding(.horizontal)
     }
 
     @ViewBuilder
@@ -99,7 +101,7 @@ struct HomeView: View {
     }
 
     private var profileAvatar: some View {
-        HStack {
+        Group {
             if let avatarUrl = profileManager.avatarUrl,
                let url = URL(string: avatarUrl) {
                 CachedAsyncImage(url: url) { image in
@@ -107,25 +109,36 @@ struct HomeView: View {
                         .resizable()
                         .scaledToFill()
                 } placeholder: {
-                    Color.clear
+                    Circle()
+                        .fill(Color.secondary.opacity(0.3))
                 }
-                .frame(width: 35, height: 35)
+                .frame(width: 40, height: 40)
                 .clipShape(Circle())
-                .onTapGesture {
-                    HapticManager.light()
-                    showingAccount.toggle()
-                }
             } else {
-                ProfileCircleView(
-                    profileImage: nil,
-                    userName: profileManager.displayName
-                )
-                .onTapGesture {
-                    HapticManager.light()
-                    showingAccount.toggle()
-                }
+                Circle()
+                    .fill(Color.secondary.opacity(0.3))
+                    .frame(width: 40, height: 40)
+                    .overlay {
+                        Text(userInitials)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.primary)
+                    }
             }
         }
+        .onTapGesture {
+            HapticManager.light()
+            showingAccount.toggle()
+        }
+    }
+
+    private var userInitials: String {
+        profileManager.displayName
+            .split(separator: " ")
+            .compactMap { $0.first }
+            .prefix(2)
+            .map(String.init)
+            .joined()
+            .uppercased()
     }
 
     private var emptyState: some View {
@@ -140,13 +153,21 @@ struct HomeView: View {
         let listContext = Array(viewModel.playHistory.prefix(100))
 
         return List {
+            Section {
+                headerView
+            }
+            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 0, trailing: 0))
+            .listRowSeparator(.hidden)
+
             if !listContext.isEmpty {
-                Text("Recents")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .foregroundColor(Color.primary)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 8, trailing: 16))
+                Section {
+                    Text("Recents")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(Color.primary)
+                }
+                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+                .listRowSeparator(.hidden)
 
                 ForEach(Array(listContext.enumerated()), id: \.element.id) { index, item in
                     TrackRow(
