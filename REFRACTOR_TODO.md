@@ -18,7 +18,7 @@ This is the step-by-step refactor queue. Goal: one focused PR at a time, easy to
 - Target files: `mixbridge/mixbridgeApp.swift`, `mixbridge/ContentView.swift`, `mixbridge/Components/ExpandedMusicPlayer.swift`, `mixbridge/Views/Settings/AutomixSettingsView.swift`.
 - Acceptance: app builds; mini player + expanded player + play/pause/next/prev all still work.
 
-### PR 02 — Fix `@StateObject`-singleton anti-pattern for `DownloadManager`
+### PR 02 — Fix `@StateObject`-singleton anti-pattern for `DownloadManager` ✅
 
 - Provide `DownloadManager.shared` via `environmentObject` at the app root.
 - Replace `@StateObject private var downloadManager = DownloadManager.shared` with `@EnvironmentObject var downloadManager: DownloadManager`.
