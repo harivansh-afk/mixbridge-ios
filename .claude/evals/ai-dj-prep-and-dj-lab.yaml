@@ -1,0 +1,158 @@
+name: ai-dj-prep-and-dj-lab
+description: Dev-only DJ Lab in the iOS app + background prep service to download/analyze upcoming tracks using MixBridgeDJ.
+
+building_spec:
+  description: |
+    Turn the existing MixBridgeDJ package (engine + local analyzer) into something you can
+    actually audition inside the iOS app, without changing production playback yet.
+
+    Deliver:
+      1) A dev-only “DJ Lab” screen where a developer can pick two downloaded tracks and
+         audition beat-matched + EQ + crossfade mixing using MixBridgeDJ.
+      2) A background DJ prep service that (when enabled) keeps the next N queue tracks
+         downloaded + analyzed so DJ mixes are ready when needed later.
+
+  requirements:
+    # --- Project wiring ---
+    - Add the local Swift package `Packages/MixBridgeDJ` as a dependency of the iOS app target
+      in `mixbridge.xcodeproj` so app code can `import MixBridgeDJ`.
+
+    # --- DJ settings (minimal) ---
+    - Add minimal persisted settings to PlayerState:
+      - `djEnabled: Bool` (default false)
+      - `djDownloadAheadCount: Int` (default 2, clamp 0...5)
+      - `djAutoDownloadAhead: Bool` (default false)  # if false, only analyze already-downloaded tracks
+    - Store these in UserDefaults similarly to existing crossfade settings.
+
+    # --- DJ analysis manager ---
+    - Create `DJAnalysisManager` (singleton) to:
+      - hold a `DJLocalAnalyzer` and a `DJFileAnalysisStore` (defaultStore)
+      - expose async: `analyzeIfNeeded(trackId:fileURL:) -> DJAnalysisResult`
+      - expose in-memory status for UI: per trackId (idle / analyzing / ready(result) / failed(error))
+      - never block the main thread; run analysis at `.utility` priority.
+
+    # --- DJ prep service ---
+    - Create `DJPrepService` (singleton) that is invoked on queue changes to prepare the next tracks:
+      - Determine upcoming track IDs from QueueManager (next N tracks).
+      - For each track:
+        - If downloaded file exists: analyze via DJAnalysisManager (uses cache).
+        - Else if PlayerState.djAutoDownloadAhead is true and SoundCloud metadata exists:
+          call DownloadManager.downloadTrack(soundCloudTrack) to fetch it for offline.
+      - Throttle concurrency (max 1 analysis at a time; max 1 download trigger at a time).
+      - Be cancellation-safe: if queue changes rapidly, cancel stale work and keep latest.
+      - Log events to help debugging: prep start/complete, analyze start/complete, confidence.
+
+    # --- DJ audition controller (engine lifecycle) ---
+    - Create `DJAuditionController` responsible for:
+      - owning a `DJMixerEngine` lifecycle (start/stop)
+      - loading deck A/B from file URLs + timings (use `DJAnalysisResult.toTrackTiming()`)
+      - constructing a DJTransitionPlan from UI settings:
+        - crossfadeSeconds (use PlayerState.crossfadeSeconds)
+        - beat alignment mode: `.beat` by default; if analysis not usable -> `.none`
+        - tempo match: enabled only when both tracks have usable analysis
+        - EQ: apply a sensible “DJ polish” preset (at minimum: incoming high duck curve)
+      - executing transition either:
+        - automatically at a chosen fadeStartSeconds (e.g., 8s), OR
+        - manually via a “Trigger Transition” button in the UI.
+
+    # --- Dev-only DJ Lab UI ---
+    - Add a new dev-only view `DJLabView` reachable from the account bottom sheet when `BuildEnvironment.isDevMode`:
+      - List downloaded tracks from DownloadManager.downloadedTracks (show title/artist).
+      - Allow selecting Outgoing (A) and Incoming (B).
+      - Show analysis status/results (BPM, confidence, beatOffsetSeconds).
+      - Controls:
+        - Toggle: Beat Sync (on/off)  # off uses DJBeatAlignmentMode.none
+        - Toggle: Tempo Match (on/off)  # default on, but gated by analysis confidence
+        - Toggle: EQ Polish (on/off)  # default on (high duck on incoming)
+        - Button: “Analyze Selected”
+        - Button: “Start Deck A”
+        - Button: “Trigger Transition”
+        - Button: “Stop”
+      - Display clear fallback messaging when analysis confidence is too low.
+
+    # --- Hook prep into existing flow (no playback change yet) ---
+    - In `PlaybackCoordinator.handleQueueChanged()`, if `PlayerState.shared.djEnabled` is true:
+      call `DJPrepService.shared.handleQueueChanged()`.
+      This should not alter playback behavior; it only prepares downloads/analysis in background.
+
+  constraints:
+    - DJ Lab must be hidden in App Store builds (gate with `BuildEnvironment.isDevMode`).
+    - Do not replace existing playback with DJ engine in this slice.
+    - No network calls beyond the existing DownloadManager behavior (and only when user enables auto-download).
+    - Keep all analysis + file IO off the main thread; never block UI.
+
+  files:
+    - mixbridge/Models/PlayerState.swift
+    - mixbridge/Services/PlaybackCoordinator.swift
+    - mixbridge/Components/AccountBottomSheet.swift
+    - mixbridge/Services/DJ/DJAnalysisManager.swift
+    - mixbridge/Services/DJ/DJPrepService.swift
+    - mixbridge/Services/DJ/DJAuditionController.swift
+    - mixbridge/Views/Dev/DJLabView.swift
+    - mixbridge.xcodeproj/project.pbxproj
+
+test_output:
+  framework: swiftpm
+  path: Packages/MixBridgeDJ/Tests/MixBridgeDJTests/
+
+verification_spec:
+  # --- Deterministic ---
+  - type: command
+    run: "swift test --package-path Packages/MixBridgeDJ"
+    expect: exit_code 0
+
+  - type: command
+    run: "xcodebuild -project mixbridge.xcodeproj -scheme mixbridge -destination 'platform=iOS Simulator,name=iPhone 16' build"
+    expect: exit_code 0
+
+  - type: file-contains
+    path: mixbridge/Components/AccountBottomSheet.swift
+    pattern: "DJ Lab"
+
+  - type: file-contains
+    path: mixbridge/Views/Dev/DJLabView.swift
+    pattern: "import MixBridgeDJ"
+
+  - type: file-contains
+    path: mixbridge/Services/PlaybackCoordinator.swift
+    pattern: "DJPrepService"
+
+  - type: file-exists
+    path: mixbridge/Services/DJ/DJPrepService.swift
+
+  - type: file-exists
+    path: mixbridge/Services/DJ/DJAuditionController.swift
+
+  # --- Agent: manual audition (human-verifiable) ---
+  - type: agent
+    name: dj-lab-audition
+    prompt: |
+      Manual audition steps (dev build):
+      1) Ensure you have at least two downloaded tracks in Downloads.
+      2) Open the account bottom sheet and navigate to “DJ Lab”.
+      3) Select an outgoing track (A) and incoming track (B).
+      4) Tap “Analyze Selected” and confirm BPM + confidence appears for both.
+      5) Tap “Start Deck A”, then “Trigger Transition”.
+      6) Confirm audibly:
+         - incoming starts on-beat (no obvious flam) when confidence is high
+         - tempo match is applied (incoming speed adjusted subtly)
+         - EQ polish is noticeable (incoming highs are ducked early, then restored)
+      7) Toggle Beat Sync off and repeat, confirm incoming starts immediately (not aligned).
+    evidence:
+      - screenshot: dj-lab
+      - text: "BPM"
+      - text: "confidence"
+    generate_test: false
+
+  - type: agent
+    name: prep-service-does-not-touch-playback
+    prompt: |
+      Verify DJPrepService is side-effect safe:
+      - It should not start/stop playback, seek, or modify the current player state.
+      - It may only trigger downloads and analysis tasks.
+      - Confirm it is invoked from PlaybackCoordinator.handleQueueChanged only when djEnabled is true.
+    evidence:
+      - text: "djEnabled"
+      - text: "handleQueueChanged"
+      - text: "download"
+    generate_test: false
