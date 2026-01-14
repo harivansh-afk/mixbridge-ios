@@ -1049,3 +1049,102 @@ ArtworkView(
 // Resolution: ArtworkView(placeholderIcon: "playlist")  // PR component + main's icon
 ```
 - **Session**: Rebasing PR#66 onto main (2026-01-14)
+
+---
+
+## AVAudioEngine DJ Mixing
+
+### Manual Rendering Mode for Testable Audio Processing
+- **Context**: Building testable audio processing pipelines with AVAudioEngine
+- **Learning**: Use `enableManualRenderingMode(.offline, ...)` to make audio processing deterministic and testable. This allows rendering audio to buffers without real-time playback, enabling numerical verification of crossfade curves, EQ effects, and tempo changes.
+- **Example**:
+```swift
+try engine.enableManualRenderingMode(
+    .offline,
+    format: format,
+    maximumFrameCount: framesPerRender
+)
+engine.prepare()
+try engine.start()
+
+// Render to buffer
+let status = try engine.renderOffline(frameCount, to: outputBuffer)
+```
+- **Benefits**: Tests can verify actual audio output values (RMS levels, frequency content) rather than just "no crash" assertions.
+- **Session**: AI DJ Engine Core implementation (2026-01-14)
+
+### AVAudioUnitTimePitch for Tempo Matching Without Pitch Shift
+- **Context**: Matching BPM between two tracks while preserving pitch
+- **Learning**: Use `AVAudioUnitTimePitch` with `pitch = 0.0` and `rate = targetBPM / sourceBPM` for tempo matching. Always clamp rate to a safe range (default ±8%) to avoid artifacts.
+- **Example**:
+```swift
+let timePitch = AVAudioUnitTimePitch()
+timePitch.pitch = 0.0  // No pitch shift - critical!
+timePitch.rate = max(0.92, min(1.08, targetBPM / sourceBPM))
+```
+- **Session**: AI DJ Engine Core implementation (2026-01-14)
+
+### Equal-Power Crossfade Prevents Loudness Dip
+- **Context**: Crossfading between two audio sources without perceived volume drop at midpoint
+- **Learning**: Linear crossfade causes a -3dB dip at midpoint. Use equal-power (cosine/sine) curves where `sum of squared gains = 1.0` at all points. At midpoint: `outGain = cos(0.5 * pi/2) ≈ 0.707`, `inGain = sin(0.5 * pi/2) ≈ 0.707`, so `0.707² + 0.707² = 1.0`.
+- **Example**:
+```swift
+func equalPowerGains(progress: Float) -> (outgoing: Float, incoming: Float) {
+    let outGain = cos(progress * .pi / 2)
+    let inGain = sin(progress * .pi / 2)
+    return (outGain, inGain)
+}
+```
+- **Session**: AI DJ Engine Core implementation (2026-01-14)
+
+### Beat/Bar Boundary Calculation for Aligned Transitions
+- **Context**: Scheduling incoming track to start on a beat or bar boundary
+- **Learning**: Use `ceil()` to find the NEXT boundary at or after a given time, accounting for downbeat offset. For bar alignment, multiply beat duration by time signature numerator.
+- **Example**:
+```swift
+func nextBeatBoundary(after time: TimeInterval, bpm: Double, downbeatOffset: TimeInterval) -> TimeInterval {
+    let beatDuration = 60.0 / bpm
+    let adjustedTime = time - downbeatOffset
+    let nextBeatNumber = ceil(adjustedTime / beatDuration)
+    return nextBeatNumber * beatDuration + downbeatOffset
+}
+```
+- **Session**: AI DJ Engine Core implementation (2026-01-14)
+
+---
+
+## Swift Guard Statement Patterns
+
+### Guard Must Exit Scope - Use if-let for Validation Without Exit
+- **Context**: Swift guard statements that validate but don't need to return/throw
+- **Learning**: `guard` requires a control flow exit (`return`, `throw`, `continue`, `break`). For validation logic that just sets variables, use `if-let` patterns instead, or restructure to avoid guard.
+- **Example**:
+```swift
+// Wrong - guard without exit won't compile
+guard let timing = outgoingTiming, timing.isValid else {
+    // Can't just set a variable here - guard MUST exit
+}
+
+// Correct - use if-let or conditional assignment
+let timingValid = outgoingTiming?.isValid ?? false
+if !timingValid {
+    beatAlignment = .none  // Adjust behavior without exiting scope
+}
+```
+- **Session**: AI DJ Engine Core implementation (2026-01-14)
+
+---
+
+## Eval-Driven Development
+
+### Use eval-verifier Subagent for Specification Verification
+- **Context**: Implementing features with detailed verification specs
+- **Learning**: When an eval spec file defines verification checks (file-exists, command, file-contains, agent checks), use the `eval-verifier` subagent instead of manual verification. It systematically runs all checks and generates evidence.
+- **Usage**: `Task tool with subagent_type=eval-verifier`
+- **Benefits**: Catches missed requirements, generates verification evidence, ensures spec compliance.
+- **Session**: AI DJ Engine Core implementation (2026-01-14)
+
+### Ignore SourceKit Diagnostics During Package Creation
+- **Context**: Creating new Swift packages with multiple interdependent files
+- **Learning**: When creating a new Swift package, SourceKit will show "Cannot find type" and "No such module" errors before the package is built. These are expected - SourceKit doesn't have full module context until `swift build` runs. Continue implementation and verify by running `swift test`.
+- **Session**: AI DJ Engine Core implementation (2026-01-14)
