@@ -15,44 +15,47 @@ struct LibraryView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if viewModel.isLoading && viewModel.playlists.isEmpty {
-                    VStack {
-                        Spacer()
-                        ProgressView()
-                            .scaleEffect(1.5)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            headerView
-                            if !viewModel.playlists.isEmpty {
-                                playlistGridSection
-                            }
-                            navigationSection
-                            if viewModel.playlists.count > 6 {
-                                recentlyAddedGridSection
-                            }
-                        }
-                    }
-                    .refreshable {
-                        await loadPlaylists(forceRefresh: true)
+            content
+                .refreshable {
+                    await loadPlaylists(forceRefresh: true)
+                }
+                // Start database observation
+                .task {
+                    if let userId = authManager.currentUserId {
+                        await viewModel.observeDatabase(userId: userId)
                     }
                 }
-            }
-            // Start database observation
-            .task {
-                if let userId = authManager.currentUserId {
-                    await viewModel.observeDatabase(userId: userId)
+                // Fetch fresh data
+                .task {
+                    if let userId = authManager.currentUserId {
+                        await profileManager.loadProfile(userId: userId)
+                        await viewModel.refresh(userId: userId)
+                    }
                 }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if viewModel.isLoading && viewModel.playlists.isEmpty {
+            VStack {
+                Spacer()
+                ProgressView()
+                    .scaleEffect(1.5)
+                Spacer()
             }
-            // Fetch fresh data
-            .task {
-                if let userId = authManager.currentUserId {
-                    await profileManager.loadProfile(userId: userId)
-                    await viewModel.refresh(userId: userId)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    headerView
+                    if !viewModel.playlists.isEmpty {
+                        playlistGridSection
+                    }
+                    navigationSection
+                    if viewModel.playlists.count > 6 {
+                        recentlyAddedGridSection
+                    }
                 }
             }
         }
