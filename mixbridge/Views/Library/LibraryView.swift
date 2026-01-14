@@ -42,18 +42,19 @@ struct LibraryView: View {
                     }
                 }
             }
-            // Start database observation
-            .task {
-                if let userId = authManager.currentUserId {
+            .task(id: authManager.currentUserId) {
+                let userId = authManager.currentUserId
+                async let observe: Void = {
+                    guard let userId else { return }
                     await viewModel.observeDatabase(userId: userId)
-                }
-            }
-            // Fetch fresh data
-            .task {
-                if let userId = authManager.currentUserId {
+                }()
+
+                if let userId {
                     await profileManager.loadProfile(userId: userId)
                     await viewModel.refresh(userId: userId)
                 }
+
+                _ = await observe
             }
         }
     }
