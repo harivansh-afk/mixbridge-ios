@@ -838,3 +838,214 @@ private var navigationTitle: String {
 - **Context**: Adding padding around List sections
 - **Learning**: Use `.listSectionSpacing(16)` at the List level for consistent section spacing. For internal section padding (top/bottom of content within a section), use `.listRowInsets()` or wrap content in a container with padding. Note: Applying padding to individual rows may create unwanted spacing between all items.
 - **Session**: Playlist track picker UI refinement (2026-01-13)
+
+---
+
+## SwiftUI Dependency Injection Refactoring
+
+### Replace Singleton Access with @Environment for @Observable Types
+- **Context**: Migrating from `PlayerState.shared` or `DownloadManager.shared` direct access to proper dependency injection
+- **Learning**: For `@Observable` classes, use `@Environment(TypeName.self)` injection pattern. For `ObservableObject` classes that can't migrate to `@Observable`, use `@EnvironmentObject`. Inject at app root via `.environment(Singleton.shared)` or `.environmentObject(Singleton.shared)`.
+- **Example**:
+```swift
+// Before (tight coupling to singleton)
+private var playerState = PlayerState.shared
+PlayerState.shared.play(track: track)
+
+// After (dependency injection)
+@Environment(PlayerState.self) private var playerState
+playerState.play(track: track)
+
+// At app root (mixbridgeApp.swift)
+.environment(PlayerState.shared)
+.environmentObject(DownloadManager.shared)
+```
+- **Benefits**: Easier testing, preview support, and clearer data flow
+- **Session**: PR01-PR02 PlayerState/DownloadManager environment injection (2026-01-14)
+
+### @Bindable Required for Two-Way Binding with @Environment
+- **Context**: Using `@Binding` or `$property` syntax with `@Environment`-injected `@Observable` objects
+- **Learning**: `@Environment` provides read-only access. For two-way bindings, create a local `@Bindable` copy inside the body or function scope.
+- **Example**:
+```swift
+@Environment(PlayerState.self) private var playerState
+
+var body: some View {
+    @Bindable var playerState = playerState  // Enable $binding syntax
+
+    Slider(value: $playerState.playbackPosition)
+}
+```
+- **Session**: PR01 ExpandedMusicPlayer bindings (2026-01-14)
+
+---
+
+## SwiftUI ForEach Stability
+
+### IndexedRow Pattern for Stable ForEach Identity
+- **Context**: Using `ForEach(Array(collection.enumerated()), id: \.element.id)` causes re-renders when indices change
+- **Learning**: Create a dedicated `IndexedRow<Item>` wrapper that derives its `id` from the item, not the tuple. This prevents row recreation when items are added/removed from other positions in the list.
+- **Example**:
+```swift
+// Utility type (IndexedRow.swift)
+struct IndexedRow<Item: Identifiable>: Identifiable {
+    let item: Item
+    let index: Int
+    var id: Item.ID { item.id }  // Identity from item, not index
+}
+
+extension Collection where Element: Identifiable {
+    func indexedRows() -> [IndexedRow<Element>] {
+        enumerated().map { IndexedRow(item: $0.element, index: $0.offset) }
+    }
+}
+
+// Usage in views
+let rows = items.indexedRows()
+ForEach(rows) { row in
+    TrackRow(row.item, number: row.index + 1)
+}
+```
+- **Why it matters**: The standard `enumerated()` pattern uses a tuple `(offset, element)` where the index is part of identity, causing full row recreation on any collection mutation.
+- **Session**: PR03 Stable ForEach rows (2026-01-14)
+
+### Pre-compute IndexedRows in ViewModel for Performance
+- **Context**: Large lists where `.indexedRows()` is called in body
+- **Learning**: For frequently updated collections, pre-compute `indexedRows` in the ViewModel and expose as a separate published property. Update it atomically when the source collection changes.
+- **Example**:
+```swift
+@Observable final class PlaylistDetailViewModel {
+    private(set) var trackItems: [TrackItem] = []
+    private(set) var trackRows: [IndexedRow<TrackItem>] = []
+
+    func handleUpdate(_ items: [TrackItem]) {
+        trackItems = items
+        trackRows = items.indexedRows()  // Pre-computed
+    }
+}
+```
+- **Session**: PR03 ViewModels pre-computing rows (2026-01-14)
+
+---
+
+## SwiftUI Task Consolidation
+
+### Consolidate Multiple .task Modifiers Using async let
+- **Context**: Views with multiple `.task { }` modifiers for observation and data fetching
+- **Learning**: Multiple `.task` modifiers can cause race conditions and unnecessary complexity. Consolidate into a single `.task(id:)` using `async let` for concurrent operations that don't depend on each other.
+- **Example**:
+```swift
+// Before - multiple tasks, potential race conditions
+.task { await viewModel.observeDatabase() }
+.task { await viewModel.observePlaylistsDatabase() }
+.task {
+    if let userId = authManager.currentUserId {
+        await viewModel.refresh(userId: userId)
+    }
+}
+
+// After - single consolidated task
+.task(id: authManager.currentUserId) {
+    async let observeTracks: Void = viewModel.observeDatabase()
+    async let observePlaylists: Void = viewModel.observePlaylistsDatabase()
+
+    if let userId = authManager.currentUserId {
+        await viewModel.refresh(userId: userId)
+    }
+
+    _ = await (observeTracks, observePlaylists)
+}
+```
+- **Benefits**:
+  - Task restarts when `id` changes (e.g., user logs out/in)
+  - Clear ordering: fetches complete before awaiting observation
+  - Single cancellation point
+- **Session**: PR04 Consolidate screen tasks (2026-01-14)
+
+### Use .task(id:) for User-Dependent Operations
+- **Context**: Tasks that should restart when the authenticated user changes
+- **Learning**: Wrap user-dependent async operations in `.task(id: authManager.currentUserId)`. The task automatically cancels and restarts when the user ID changes (login/logout).
+- **Session**: PR04 Consolidate screen tasks (2026-01-14)
+
+---
+
+## Large File Decomposition
+
+### Split Large Files into Extensions by Responsibility
+- **Context**: Files exceeding 600+ lines with multiple distinct responsibilities
+- **Learning**: Use Swift extensions in separate files to group related functionality. Name files as `TypeName+Responsibility.swift`. Keep the main file focused on core state and initialization.
+- **Example** (PlayerState split into 6 files):
+```
+PlayerState.swift                           - Core state, init, main API
+PlayerState+AudioSession.swift              - AVAudioSession setup, interruption handling
+PlayerState+NowPlaying.swift                - MPNowPlayingInfoCenter updates
+PlayerState+Persistence.swift               - UserDefaults save/load
+PlayerState+PlaybackCoordinatorDelegate.swift - Delegate callbacks
+PlayerState+RemoteCommands.swift            - MPRemoteCommandCenter setup
+```
+- **Key insight**: Extensions in separate files can access `internal` properties. Change `private` to `internal` (or omit access modifier) for properties needed across extensions.
+- **Session**: PR09 Split PlayerState into focused files (2026-01-14)
+
+### Decompose Complex SwiftUI Views into Subviews
+- **Context**: Large view files (500+ lines) with multiple distinct sections
+- **Learning**: Extract self-contained view sections into separate files. Pass only required data as parameters. Good candidates: background stacks, sheet content, reusable row types.
+- **Example** (ExpandedMusicPlayer decomposition):
+```swift
+// Before: 800+ line ExpandedMusicPlayer.swift
+
+// After: Split into focused views
+ExpandedMusicPlayer.swift              - Main view, orchestration
+ExpandedPlayerBackgroundStack.swift    - Blurred background layers
+ExpandedPlayerQueueSheet.swift         - Queue sheet overlay
+```
+- **Session**: PR10 Decompose ExpandedMusicPlayer (2026-01-14)
+
+---
+
+## UI Component Deduplication
+
+### Extract Reusable ArtworkView Component
+- **Context**: Multiple views with identical artwork loading/placeholder logic
+- **Learning**: Create a configurable `ArtworkView` component that handles URL loading, placeholders, corner radius, and shadows. Use parameters for customization rather than duplicating code.
+- **Example**:
+```swift
+struct ArtworkView: View {
+    let artwork: String           // URL string
+    let size: CGFloat?            // nil for flexible
+    let cornerRadius: CGFloat
+    var placeholderIcon: String = "music-note-simple"
+    var placeholderIconSize: CGFloat? = nil
+    var showsProgressWhileLoading: Bool = true
+    var shadow: (color: Color, radius: CGFloat, y: CGFloat)? = nil
+
+    // Handles: URL validation, CachedAsyncImage, placeholder, shadow
+}
+
+// Usage - replaces 30+ lines of inline code
+ArtworkView(
+    artwork: playlist.artwork,
+    size: artworkSize,
+    cornerRadius: 20,
+    placeholderIcon: "playlist",
+    shadow: (color: .black.opacity(0.3), radius: 20, y: 10)
+)
+```
+- **Session**: PR11 Deduplicate artwork + avatar UI components (2026-01-14)
+
+---
+
+## Git Rebase Conflict Resolution
+
+### Rebase PR Branches to Incorporate Main Changes
+- **Context**: PR branch conflicts with main after main receives new commits
+- **Learning**: Use `git rebase origin/main` to replay PR commits on top of main. This ensures main's changes form the base and PR changes are applied cleanly on top. Force push after rebase with `git push --force-with-lease`.
+- **Conflict resolution strategy**:
+  1. For UI changes: Keep main's visual changes (icons, sizes), apply PR's structural changes (dependency injection, task consolidation)
+  2. For component extraction: Use the new component but preserve main's placeholder icons/assets
+- **Example conflict resolution**:
+```swift
+// Main had: Image("playlist") as placeholder
+// PR had: ArtworkView(placeholderIcon: "music-note")
+// Resolution: ArtworkView(placeholderIcon: "playlist")  // PR component + main's icon
+```
+- **Session**: Rebasing PR#66 onto main (2026-01-14)
