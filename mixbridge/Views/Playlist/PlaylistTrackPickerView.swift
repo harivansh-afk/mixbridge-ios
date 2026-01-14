@@ -88,7 +88,13 @@ struct PlaylistTrackPickerView: View {
                     viewModel: viewModel
                 )
             } label: {
-                Label("Liked Tracks", systemImage: "heart.fill")
+                Label {
+                    Text("Liked Tracks")
+                } icon: {
+                    Image("heart")
+                        .resizable()
+                        .frame(width: 25, height: 25)
+                }
             }
 
             NavigationLink {
@@ -98,7 +104,13 @@ struct PlaylistTrackPickerView: View {
                     viewModel: viewModel
                 )
             } label: {
-                Label("Recently Played", systemImage: "clock.fill")
+                Label {
+                    Text("Recently Played")
+                } icon: {
+                    Image("clock")
+                        .resizable()
+                        .frame(width: 25, height: 25)
+                }
             }
 
             NavigationLink {
@@ -107,7 +119,13 @@ struct PlaylistTrackPickerView: View {
                     viewModel: viewModel
                 )
             } label: {
-                Label("Playlists", systemImage: "music.note.list")
+                Label {
+                    Text("Playlists")
+                } icon: {
+                    Image("playlist")
+                        .resizable()
+                        .frame(width: 25, height: 25)
+                }
             }
         } header: {
             Text("Library")
@@ -242,7 +260,7 @@ private struct PlaylistSelectionListView: View {
             if playlists.isEmpty {
                 ContentUnavailableView(
                     "No Playlists",
-                    systemImage: "music.note.list",
+                    image: "playlist",
                     description: Text("No playlists available")
                 )
             } else {

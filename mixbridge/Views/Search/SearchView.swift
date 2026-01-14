@@ -292,7 +292,7 @@ struct SearchView: View {
                             }
                         case .playlists:
                             ContentUnavailableView {
-                                Label("No playlists found", systemImage: "music.note.list")
+                                Label("No playlists found", image: "playlist")
                             }
                         case .artists:
                             ContentUnavailableView {
@@ -338,7 +338,7 @@ struct SearchView: View {
                     .fill(Color.gray.opacity(0.3))
                     .frame(width: 56, height: 56)
                     .overlay {
-                        Image("music-note")
+                        Image("playlist")
                             .renderingMode(.template)
                             .foregroundStyle(.secondary)
                     }
@@ -525,7 +525,7 @@ struct SearchView: View {
                             }
                         case .playlists:
                             ContentUnavailableView {
-                                Label("No playlists found", systemImage: "music.note.list")
+                                Label("No playlists found", image: "playlist")
                             }
                         case .artists:
                             ContentUnavailableView {
@@ -575,7 +575,7 @@ struct SearchView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color(.systemGray5))
                         .overlay {
-                            Image("music-note")
+                            Image("playlist")
                                 .renderingMode(.template)
                                 .foregroundStyle(.secondary)
                         }
@@ -587,7 +587,7 @@ struct SearchView: View {
                     .fill(Color(.systemGray5))
                     .frame(width: 56, height: 56)
                     .overlay {
-                        Image("music-note")
+                        Image("playlist")
                             .renderingMode(.template)
                             .foregroundStyle(.secondary)
                     }

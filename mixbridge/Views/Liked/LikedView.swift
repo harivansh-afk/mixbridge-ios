@@ -212,7 +212,7 @@ struct LikedView: View {
                 .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets())
         } else if filteredPlaylists.isEmpty {
-            ContentUnavailableView("No liked playlists", systemImage: "music.note.list")
+            ContentUnavailableView("No liked playlists", image: "playlist")
                 .listRowSeparator(.hidden)
         } else {
             ForEach(Array(filteredPlaylists.enumerated()), id: \.element.id) { index, item in
@@ -235,7 +235,7 @@ struct LikedView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color(.systemGray5))
                         .overlay {
-                            Image("music-note")
+                            Image("playlist")
                                 .renderingMode(.template)
                                 .foregroundStyle(.secondary)
                         }
@@ -247,7 +247,7 @@ struct LikedView: View {
                     .fill(Color(.systemGray5))
                     .frame(width: 56, height: 56)
                     .overlay {
-                        Image("music-note")
+                        Image("playlist")
                             .renderingMode(.template)
                             .foregroundStyle(.secondary)
                     }

@@ -143,7 +143,7 @@ struct DownloadsView: View {
     @ViewBuilder
     private var playlistsContent: some View {
         if downloadManager.downloadedPlaylists.isEmpty {
-            ContentUnavailableView("No downloaded playlists", systemImage: "music.note.list")
+            ContentUnavailableView("No downloaded playlists", image: "playlist")
                 .listRowSeparator(.hidden)
         } else {
             ForEach(Array(downloadManager.downloadedPlaylists.enumerated()), id: \.element.id) { index, item in
@@ -166,7 +166,7 @@ struct DownloadsView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color(.systemGray5))
                         .overlay {
-                            Image("music-note")
+                            Image("playlist")
                                 .renderingMode(.template)
                                 .foregroundStyle(.secondary)
                         }
@@ -178,7 +178,7 @@ struct DownloadsView: View {
                     .fill(Color(.systemGray5))
                     .frame(width: 56, height: 56)
                     .overlay {
-                        Image("music-note")
+                        Image("playlist")
                             .renderingMode(.template)
                             .foregroundStyle(.secondary)
                     }

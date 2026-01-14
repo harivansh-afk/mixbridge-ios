@@ -20,7 +20,8 @@ struct LibraryNavigationRow: View {
                     Image(systemName: icon)
                 } else {
                     Image(icon)
-                        .renderingMode(.template)
+                        .resizable()
+                        .frame(width: 25, height:25)
                 }
             }
             .font(.title3)
@@ -53,7 +54,7 @@ struct LibraryNavigationRow: View {
         )
 
         LibraryNavigationRow(
-            icon: "music-note",
+            icon: "playlist",
             title: "Playlists",
             iconColor: .primary,
             isSystemImage: false
@@ -93,7 +94,7 @@ struct LibraryNavigationRow: View {
         )
 
         LibraryNavigationRow(
-            icon: "music-note",
+            icon: "playlist",
             title: "Playlists",
             iconColor: .primary,
             isSystemImage: false

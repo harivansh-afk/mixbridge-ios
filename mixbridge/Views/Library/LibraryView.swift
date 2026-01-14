@@ -179,7 +179,7 @@ struct LibraryView: View {
                 AllPlaylistsView()
             } label: {
                 LibraryNavigationRow(
-                    icon: "music-note",
+                    icon: "playlist",
                     title: "Playlists",
                     iconColor: .primary,
                     isSystemImage: false

@@ -13,7 +13,6 @@ struct AccountBottomSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
     @AppStorage("themeMode") private var themeMode: AppearanceMode = .system
-    @State private var Notifications: Bool = false
     @State private var showDeleteConfirmation = false
     private var profileManager = UserProfileManager.shared
     @State private var showFinalDeleteConfirmation = false
@@ -104,30 +103,27 @@ struct AccountBottomSheet: View {
                                 }
                             }
                     } label: {
-                        HStack(spacing: 12) {
+                        HStack {
+                            Image("wave-sine")
+                                .resizable()
+                                .frame(width: 25, height: 25)
+                                .shadow(color: .primary.opacity(0.5), radius: 6)
+                                .shadow(color: .primary.opacity(0.2), radius: 12)
                             Text("Automix")
                                 .font(.system(size: 18))
+                            Spacer()
                         }
                     }
-
-                    Toggle(isOn: $Notifications) {
-                        HStack(spacing: 8) {
-                            Text("Notifications")
-                                .font(.system(size: 18))
-                        }
-                    }
-                    .tint(.blue)
-                }
 
                 // Logout Section
-                Section {
                     Button(action: {
                         authManager.logout()
                         isPresented = false
                     }) {
-                        HStack {
+                        HStack(spacing: 12) {
                             Image(systemName: "rectangle.portrait.and.arrow.right")
                                 .font(.system(size: 18))
+                                .frame(width: 25)
                                 .foregroundStyle(.red)
                             Text("Logout")
                                 .font(.system(size: 18))
@@ -135,16 +131,15 @@ struct AccountBottomSheet: View {
                             Spacer()
                         }
                     }
-                }
 
                 // Delete Account Section
-                Section {
                     Button(action: {
                         showDeleteConfirmation = true
                     }) {
-                        HStack {
+                        HStack(spacing: 12) {
                             Image(systemName: "trash")
                                 .font(.system(size: 18))
+                                .frame(width: 25)
                                 .foregroundStyle(.red)
                             Text("Delete Account")
                                 .font(.system(size: 18))

@@ -177,7 +177,7 @@ struct PlaylistDetailView: View {
             .fill(Color(.systemGray5))
             .frame(width: artworkSize, height: artworkSize)
             .overlay {
-                Image("music-note")
+                Image("playlist")
                     .renderingMode(.template)
                     .font(.system(size: 60))
                     .foregroundStyle(.secondary)

@@ -38,7 +38,7 @@ struct AllPlaylistsView: View {
             } else if viewModel.playlists.isEmpty {
                 ContentUnavailableView(
                     "No Playlists",
-                    systemImage: "music.note.list",
+                    image: "playlist",
                     description: Text("Your playlists will appear here")
                 )
             } else {
