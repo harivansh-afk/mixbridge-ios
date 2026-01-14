@@ -5,9 +5,11 @@
 //  Created by Harivansh Rathi on 11/9/25.
 //
 
+import Inject
 import SwiftUI
 
 struct ContentView: View {
+    @ObserveInjection var inject
 
     @State private var expandMiniPlayer: Bool = false
     @Namespace private var animation
@@ -30,6 +32,7 @@ struct ContentView: View {
                     namespace: animation
                 )
             }
+            .enableInjection()
     }
 }
 
