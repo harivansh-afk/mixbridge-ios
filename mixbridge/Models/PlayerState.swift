@@ -148,6 +148,7 @@ final class PlayerState: NSObject {
     private let queueManager = QueueManager.shared
     private let audioSession = AVAudioSession.sharedInstance()
     private let commandCenter = MPRemoteCommandCenter.shared()
+    private var remoteCommandTargets = RemoteCommandTargets()
 
     private var _currentQueueIndex: Int = -1
 
@@ -218,6 +219,10 @@ final class PlayerState: NSObject {
         configureAudioSession()
         setupNotifications()
         setupRemoteCommands()
+
+        // We currently manage Now Playing via `MPNowPlayingInfoCenter` and remote commands via
+        // `MPRemoteCommandCenter`. We are not adopting `MPNowPlayingSession` yet because this project
+        // supports iOS versions where it may not be available and our playback model is still evolving.
         playbackCoordinator.delegate = self
         playbackCoordinator.setVolume(volume)
         playbackCoordinator.autoplayEnabled = autoplayEnabled
@@ -648,57 +653,54 @@ final class PlayerState: NSObject {
     }
 
     private func setupRemoteCommands() {
-        // Remove all existing targets to prevent duplicates
-        commandCenter.playCommand.removeTarget(nil)
-        commandCenter.pauseCommand.removeTarget(nil)
-        commandCenter.nextTrackCommand.removeTarget(nil)
-        commandCenter.previousTrackCommand.removeTarget(nil)
-        commandCenter.togglePlayPauseCommand.removeTarget(nil)
-        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
-        commandCenter.skipForwardCommand.removeTarget(nil)
-        commandCenter.skipBackwardCommand.removeTarget(nil)
+        teardownRemoteCommands()
 
         // Basic playback controls
-        commandCenter.playCommand.isEnabled = true
-        commandCenter.playCommand.addTarget { [weak self] _ in
-            self?.resume()
+        remoteCommandTargets.play = commandCenter.playCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                self?.resume()
+            }
             return .success
         }
 
-        commandCenter.pauseCommand.isEnabled = true
-        commandCenter.pauseCommand.addTarget { [weak self] _ in
-            self?.pause()
+        remoteCommandTargets.pause = commandCenter.pauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                self?.pause()
+            }
             return .success
         }
 
-        commandCenter.togglePlayPauseCommand.isEnabled = true
-        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
-            self?.togglePlayback()
+        remoteCommandTargets.togglePlayPause = commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                self?.togglePlayback()
+            }
             return .success
         }
 
         // Track navigation
-        commandCenter.nextTrackCommand.isEnabled = true
-        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
-            self?.playNextFromQueue()
+        remoteCommandTargets.nextTrack = commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                self?.playNextFromQueue()
+            }
             return .success
         }
 
-        commandCenter.previousTrackCommand.isEnabled = true
-        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
-            self?.playPreviousFromQueue()
+        remoteCommandTargets.previousTrack = commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                self?.playPreviousFromQueue()
+            }
             return .success
         }
 
         // Playback position (lock screen scrubbing)
-        commandCenter.changePlaybackPositionCommand.isEnabled = true
-        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
-            guard let self else { return .commandFailed }
+        remoteCommandTargets.changePlaybackPosition = commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
                 return .commandFailed
             }
 
-            self.seek(to: positionEvent.positionTime)
+            Task { @MainActor in
+                self?.seek(to: positionEvent.positionTime)
+            }
             return .success
         }
 
@@ -711,6 +713,39 @@ final class PlayerState: NSObject {
         commandCenter.seekForwardCommand.isEnabled = false
         commandCenter.seekBackwardCommand.isEnabled = false
         commandCenter.changePlaybackRateCommand.isEnabled = false
+
+        updateRemoteCommandEnabledState()
+    }
+
+    private func teardownRemoteCommands() {
+        if let target = remoteCommandTargets.play { commandCenter.playCommand.removeTarget(target) }
+        if let target = remoteCommandTargets.pause { commandCenter.pauseCommand.removeTarget(target) }
+        if let target = remoteCommandTargets.togglePlayPause { commandCenter.togglePlayPauseCommand.removeTarget(target) }
+        if let target = remoteCommandTargets.nextTrack { commandCenter.nextTrackCommand.removeTarget(target) }
+        if let target = remoteCommandTargets.previousTrack { commandCenter.previousTrackCommand.removeTarget(target) }
+        if let target = remoteCommandTargets.changePlaybackPosition {
+            commandCenter.changePlaybackPositionCommand.removeTarget(target)
+        }
+
+        remoteCommandTargets = RemoteCommandTargets()
+    }
+
+    private func updateRemoteCommandEnabledState() {
+        commandCenter.playCommand.isEnabled = !isPlaying
+        commandCenter.pauseCommand.isEnabled = isPlaying
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+        commandCenter.nextTrackCommand.isEnabled = canPlayNext
+        commandCenter.previousTrackCommand.isEnabled = canPlayPrevious
+        commandCenter.changePlaybackPositionCommand.isEnabled = duration > 0
+    }
+
+    private struct RemoteCommandTargets {
+        var play: Any?
+        var pause: Any?
+        var togglePlayPause: Any?
+        var nextTrack: Any?
+        var previousTrack: Any?
+        var changePlaybackPosition: Any?
     }
 
     // MARK: - Notifications
@@ -906,8 +941,9 @@ final class PlayerState: NSObject {
         HapticManager.error()
     }
 
-    deinit {
+    @MainActor deinit {
         NotificationCenter.default.removeObserver(self)
+        teardownRemoteCommands()
     }
 }
 
@@ -1023,6 +1059,8 @@ extension PlayerState: PlaybackCoordinatorDelegate {
             InteractionMetrics.end(token, result: isPlaying ? "playing" : "paused")
             pendingToggle = nil
         }
+
+        updateRemoteCommandEnabledState()
     }
 
     func playbackCoordinator(_ coordinator: PlaybackCoordinator, didEncounter error: Error) {
