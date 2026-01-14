@@ -180,18 +180,19 @@ struct LikedView: View {
             ContentUnavailableView("No liked tracks", systemImage: "music.note")
                 .listRowSeparator(.hidden)
         } else {
-            ForEach(Array(filteredTracks.enumerated()), id: \.element.id) { index, item in
+            let rows = filteredTracks.indexedRows()
+            ForEach(rows) { row in
                 TrackRow(
-                    item.track,
-                    number: index + 1,
+                    row.item.track,
+                    number: row.index + 1,
                     showCover: true,
-                    soundCloudTrack: item.soundCloudTrack,
+                    soundCloudTrack: row.item.soundCloudTrack,
                     listContext: filteredTracks,
-                    indexInList: index
+                    indexInList: row.index
                 )
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
-                .listRowSeparator(index == filteredTracks.count - 1 ? .hidden : .visible, edges: .bottom)
+                .listRowSeparator(row.index == 0 ? .hidden : .visible, edges: .top)
+                .listRowSeparator(row.index == rows.count - 1 ? .hidden : .visible, edges: .bottom)
             }
         }
     }
@@ -215,8 +216,9 @@ struct LikedView: View {
             ContentUnavailableView("No liked playlists", image: "playlist")
                 .listRowSeparator(.hidden)
         } else {
-            ForEach(Array(filteredPlaylists.enumerated()), id: \.element.id) { index, item in
-                playlistRow(item: item, index: index, total: filteredPlaylists.count)
+            let rows = filteredPlaylists.indexedRows()
+            ForEach(rows) { row in
+                playlistRow(item: row.item, index: row.index, total: rows.count)
             }
         }
     }

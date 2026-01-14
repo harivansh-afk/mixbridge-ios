@@ -150,7 +150,8 @@ struct HomeView: View {
     }
 
     private var homeList: some View {
-        let listContext = Array(viewModel.playHistory.prefix(100))
+        let listContext = viewModel.playHistory
+        let rows = viewModel.playHistoryRows
 
         return List {
             Section {
@@ -159,7 +160,7 @@ struct HomeView: View {
             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 0, trailing: 0))
             .listRowSeparator(.hidden)
 
-            if !listContext.isEmpty {
+            if !rows.isEmpty {
                 Section {
                     Text("Recents")
                         .font(.title2)
@@ -169,18 +170,18 @@ struct HomeView: View {
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
                 .listRowSeparator(.hidden)
 
-                ForEach(Array(listContext.enumerated()), id: \.element.id) { index, item in
+                ForEach(rows) { row in
                     TrackRow(
-                        item.track,
-                        number: index + 1,
+                        row.item.track,
+                        number: row.index + 1,
                         showCover: true,
-                        soundCloudTrack: item.soundCloudTrack,
+                        soundCloudTrack: row.item.soundCloudTrack,
                         listContext: listContext,
-                        indexInList: index
+                        indexInList: row.index
                     )
                     .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                    .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
-                    .listRowSeparator(index == listContext.count - 1 ? .hidden : .visible, edges: .bottom)
+                    .listRowSeparator(row.index == 0 ? .hidden : .visible, edges: .top)
+                    .listRowSeparator(row.index == rows.count - 1 ? .hidden : .visible, edges: .bottom)
                 }
             }
         }
@@ -193,6 +194,8 @@ struct HomeView: View {
         .environment(AuthManager.shared)
         .environment(UserProfileManager.shared)
         .environment(QueueManager.shared)
+        .environment(PlayerState.shared)
+        .environmentObject(DownloadManager.shared)
         .preferredColorScheme(.light)
 }
 
@@ -201,5 +204,7 @@ struct HomeView: View {
         .environment(AuthManager.shared)
         .environment(UserProfileManager.shared)
         .environment(QueueManager.shared)
+        .environment(PlayerState.shared)
+        .environmentObject(DownloadManager.shared)
         .preferredColorScheme(.dark)
 }

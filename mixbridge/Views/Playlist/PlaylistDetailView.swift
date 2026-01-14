@@ -246,21 +246,21 @@ struct PlaylistDetailView: View {
                 .padding()
                 .listRowBackground(Color.clear)
             } else if !viewModel.trackItems.isEmpty {
-                ForEach(Array(viewModel.trackItems.enumerated()), id: \.element.id) { index, item in
+                ForEach(viewModel.trackRows) { row in
                     TrackRow(
-                        item.track,
-                        number: index + 1,
+                        row.item.track,
+                        number: row.index + 1,
                         showCover: true,
-                        soundCloudTrack: item.soundCloudTrack,
+                        soundCloudTrack: row.item.soundCloudTrack,
                         listContext: viewModel.trackItems,
-                        indexInList: index
+                        indexInList: row.index
                     )
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                 }
             } else if !playlist.tracks.isEmpty {
-                ForEach(Array(playlist.tracks.enumerated()), id: \.element.id) { index, track in
-                    TrackRow(track, number: index + 1, showCover: true)
+                ForEach(playlist.tracks.indexedRows()) { row in
+                    TrackRow(row.item, number: row.index + 1, showCover: true)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 }
