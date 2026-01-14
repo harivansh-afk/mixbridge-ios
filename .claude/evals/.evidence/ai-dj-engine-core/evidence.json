@@ -1,0 +1,231 @@
+{
+  "eval": "ai-dj-engine-core",
+  "timestamp": "2026-01-14T12:41:26Z",
+  "checks": [
+    {
+      "name": "file-exists",
+      "type": "file-exists",
+      "path": "Packages/MixBridgeDJ/Package.swift",
+      "pass": true,
+      "evidence": [
+        {"type": "file", "status": "exists"}
+      ]
+    },
+    {
+      "name": "swift-test",
+      "type": "command",
+      "run": "swift test --package-path Packages/MixBridgeDJ",
+      "pass": true,
+      "evidence": [
+        {"type": "exit_code", "value": 0},
+        {"type": "tests_passed", "count": 21},
+        {"type": "tests_failed", "count": 0}
+      ]
+    },
+    {
+      "name": "file-contains-AVAudioEngine",
+      "type": "file-contains",
+      "path": "Packages/MixBridgeDJ/Sources/MixBridgeDJ/DJMixerEngine.swift",
+      "pattern": "AVAudioEngine",
+      "pass": true,
+      "evidence": [
+        {"type": "pattern_found", "line": 66, "text": "private let engine: AVAudioEngine"},
+        {"type": "pattern_found", "line": 107, "text": "engine = AVAudioEngine()"}
+      ]
+    },
+    {
+      "name": "file-contains-enableManualRenderingMode",
+      "type": "file-contains",
+      "path": "Packages/MixBridgeDJ/Sources/MixBridgeDJ/DJMixerEngine.swift",
+      "pattern": "enableManualRenderingMode",
+      "pass": true,
+      "evidence": [
+        {"type": "pattern_found", "line": 208, "text": "try enableManualRenderingMode()"},
+        {"type": "pattern_found", "line": 224, "text": "private func enableManualRenderingMode() throws"},
+        {"type": "pattern_found", "line": 227, "text": "try engine.enableManualRenderingMode("}
+      ]
+    },
+    {
+      "name": "file-contains-AVAudioUnitEQ",
+      "type": "file-contains",
+      "path": "Packages/MixBridgeDJ/Sources/MixBridgeDJ/DJThreeBandEQ.swift",
+      "pattern": "AVAudioUnitEQ",
+      "pass": true,
+      "evidence": [
+        {"type": "pattern_found", "line": 25, "text": "public let eqNode: AVAudioUnitEQ"},
+        {"type": "pattern_found", "line": 50, "text": "self.eqNode = AVAudioUnitEQ(numberOfBands: 3)"}
+      ]
+    },
+    {
+      "name": "beat-alignment-correctness",
+      "type": "agent",
+      "pass": true,
+      "evidence": [
+        {
+          "type": "text",
+          "pattern": "next beat",
+          "found": true,
+          "locations": [
+            {"file": "DJTrackTiming.swift", "line": 59, "text": "Computes the time of the next beat boundary"},
+            {"file": "DJTrackTiming.swift", "line": 62, "text": "public func nextBeatBoundary(after currentTime: Double) -> Double"},
+            {"file": "DJTransitionPlan.swift", "line": 247, "text": "Align to next beat boundary at or after fade start"},
+            {"file": "DJEngineManualRenderTests.swift", "line": 19, "text": "next beat should be at 0.1"}
+          ]
+        },
+        {
+          "type": "text",
+          "pattern": "bar",
+          "found": true,
+          "locations": [
+            {"file": "DJTrackTiming.swift", "line": 76, "text": "Computes the time of the next bar boundary"},
+            {"file": "DJTrackTiming.swift", "line": 79, "text": "public func nextBarBoundary(after currentTime: Double) -> Double"},
+            {"file": "DJTransitionPlan.swift", "line": 250, "text": "case .bar: Align to next bar boundary"},
+            {"file": "DJEngineManualRenderTests.swift", "line": 32, "text": "Bar boundary calculation finds next bar"}
+          ]
+        },
+        {
+          "type": "text",
+          "pattern": "fallback",
+          "found": true,
+          "locations": [
+            {"file": "DJTransitionPlan.swift", "line": 256, "text": "Creates a fallback plan with safe defaults"},
+            {"file": "DJTransitionPlan.swift", "line": 184, "text": "public let isFallback: Bool"},
+            {"file": "DJPlanValidator.swift", "line": 146, "text": "let fallbackPlan = DJTransitionPlan.fallback"},
+            {"file": "DJPlanValidator.swift", "line": 173, "text": "Creates a safe fallback plan when timing confidence is absent"}
+          ]
+        },
+        {
+          "type": "semantic",
+          "description": "Beat alignment uses ceil() to find next beat at/after fadeStart (lines 70-73 in DJTrackTiming.swift)",
+          "correct": true
+        },
+        {
+          "type": "semantic",
+          "description": "downbeatOffsetSeconds is consistently applied in nextBeatBoundary and nextBarBoundary calculations",
+          "correct": true
+        }
+      ]
+    },
+    {
+      "name": "tempo-match-safety",
+      "type": "agent",
+      "pass": true,
+      "evidence": [
+        {
+          "type": "text",
+          "pattern": "bpmA / bpmB",
+          "found": true,
+          "locations": [
+            {"file": "DJTransitionPlan.swift", "line": 125, "text": "Rate = bpmA / bpmB, clamped to safe range"},
+            {"file": "DJTransitionPlan.swift", "line": 133, "text": "let idealRate = targetBPM / incomingBPM"}
+          ]
+        },
+        {
+          "type": "text",
+          "pattern": "clamp",
+          "found": true,
+          "locations": [
+            {"file": "DJTransitionPlan.swift", "line": 125, "text": "Rate = bpmA / bpmB, clamped to safe range"},
+            {"file": "DJTransitionPlan.swift", "line": 135, "text": "// Clamp to safe range"},
+            {"file": "DJTransitionPlan.swift", "line": 139, "text": "return max(minRate, min(maxRate, idealRate))"},
+            {"file": "DJEngineManualRenderTests.swift", "line": 52, "text": "Tempo match rate calculation with clamping"}
+          ]
+        },
+        {
+          "type": "text",
+          "pattern": "pitch",
+          "found": true,
+          "locations": [
+            {"file": "DJMixerEngine.swift", "line": 166, "text": "timePitchA.pitch = 0.0 // No pitch shift"},
+            {"file": "DJMixerEngine.swift", "line": 170, "text": "timePitchB.pitch = 0.0"},
+            {"file": "DJMixerEngine.swift", "line": 285, "text": "timePitchB.pitch = 0.0"},
+            {"file": "DJMixerEngine.swift", "line": 288, "text": "timePitchB.pitch = 0.0"},
+            {"file": "DJTransitionPlan.swift", "line": 110, "text": "public let preservePitch: Bool"}
+          ]
+        },
+        {
+          "type": "semantic",
+          "description": "Default maxRateAdjustment is 0.08 (±8%), configurable via DJTempoMatchConfig",
+          "correct": true
+        },
+        {
+          "type": "semantic",
+          "description": "Pitch is kept at 0 by default (pitch-preserving time stretch) in lines 166, 170, 285, 288 of DJMixerEngine.swift",
+          "correct": true
+        }
+      ]
+    },
+    {
+      "name": "manual-render-tests-meaningful",
+      "type": "agent",
+      "pass": true,
+      "evidence": [
+        {
+          "type": "text",
+          "pattern": "render",
+          "found": true,
+          "locations": [
+            {"file": "DJEngineManualRenderTests.swift", "line": 5, "text": "Tests for DJ mixer engine using manual/offline rendering"},
+            {"file": "DJEngineManualRenderTests.swift", "line": 300, "text": "MARK: - Manual Render Integration Tests"},
+            {"file": "DJMixerEngine.swift", "line": 347, "text": "public func renderOffline(frameCount: AVAudioFrameCount) throws"}
+          ]
+        },
+        {
+          "type": "text",
+          "pattern": "tolerance",
+          "found": true,
+          "locations": [
+            {"file": "DJEngineManualRenderTests.swift", "line": 119, "text": "let tolerance = 0.05"},
+            {"file": "DJEngineManualRenderTests.swift", "line": 295, "text": "let tolerance: Float = 0.05"}
+          ]
+        },
+        {
+          "type": "text",
+          "pattern": "RMS",
+          "found": true,
+          "locations": [
+            {"file": "DJEngineManualRenderTests.swift", "line": 266, "text": "MARK: - RMS Energy Analysis Tests"},
+            {"file": "DJEngineManualRenderTests.swift", "line": 268, "text": "Test 'RMS calculation returns correct value for sine wave'"},
+            {"file": "DJEngineManualRenderTests.swift", "line": 291, "text": "let rms = DJMixerEngine.computeRMS(buffer: buffer)"},
+            {"file": "DJMixerEngine.swift", "line": 500, "text": "public static func computeRMS(buffer: AVAudioPCMBuffer) -> Float"}
+          ]
+        },
+        {
+          "type": "text",
+          "pattern": "energy",
+          "found": true,
+          "locations": [
+            {"file": "DJEngineManualRenderTests.swift", "line": 78, "text": "Equal-power crossfade maintains energy at midpoint"},
+            {"file": "DJMixerEngine.swift", "line": 500, "text": "Computes the RMS (root mean square) energy"},
+            {"file": "DJMixerEngine.swift", "line": 524, "text": "public static func computeHighFrequencyEnergy"}
+          ]
+        },
+        {
+          "type": "semantic",
+          "description": "Test 'Tempo match rate calculation with clamping' validates tempo matching with tolerance (lines 52-74)",
+          "meaningful": true
+        },
+        {
+          "type": "semantic",
+          "description": "Test 'Equal-power crossfade avoids loudness dip' validates crossfade energy with tolerance checking (lines 98-122)",
+          "meaningful": true
+        },
+        {
+          "type": "semantic",
+          "description": "Test 'Three-band EQ applies curves correctly' validates EQ ducking measurably changes gain (lines 247-264)",
+          "meaningful": true
+        },
+        {
+          "type": "semantic",
+          "description": "RMS calculation test validates audio analysis with expected sine wave RMS = amplitude/sqrt(2) within tolerance (lines 268-298)",
+          "meaningful": true
+        },
+        {
+          "type": "semantic",
+          "description": "computeHighFrequencyEnergy utility exists for measuring high-frequency changes (lines 524-546 in DJMixerEngine.swift)",
+          "meaningful": true
+        }
+      ]
+    }
+  ]
+}
