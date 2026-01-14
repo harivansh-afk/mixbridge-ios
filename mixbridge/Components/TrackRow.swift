@@ -60,7 +60,7 @@ struct TrackRow: View {
     @State private var errorMessage: String?
     @State private var showError = false
     @State private var isLiked = false
-    @StateObject private var downloadManager = DownloadManager.shared
+    @EnvironmentObject private var downloadManager: DownloadManager
 
     private var downloadStatus: DownloadStatus {
         downloadManager.downloadStatuses[track.id] ?? .notDownloaded
@@ -424,6 +424,7 @@ struct TrackRow: View {
     }
     .listStyle(.plain)
     .environment(PlayerState.shared)
+    .environmentObject(DownloadManager.shared)
     .preferredColorScheme(.light)
 }
 
@@ -435,5 +436,6 @@ struct TrackRow: View {
     }
     .listStyle(.plain)
     .environment(PlayerState.shared)
+    .environmentObject(DownloadManager.shared)
     .preferredColorScheme(.dark)
 }
