@@ -203,62 +203,13 @@ struct TrackRow: View {
     }
 
     private var albumArtwork: some View {
-        Group {
-            if track.artwork.starts(with: "http") {
-                CachedAsyncImagePhase(url: URL(string: track.artwork)) { phase in
-                    switch phase {
-                    case .empty:
-                        artworkPlaceholder
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: coverSize, height: coverSize)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    case .failure:
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(.systemGray6))
-                            .frame(width: coverSize, height: coverSize)
-                            .overlay(
-                                Image("music-note-simple")
-                                    .renderingMode(.template)
-                                    .font(.system(size: coverSize * 0.45))
-                                    .foregroundColor(.gray.opacity(0.7))
-                            )
-                    @unknown default:
-                        artworkPlaceholder
-                    }
-                }
-            } else {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(.systemGray6))
-                    .frame(width: coverSize, height: coverSize)
-                    .overlay(
-                        Image("music-note-simple")
-                            .renderingMode(.template)
-                            .font(.system(size: coverSize * 0.45))
-                            .foregroundColor(.gray.opacity(0.7))
-                    )
-            }
-        }
-    }
-
-    private var artworkPlaceholder: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(.systemGray6))
-                .frame(width: coverSize, height: coverSize)
-                .overlay(
-                    Image("music-note-simple")
-                        .renderingMode(.template)
-                        .font(.system(size: coverSize * 0.45))
-                        .foregroundColor(.gray.opacity(0.7))
-                )
-
-            ProgressView()
-                .progressViewStyle(.circular)
-        }
-        .frame(width: coverSize, height: coverSize)
+        ArtworkView(
+            artwork: track.artwork,
+            size: coverSize,
+            cornerRadius: 12,
+            placeholderIcon: "music-note-simple",
+            showsProgressWhileLoading: true
+        )
     }
 
     private var trackInfo: some View {
