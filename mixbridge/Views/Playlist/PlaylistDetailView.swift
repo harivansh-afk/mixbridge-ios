@@ -149,40 +149,15 @@ struct PlaylistDetailView: View {
 
     @ViewBuilder
     private var artwork: some View {
-        Group {
-            if playlist.artwork.starts(with: "http") {
-                CachedAsyncImagePhase(url: URL(string: playlist.artwork)) { phase in
-                    switch phase {
-                    case .empty:
-                        artworkPlaceholder
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: artworkSize, height: artworkSize)
-                            .clipped()
-                            .clipShape(RoundedRectangle(cornerRadius: 20))
-                            .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
-                    case .failure:
-                        artworkPlaceholder
-                    }
-                }
-            } else {
-                artworkPlaceholder
-            }
-        }
-    }
-
-    private var artworkPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 20)
-            .fill(Color(.systemGray5))
-            .frame(width: artworkSize, height: artworkSize)
-            .overlay {
-                Image("playlist")
-                    .renderingMode(.template)
-                    .font(.system(size: 60))
-                    .foregroundStyle(.secondary)
-            }
+        ArtworkView(
+            artwork: playlist.artwork,
+            size: artworkSize,
+            cornerRadius: 20,
+            placeholderIcon: "playlist",
+            placeholderIconSize: 60,
+            showsProgressWhileLoading: true,
+            shadow: (color: .black.opacity(0.3), radius: 20, y: 10)
+        )
     }
 
     private var playlistInfo: some View {
