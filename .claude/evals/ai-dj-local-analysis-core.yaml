@@ -79,7 +79,7 @@ verification_spec:
 
   - type: file-contains
     path: Packages/MixBridgeDJ/Sources/MixBridgeDJ/DJFileAnalysisStore.swift
-    pattern: "Codable"
+    pattern: "JSONEncoder"
 
   # --- Agent: semantic correctness ---
   - type: agent
