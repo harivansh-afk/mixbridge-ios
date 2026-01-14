@@ -25,7 +25,7 @@ This is the step-by-step refactor queue. Goal: one focused PR at a time, easy to
 - Target files: `mixbridge/mixbridgeApp.swift`, `mixbridge/Components/TrackRow.swift`, `mixbridge/Views/Library/DownloadsView.swift`, `mixbridge/Views/Playlist/PlaylistDetailView.swift`.
 - Acceptance: downloads list renders; “Download All” still works; download status updates in rows.
 
-### PR 03 — Remove `ForEach(Array(...enumerated()))` (stable identity, fewer allocations)
+### PR 03 — Remove `ForEach(Array(...enumerated()))` (stable identity, fewer allocations) ✅
 
 - Introduce an “indexed row” model (e.g. `IndexedTrackItem`, `IndexedPlaylist`) built in the ViewModel when data changes.
 - Update views to `ForEach(viewModel.rows)` using stable IDs (NOT index-based IDs).
