@@ -33,16 +33,15 @@ struct HomeView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
             }
-            // Start database observation
-            .task {
-                await viewModel.observeDatabase()
-            }
-            // Fetch fresh data
-            .task {
+            .task(id: authManager.currentUserId) {
+                async let observe: Void = viewModel.observeDatabase()
+
                 if let userId = authManager.currentUserId {
                     await profileManager.loadProfile(userId: userId)
                     await viewModel.refresh(userId: userId)
                 }
+
+                _ = await observe
             }
         }
     }

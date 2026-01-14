@@ -19,18 +19,19 @@ struct LibraryView: View {
                 .refreshable {
                     await loadPlaylists(forceRefresh: true)
                 }
-                // Start database observation
-                .task {
-                    if let userId = authManager.currentUserId {
+                .task(id: authManager.currentUserId) {
+                    let userId = authManager.currentUserId
+                    async let observe: Void = {
+                        guard let userId else { return }
                         await viewModel.observeDatabase(userId: userId)
-                    }
-                }
-                // Fetch fresh data
-                .task {
-                    if let userId = authManager.currentUserId {
+                    }()
+
+                    if let userId {
                         await profileManager.loadProfile(userId: userId)
                         await viewModel.refresh(userId: userId)
                     }
+
+                    _ = await observe
                 }
         }
     }
@@ -90,7 +91,7 @@ struct LibraryView: View {
                 ],
                 spacing: 20
             ) {
-                ForEach(viewModel.playlists.prefix(6)) { playlist in
+                ForEach(Array(viewModel.playlists.prefix(6).enumerated()), id: \.element.id) { index, playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
                             .navigationTransition(.zoom(sourceID: "top-\(playlist.id)", in: namespace))
@@ -255,7 +256,7 @@ struct LibraryView: View {
                 ],
                 spacing: 20
             ) {
-                ForEach(recentlyAddedPlaylists) { playlist in
+                ForEach(Array(recentlyAddedPlaylists.enumerated()), id: \.element.id) { index, playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
                             .navigationTransition(.zoom(sourceID: "recent-\(playlist.id)", in: namespace))
