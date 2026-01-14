@@ -460,7 +460,7 @@ final class PlaybackCoordinator: NSObject {
                     duration: Double(scTrack.duration) / 1000.0  // Convert ms to seconds
                 )
                 // Add to local history immediately (optimistic), sync to backend in background
-                Task.detached(priority: .utility) {
+                Task(priority: .utility) {
                     try? await HistorySync.shared.addToHistory(
                         scTrack,
                         userId: userId,
@@ -557,7 +557,7 @@ final class PlaybackCoordinator: NSObject {
                         queueIndex: context.queueIndex,
                         duration: Double(scTrack.duration) / 1000.0
                     )
-                    Task.detached(priority: .utility) {
+                    Task(priority: .utility) {
                         try? await HistorySync.shared.addToHistory(
                             scTrack,
                             userId: userId,
@@ -631,7 +631,7 @@ final class PlaybackCoordinator: NSObject {
                     duration: Double(scTrack.duration) / 1000.0
                 )
                 // Add to local history immediately (optimistic), sync to backend in background
-                Task.detached(priority: .utility) {
+                Task(priority: .utility) {
                     try? await HistorySync.shared.addToHistory(
                         scTrack,
                         userId: userId,
@@ -883,7 +883,7 @@ final class PlaybackCoordinator: NSObject {
                         queueIndex: preloadedContext.queueIndex,
                         duration: Double(scTrack.duration) / 1000.0
                     )
-                    Task.detached(priority: .utility) {
+                    Task(priority: .utility) {
                         try? await HistorySync.shared.addToHistory(
                             scTrack,
                             userId: userId,
@@ -1000,13 +1000,13 @@ final class PlaybackCoordinator: NSObject {
         let tracks = queueManager.queueTracks
         guard !tracks.isEmpty else { return }
 
-        Task.detached(priority: .utility) { [tracks] in
+        Task(priority: .utility) { [tracks] in
             await StreamURLCache.shared.prefetchUpcoming(tracks: tracks, lookAhead: 5)
         }
     }
 
     func prefetchTrack(_ track: Track, with soundCloudTrack: SoundCloudTrack?) {
-        Task.detached(priority: .utility) { [trackId = track.id] in
+        Task(priority: .utility) { [trackId = track.id] in
             await StreamURLCache.shared.prefetchStreamURL(for: trackId)
         }
     }
@@ -1059,7 +1059,7 @@ extension PlaybackCoordinator: MixPlaybackEngineDelegate {
                 queueIndex: context.queueIndex,
                 duration: Double(scTrack.duration) / 1000.0
             )
-            Task.detached(priority: .utility) {
+            Task(priority: .utility) {
                 try? await HistorySync.shared.addToHistory(
                     scTrack,
                     userId: userId,
