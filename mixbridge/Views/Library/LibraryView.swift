@@ -19,18 +19,19 @@ struct LibraryView: View {
                 .refreshable {
                     await loadPlaylists(forceRefresh: true)
                 }
-                // Start database observation
-                .task {
-                    if let userId = authManager.currentUserId {
+                .task(id: authManager.currentUserId) {
+                    let userId = authManager.currentUserId
+                    async let observe: Void = {
+                        guard let userId else { return }
                         await viewModel.observeDatabase(userId: userId)
-                    }
-                }
-                // Fetch fresh data
-                .task {
-                    if let userId = authManager.currentUserId {
+                    }()
+
+                    if let userId {
                         await profileManager.loadProfile(userId: userId)
                         await viewModel.refresh(userId: userId)
                     }
+
+                    _ = await observe
                 }
         }
     }
@@ -97,30 +98,12 @@ struct LibraryView: View {
                     } label: {
                         VStack(alignment: .center, spacing: 6) {
                             // Artwork
-                            Group {
-                                if playlist.artwork.starts(with: "http") {
-                                    CachedAsyncImagePhase(url: URL(string: playlist.artwork)) { phase in
-                                        switch phase {
-                                        case .empty:
-                                            artworkPlaceholder
-                                        case .success(let image):
-                                            image
-                                                .resizable()
-                                                .scaledToFill()
-                                                .frame(maxWidth: .infinity)
-                                                .aspectRatio(1, contentMode: .fit)
-                                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                        case .failure:
-                                            artworkPlaceholder
-                                        @unknown default:
-                                            artworkPlaceholder
-                                        }
-                                    }
-                                } else {
-                                    Color.clear
-                                        .aspectRatio(1, contentMode: .fit)
-                                }
-                            }
+                            ArtworkView(
+                                artwork: playlist.artwork,
+                                cornerRadius: 12,
+                                placeholderIcon: "music-note",
+                                showsProgressWhileLoading: true
+                            )
 
                             // Name only
                             Text(playlist.name)
@@ -147,17 +130,6 @@ struct LibraryView: View {
             }
             .padding(.horizontal)
         }
-    }
-
-    private var artworkPlaceholder: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.secondary)
-
-            ProgressView()
-                .progressViewStyle(.circular)
-        }
-        .aspectRatio(1, contentMode: .fit)
     }
 
     private var navigationSection: some View {
@@ -262,30 +234,12 @@ struct LibraryView: View {
                     } label: {
                         VStack(alignment: .center, spacing: 6) {
                             // Artwork
-                            Group {
-                                if playlist.artwork.starts(with: "http") {
-                                    CachedAsyncImagePhase(url: URL(string: playlist.artwork)) { phase in
-                                        switch phase {
-                                        case .empty:
-                                            artworkPlaceholder
-                                        case .success(let image):
-                                            image
-                                                .resizable()
-                                                .scaledToFill()
-                                                .frame(maxWidth: .infinity)
-                                                .aspectRatio(1, contentMode: .fit)
-                                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                        case .failure:
-                                            artworkPlaceholder
-                                        @unknown default:
-                                            artworkPlaceholder
-                                        }
-                                    }
-                                } else {
-                                    Color.clear
-                                        .aspectRatio(1, contentMode: .fit)
-                                }
-                            }
+                            ArtworkView(
+                                artwork: playlist.artwork,
+                                cornerRadius: 12,
+                                placeholderIcon: "music-note",
+                                showsProgressWhileLoading: true
+                            )
 
                             // Name only
                             Text(playlist.name)

@@ -4,6 +4,7 @@ struct ArtistDetailView: View {
     let artist: ArtistInfo
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
+    @Environment(PlayerState.self) private var playerState
     @Namespace private var namespace
 
     @State private var fetchedTrackItems: [TrackItem] = []
@@ -154,11 +155,11 @@ struct ArtistDetailView: View {
         PlaylistActionButtons(
             onPlay: {
                 guard !combinedTrackItems.isEmpty else { return }
-                PlayerState.shared.playFromList(items: combinedTrackItems, startIndex: 0)
+                playerState.playFromList(items: combinedTrackItems, startIndex: 0)
             },
             onShuffle: {
                 guard !combinedTrackItems.isEmpty else { return }
-                PlayerState.shared.playFromList(items: combinedTrackItems, startIndex: 0, shuffle: true)
+                playerState.playFromList(items: combinedTrackItems, startIndex: 0, shuffle: true)
             }
         )
     }
@@ -189,14 +190,15 @@ struct ArtistDetailView: View {
                     .listRowBackground(Color.clear)
             }
 
-            ForEach(Array(combinedTrackItems.prefix(5).enumerated()), id: \.element.id) { index, item in
+            let rows = combinedTrackItems.prefix(5).indexedRows()
+            ForEach(rows) { row in
                 TrackRow(
-                    item.track,
-                    number: index + 1,
+                    row.item.track,
+                    number: row.index + 1,
                     showCover: true,
-                    soundCloudTrack: item.soundCloudTrack,
+                    soundCloudTrack: row.item.soundCloudTrack,
                     listContext: combinedTrackItems,
-                    indexInList: index
+                    indexInList: row.index
                 )
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
@@ -365,17 +367,18 @@ struct ArtistAllSongsView: View {
 
     var body: some View {
         List {
-            ForEach(Array(trackItems.enumerated()), id: \.element.id) { index, item in
+            let rows = trackItems.indexedRows()
+            ForEach(rows) { row in
                 TrackRow(
-                    item.track,
-                    number: index + 1,
+                    row.item.track,
+                    number: row.index + 1,
                     showCover: true,
-                    soundCloudTrack: item.soundCloudTrack,
+                    soundCloudTrack: row.item.soundCloudTrack,
                     listContext: trackItems,
-                    indexInList: index
+                    indexInList: row.index
                 )
-                .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
-                .listRowSeparator(index == trackItems.count - 1 ? .hidden : .visible, edges: .bottom)
+                .listRowSeparator(row.index == 0 ? .hidden : .visible, edges: .top)
+                .listRowSeparator(row.index == rows.count - 1 ? .hidden : .visible, edges: .bottom)
             }
         }
         .listStyle(.plain)
@@ -412,6 +415,7 @@ struct ArtistAllSongsView: View {
         ))
     }
     .environment(AuthManager.shared)
+    .environment(PlayerState.shared)
     .preferredColorScheme(.light)
 }
 
@@ -425,5 +429,6 @@ struct ArtistAllSongsView: View {
         ))
     }
     .environment(AuthManager.shared)
+    .environment(PlayerState.shared)
     .preferredColorScheme(.dark)
 }

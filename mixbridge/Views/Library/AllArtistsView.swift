@@ -73,7 +73,10 @@ struct AllArtistsView: View {
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets())
                     } else {
-                        ForEach(Array(filteredArtists.enumerated()), id: \.element.id) { index, artist in
+                        let artistRows = filteredArtists.indexedRows()
+                        ForEach(artistRows) { row in
+                            let index = row.index
+                            let artist = row.item
                             HStack(spacing: 12) {
                                 if let avatarUrl = artist.avatarUrl,
                                    let url = URL(string: avatarUrl) {
@@ -110,7 +113,7 @@ struct AllArtistsView: View {
                             }
                             .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                             .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
-                            .listRowSeparator(index == filteredArtists.count - 1 ? .hidden : .visible, edges: .bottom)
+                            .listRowSeparator(index == artistRows.count - 1 ? .hidden : .visible, edges: .bottom)
                             .matchedTransitionSource(id: "artist-\(artist.id)", in: namespace)
                             .contentShape(Rectangle())
                             .onTapGesture {

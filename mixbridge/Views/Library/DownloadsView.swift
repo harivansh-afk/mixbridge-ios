@@ -17,7 +17,7 @@ enum DownloadsTab: String, CaseIterable, Identifiable {
 }
 
 struct DownloadsView: View {
-    @StateObject private var downloadManager = DownloadManager.shared
+    @EnvironmentObject private var downloadManager: DownloadManager
     @Environment(QueueManager.self) private var queueManager
 
     @State private var selectedTab: DownloadsTab = .tracks
@@ -122,18 +122,20 @@ struct DownloadsView: View {
             ContentUnavailableView("No downloaded tracks", systemImage: "music.note")
                 .listRowSeparator(.hidden)
         } else {
-            ForEach(Array(downloadManager.downloadedTracks.enumerated()), id: \.element.id) { index, item in
+            let items = trackItems
+            let rows = items.indexedRows()
+            ForEach(rows) { row in
                 TrackRow(
-                    item.track,
-                    number: index + 1,
+                    row.item.track,
+                    number: row.index + 1,
                     showCover: true,
-                    soundCloudTrack: item.soundCloudTrack,
-                    listContext: trackItems,
-                    indexInList: index
+                    soundCloudTrack: row.item.soundCloudTrack,
+                    listContext: items,
+                    indexInList: row.index
                 )
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
-                .listRowSeparator(index == downloadManager.downloadedTracks.count - 1 ? .hidden : .visible, edges: .bottom)
+                .listRowSeparator(row.index == 0 ? .hidden : .visible, edges: .top)
+                .listRowSeparator(row.index == rows.count - 1 ? .hidden : .visible, edges: .bottom)
             }
         }
     }
@@ -146,8 +148,9 @@ struct DownloadsView: View {
             ContentUnavailableView("No downloaded playlists", image: "playlist")
                 .listRowSeparator(.hidden)
         } else {
-            ForEach(Array(downloadManager.downloadedPlaylists.enumerated()), id: \.element.id) { index, item in
-                playlistRow(item: item, index: index, total: downloadManager.downloadedPlaylists.count)
+            let playlistRows = downloadManager.downloadedPlaylists.indexedRows()
+            ForEach(playlistRows) { row in
+                playlistRow(item: row.item, index: row.index, total: playlistRows.count)
             }
         }
     }
@@ -231,6 +234,7 @@ struct DownloadsView: View {
     NavigationStack {
         DownloadsView()
             .environment(QueueManager.shared)
+            .environmentObject(DownloadManager.shared)
     }
     .preferredColorScheme(.light)
 }
@@ -239,6 +243,7 @@ struct DownloadsView: View {
     NavigationStack {
         DownloadsView()
             .environment(QueueManager.shared)
+            .environmentObject(DownloadManager.shared)
     }
     .preferredColorScheme(.dark)
 }

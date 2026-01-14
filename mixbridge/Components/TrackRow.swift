@@ -24,7 +24,7 @@ struct TrackRow: View {
     var listContext: [TrackItem]?
     var indexInList: Int?
 
-    private var playerState = PlayerState.shared
+    @Environment(PlayerState.self) private var playerState
 
     private let coverSize: CGFloat = 44
 
@@ -60,7 +60,7 @@ struct TrackRow: View {
     @State private var errorMessage: String?
     @State private var showError = false
     @State private var isLiked = false
-    @StateObject private var downloadManager = DownloadManager.shared
+    @EnvironmentObject private var downloadManager: DownloadManager
 
     private var downloadStatus: DownloadStatus {
         downloadManager.downloadStatuses[track.id] ?? .notDownloaded
@@ -203,62 +203,13 @@ struct TrackRow: View {
     }
 
     private var albumArtwork: some View {
-        Group {
-            if track.artwork.starts(with: "http") {
-                CachedAsyncImagePhase(url: URL(string: track.artwork)) { phase in
-                    switch phase {
-                    case .empty:
-                        artworkPlaceholder
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: coverSize, height: coverSize)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    case .failure:
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(.systemGray6))
-                            .frame(width: coverSize, height: coverSize)
-                            .overlay(
-                                Image("music-note-simple")
-                                    .renderingMode(.template)
-                                    .font(.system(size: coverSize * 0.45))
-                                    .foregroundColor(.gray.opacity(0.7))
-                            )
-                    @unknown default:
-                        artworkPlaceholder
-                    }
-                }
-            } else {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(.systemGray6))
-                    .frame(width: coverSize, height: coverSize)
-                    .overlay(
-                        Image("music-note-simple")
-                            .renderingMode(.template)
-                            .font(.system(size: coverSize * 0.45))
-                            .foregroundColor(.gray.opacity(0.7))
-                    )
-            }
-        }
-    }
-
-    private var artworkPlaceholder: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(.systemGray6))
-                .frame(width: coverSize, height: coverSize)
-                .overlay(
-                    Image("music-note-simple")
-                        .renderingMode(.template)
-                        .font(.system(size: coverSize * 0.45))
-                        .foregroundColor(.gray.opacity(0.7))
-                )
-
-            ProgressView()
-                .progressViewStyle(.circular)
-        }
-        .frame(width: coverSize, height: coverSize)
+        ArtworkView(
+            artwork: track.artwork,
+            size: coverSize,
+            cornerRadius: 12,
+            placeholderIcon: "music-note-simple",
+            showsProgressWhileLoading: true
+        )
     }
 
     private var trackInfo: some View {
@@ -304,12 +255,12 @@ struct TrackRow: View {
 
         // If list context is provided, use smart queue management
         if let context = listContext, let index = indexInList {
-            PlayerState.shared.playFromList(items: context, startIndex: index)
+            playerState.playFromList(items: context, startIndex: index)
             return
         }
 
         // Fallback: single track play (no queue context)
-        PlayerState.shared.play(track: track, soundCloudTrack: soundCloudTrack)
+        playerState.play(track: track, soundCloudTrack: soundCloudTrack)
     }
 
     private func handleAddToQueue() {
@@ -423,6 +374,8 @@ struct TrackRow: View {
         TrackRow(Track.sampleTracks[2], number: 3, showCover: true)
     }
     .listStyle(.plain)
+    .environment(PlayerState.shared)
+    .environmentObject(DownloadManager.shared)
     .preferredColorScheme(.light)
 }
 
@@ -433,5 +386,7 @@ struct TrackRow: View {
         TrackRow(Track.sampleTracks[2], number: 3, showCover: true)
     }
     .listStyle(.plain)
+    .environment(PlayerState.shared)
+    .environmentObject(DownloadManager.shared)
     .preferredColorScheme(.dark)
 }

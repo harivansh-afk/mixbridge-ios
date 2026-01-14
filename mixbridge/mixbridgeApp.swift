@@ -17,6 +17,7 @@ struct mixbridgeApp: App {
     @State private var authManager = AuthManager.shared
     @State private var profileManager = UserProfileManager.shared
     @State private var queueManager = QueueManager.shared
+    @State private var playerState = PlayerState.shared
 
     // Splash state management
     @State private var finishedSplash: Bool = false
@@ -45,6 +46,8 @@ struct mixbridgeApp: App {
             .environment(authManager)
             .environment(profileManager)
             .environment(queueManager)
+            .environment(playerState)
+            .environmentObject(DownloadManager.shared)
             .onAppear {
                 // No preloading needed - views load from local database
                 // Short delay for splash timing only

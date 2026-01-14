@@ -139,17 +139,18 @@ struct PlaylistTrackPickerView: View {
         if !viewModel.filteredRecentlyPlayed.isEmpty {
             let items = Array(viewModel.filteredRecentlyPlayed.prefix(15))
             Section {
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                let rows = items.indexedRows()
+                ForEach(rows) { row in
                     SelectableTrackRow(
-                        track: item.track,
-                        isSelected: viewModel.isSelected(item)
+                        track: row.item.track,
+                        isSelected: viewModel.isSelected(row.item)
                     ) {
-                        viewModel.toggleTrackSelection(item)
+                        viewModel.toggleTrackSelection(row.item)
                     }
                     .listRowInsets(EdgeInsets(
-                        top: index == 0 ? 16 : 6,
+                        top: row.index == 0 ? 16 : 6,
                         leading: 16,
-                        bottom: index == items.count - 1 ? 16 : 6,
+                        bottom: row.index == rows.count - 1 ? 16 : 6,
                         trailing: 16
                     ))
                 }

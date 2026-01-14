@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct AutomixSettingsView: View {
-    @Bindable var playerState = PlayerState.shared
+    @Environment(PlayerState.self) private var playerState
     @Environment(\.dismiss) private var dismiss
 
     // Binding to convert crossfadeSeconds (Double 1-20, step 0.5) to Int selection (0-38)
@@ -28,6 +28,8 @@ struct AutomixSettingsView: View {
     }
 
     var body: some View {
+        @Bindable var playerState = playerState
+
         List {
             // Automix Toggle
             Section {
@@ -215,4 +217,5 @@ struct FadeCurvePicker: View {
     NavigationStack {
         AutomixSettingsView()
     }
+    .environment(PlayerState.shared)
 }
