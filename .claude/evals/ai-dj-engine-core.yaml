@@ -1,0 +1,124 @@
+name: ai-dj-engine-core
+description: Downloaded-track DJ mixer core with BPM match, 3-band EQ, and beat-aligned crossfades (deterministic + testable).
+
+building_spec:
+  description: |
+    Implement the first verifiable slice of “proper AI-DJ mixing” as a deterministic audio engine core
+    that can mix two local audio files (downloaded tracks) with:
+      - tempo (BPM) matching via rate/time-stretch
+      - beat-aligned start of the incoming track
+      - 3-band EQ control (low/mid/high) per deck
+      - equal-power crossfade curves
+
+    This slice intentionally does NOT include automatic BPM/beatgrid extraction yet.
+    Instead, the engine accepts BPM + downbeat/phase inputs so we can verify mixing correctness end-to-end.
+
+  requirements:
+    - Create a new Swift Package at Packages/MixBridgeDJ with a library target and a test target runnable via `swift test`.
+    - Expose a public API that can:
+      - load two local audio files (URLs)
+      - accept TrackTiming inputs (BPM, timeSignature, downbeatOffsetSeconds)
+      - compute a TransitionPlan (fade duration, curve, beat alignment target, tempo match settings, EQ curves)
+      - execute the plan using AVAudioEngine with two decks (A/B) and manual/offline rendering support for tests.
+    - Tempo matching:
+      - Given bpmA and bpmB, compute incoming playback rate = bpmA / bpmB.
+      - Clamp rate adjustments to a configurable safe range (default ±8%).
+      - Use time-stretch/pitch-preserving playback (e.g., AVAudioUnitTimePitch rate with pitch = 0).
+    - Beat alignment:
+      - Given outgoing current time and outgoing BPM, compute the next beat (or bar) boundary at/after fadeStart.
+      - Schedule incoming start so its downbeat aligns to that boundary (using downbeatOffsetSeconds).
+      - If timeSignature is provided and “barSync” enabled, align to bar boundary; else align to beat.
+    - 3-band EQ:
+      - Provide low/mid/high controls per deck with sensible default band configuration.
+      - Support time-varying EQ curves during transition (e.g., high duck on incoming during first half of fade).
+    - Crossfade:
+      - Implement equal-power crossfade (cosine/sine) and expose curve choice.
+      - Apply gain ramps sample-accurately (or as close as AVAudioEngine allows) without Timer-based volume stepping.
+    - Safety gate:
+      - Validate and clamp TransitionPlan values (fade duration bounds, EQ gain bounds, tempo bounds).
+      - Provide a deterministic fallback plan: plain equal-power crossfade with no tempo match and neutral EQ.
+
+  constraints:
+    - No network calls; no Convex integration.
+    - No third-party DSP libraries in this slice.
+    - No allocations or blocking work on the audio render callback / audio thread.
+    - Keep the API deterministic and testable; avoid “AI” calls here (planner/LLM comes later).
+
+  files:
+    - Packages/MixBridgeDJ/Package.swift
+    - Packages/MixBridgeDJ/Sources/MixBridgeDJ/DJMixerEngine.swift
+    - Packages/MixBridgeDJ/Sources/MixBridgeDJ/DJTransitionPlan.swift
+    - Packages/MixBridgeDJ/Sources/MixBridgeDJ/DJTrackTiming.swift
+    - Packages/MixBridgeDJ/Sources/MixBridgeDJ/DJThreeBandEQ.swift
+    - Packages/MixBridgeDJ/Sources/MixBridgeDJ/DJPlanValidator.swift
+    - Packages/MixBridgeDJ/Tests/MixBridgeDJTests/DJEngineManualRenderTests.swift
+    - Packages/MixBridgeDJ/Tests/MixBridgeDJTests/TestAudioFactory.swift
+
+test_output:
+  framework: swiftpm
+  path: Packages/MixBridgeDJ/Tests/MixBridgeDJTests/
+
+verification_spec:
+  # --- Deterministic ---
+  - type: file-exists
+    path: Packages/MixBridgeDJ/Package.swift
+
+  - type: command
+    run: "swift test --package-path Packages/MixBridgeDJ"
+    expect: exit_code 0
+
+  - type: file-contains
+    path: Packages/MixBridgeDJ/Sources/MixBridgeDJ/DJMixerEngine.swift
+    pattern: "AVAudioEngine"
+
+  - type: file-contains
+    path: Packages/MixBridgeDJ/Sources/MixBridgeDJ/DJMixerEngine.swift
+    pattern: "enableManualRenderingMode"
+
+  - type: file-contains
+    path: Packages/MixBridgeDJ/Sources/MixBridgeDJ/DJThreeBandEQ.swift
+    pattern: "AVAudioUnitEQ"
+
+  # --- Agent: Correctness semantics ---
+  - type: agent
+    name: beat-alignment-correctness
+    prompt: |
+      Verify beat alignment logic is correct and deterministic:
+      1) Read DJTransitionPlan / DJMixerEngine scheduling code.
+      2) Confirm it aligns incoming start to the NEXT beat (or bar) boundary at/after fadeStart (not previous).
+      3) Confirm downbeatOffsetSeconds is applied consistently.
+      4) Confirm there is a clear fallback when timing confidence is absent or invalid.
+    evidence:
+      - text: "next beat"
+      - text: "bar"
+      - text: "fallback"
+    generate_test: false
+
+  - type: agent
+    name: tempo-match-safety
+    prompt: |
+      Verify tempo matching safety:
+      1) Find where incoming rate = bpmA / bpmB is computed.
+      2) Confirm clamping exists with a default of ±8% (configurable).
+      3) Confirm pitch is not intentionally shifted (pitch stays 0 unless explicitly configured).
+    evidence:
+      - text: "bpmA / bpmB"
+      - text: "clamp"
+      - text: "pitch"
+    generate_test: false
+
+  # --- Agent: Audio tests are meaningful ---
+  - type: agent
+    name: manual-render-tests-meaningful
+    prompt: |
+      Verify tests actually validate mixing outcomes (not just “no crash”):
+      - There is at least one manual render test that produces output audio and checks:
+        (a) tempo matching effect (beat spacing converges to target BPM within tolerance), and
+        (b) equal-power crossfade does not create a large loudness dip at mid-fade, and
+        (c) EQ ducking measurably changes high-frequency energy during the fade.
+      If any are missing, add/strengthen tests.
+    evidence:
+      - text: "render"
+      - text: "tolerance"
+      - text: "RMS" or "energy"
+    generate_test: true
