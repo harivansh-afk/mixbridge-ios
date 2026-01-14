@@ -47,7 +47,7 @@ This is the step-by-step refactor queue. Goal: one focused PR at a time, easy to
 - Target files (minimum): `mixbridge/Views/Home/HomeView.swift`, `mixbridge/Views/Liked/LikedView.swift`, `mixbridge/Views/Library/LibraryView.swift`, `mixbridge/Views/Playlist/PlaylistDetailView.swift`.
 - Acceptance: no double-fetching; leaving/re-entering screens doesn’t spawn duplicate observers.
 
-### PR 05 — Navigation hygiene: remove deprecated `NavigationView` and “hidden NavigationLink” overlays
+### PR 05 — Navigation hygiene: remove deprecated `NavigationView` and “hidden NavigationLink” overlays ✅
 
 - Convert `NavigationView` → `NavigationStack`.
 - Replace “invisible NavigationLink in a ZStack” with a real `NavigationLink` row or `navigationDestination`.
