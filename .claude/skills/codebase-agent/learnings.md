@@ -1148,3 +1148,101 @@ if !timingValid {
 - **Context**: Creating new Swift packages with multiple interdependent files
 - **Learning**: When creating a new Swift package, SourceKit will show "Cannot find type" and "No such module" errors before the package is built. These are expected - SourceKit doesn't have full module context until `swift build` runs. Continue implementation and verify by running `swift test`.
 - **Session**: AI DJ Engine Core implementation (2026-01-14)
+
+---
+
+## Audio Analysis with Accelerate/vDSP
+
+### Use vDSP Autocorrelation for BPM Detection
+- **Context**: Implementing deterministic BPM detection from audio files
+- **Learning**: Use `vDSP_conv` (convolution of signal with itself) for autocorrelation-based BPM detection. This is efficient and produces deterministic results. Look for peaks in the autocorrelation at intervals corresponding to BPM range (60-200 BPM). The first significant peak after lag 0 indicates the beat period.
+- **Example**:
+```swift
+// Autocorrelation via convolution
+var result = [Float](repeating: 0, count: signalLength)
+vDSP_conv(signal, 1, signal, 1, &result, 1, vDSP_Length(signalLength), vDSP_Length(signalLength))
+
+// Find first peak after initial decay
+let minLagForBPM = Int(sampleRate * 60.0 / maxBPM)  // e.g., 200 BPM
+let maxLagForBPM = Int(sampleRate * 60.0 / minBPM)  // e.g., 60 BPM
+// Search for peak in [minLag, maxLag] range
+```
+- **Session**: AI DJ Local Analysis Core implementation (2026-01-14)
+
+### Process Audio in Windows to Avoid Memory Bloat
+- **Context**: Analyzing long audio files (3+ minutes) for BPM detection
+- **Learning**: Never load entire audio files into memory. Use AVAudioFile's `read(into:)` with frame offsets to process in windows. For BPM detection, analyze multiple segments and aggregate results for stability.
+- **Example**:
+```swift
+let windowFrames = AVAudioFrameCount(sampleRate * windowDuration)
+var offset: AVAudioFramePosition = 0
+
+while offset < audioFile.length - AVAudioFramePosition(windowFrames) {
+    audioFile.framePosition = offset
+    try audioFile.read(into: buffer, frameCount: windowFrames)
+    // Process window
+    offset += stride
+}
+```
+- **Session**: AI DJ Local Analysis Core implementation (2026-01-14)
+
+### File Identity Cache Pattern for Audio Analysis
+- **Context**: Caching expensive audio analysis results
+- **Learning**: Use file identity (size + modification date) as cache key rather than content hash. This is fast and sufficient for stable local files. Store identity alongside results and invalidate when identity changes.
+- **Example**:
+```swift
+struct FileIdentity: Codable, Equatable {
+    let fileSize: UInt64
+    let modificationDate: Date
+
+    init(url: URL) throws {
+        let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+        fileSize = attrs[.size] as? UInt64 ?? 0
+        modificationDate = attrs[.modificationDate] as? Date ?? Date.distantPast
+    }
+}
+```
+- **Session**: AI DJ Local Analysis Core implementation (2026-01-14)
+
+### Confidence Threshold for Beat-Sync Fallback
+- **Context**: Determining when BPM analysis is reliable enough for beat-synced transitions
+- **Learning**: Return a confidence score (0.0-1.0) based on autocorrelation peak sharpness and stability across windows. Expose a helper like `isUsableForBeatSync` that compares against a configurable threshold (default 0.6). When confidence is low, callers should fall back to non-beat-synced crossfades.
+- **Example**:
+```swift
+struct DJAnalysisResult {
+    let bpm: Double
+    let beatOffsetSeconds: Double
+    let confidence: Double
+
+    func isUsableForBeatSync(threshold: Double = 0.6) -> Bool {
+        confidence >= threshold && bpm > 0
+    }
+}
+```
+- **Session**: AI DJ Local Analysis Core implementation (2026-01-14)
+
+### Click Track Test Generation for Deterministic BPM Tests
+- **Context**: Testing BPM detection accuracy without depending on real music files
+- **Learning**: Generate synthetic click tracks with precise timing for deterministic tests. Use short impulse bursts (50-100 samples) at exact beat intervals. 5+ seconds of audio provides enough data for reliable autocorrelation. Test at multiple BPMs (e.g., 100, 120, 140) to verify accuracy across the range.
+- **Example**:
+```swift
+func generateClickTrack(bpm: Double, duration: Double, sampleRate: Double) -> [Float] {
+    let beatInterval = Int(sampleRate * 60.0 / bpm)
+    let totalSamples = Int(duration * sampleRate)
+    var samples = [Float](repeating: 0, count: totalSamples)
+
+    let clickLength = 50
+    for i in stride(from: 0, to: totalSamples - clickLength, by: beatInterval) {
+        for j in 0..<clickLength {
+            samples[i + j] = 1.0  // Impulse
+        }
+    }
+    return samples
+}
+```
+- **Session**: AI DJ Local Analysis Core implementation (2026-01-14)
+
+### Cache Hit/Miss Counting in Tests
+- **Context**: Testing cache behavior where first lookup always misses (empty cache)
+- **Learning**: When testing cache invalidation, account for both the initial miss (empty cache) and the invalidation miss. First analysis: missCount=1, hitCount=0. Second analysis with same file: missCount=1, hitCount=1. Second analysis with changed file identity: missCount=2, hitCount=0 (or hitCount from before).
+- **Session**: AI DJ Local Analysis Core implementation (2026-01-14)
