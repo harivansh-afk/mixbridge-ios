@@ -9,6 +9,7 @@ import SwiftUI
 
 struct LibraryView: View {
     @State private var viewModel = LibraryViewModel()
+    @State private var showingAccount = false
     @Environment(UserProfileManager.self) private var profileManager
     @Environment(AuthManager.self) private var authManager
     @Namespace private var namespace
@@ -18,6 +19,17 @@ struct LibraryView: View {
             content
                 .refreshable {
                     await loadPlaylists(forceRefresh: true)
+                }
+                .sheet(isPresented: $showingAccount) {
+                    AccountBottomSheet(
+                        isPresented: $showingAccount,
+                        selectedDetent: .constant(.large),
+                        userName: profileManager.displayName,
+                        userEmail: nil,
+                        profileImage: nil
+                    )
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.hidden)
                 }
                 .task(id: authManager.currentUserId) {
                     let userId = authManager.currentUserId
@@ -68,11 +80,27 @@ struct LibraryView: View {
     }
 
     private var headerView: some View {
-        Text("Library")
-            .font(.largeTitle)
-            .fontWeight(.bold)
-            .padding(.horizontal)
-            .padding(.top, 4)
+        HStack {
+            Text("Library")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+
+            Spacer()
+
+            profileAvatar
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
+    }
+
+    private var profileAvatar: some View {
+        ProfileAvatarButton(
+            avatarUrl: profileManager.avatarUrl,
+            displayName: profileManager.displayName,
+            size: 40
+        ) {
+            showingAccount.toggle()
+        }
     }
 
     private var recentlyAddedPlaylists: [Playlist] {
