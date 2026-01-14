@@ -557,12 +557,11 @@ final class MixPlaybackEngine {
 
     private func startFadeTimer() {
         fadeTimer?.invalidate()
-        fadeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.updateFade()
-            }
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            self?.updateFade()
         }
-        RunLoop.main.add(fadeTimer!, forMode: .common)
+        RunLoop.main.add(timer, forMode: .common)
+        fadeTimer = timer
     }
 
     private func updateFade() {

@@ -19,6 +19,7 @@ struct AccountBottomSheet: View {
     @State private var showFinalDeleteConfirmation = false
     @State private var isDeleting = false
     @Binding var selectedDetent: PresentationDetent
+    @State private var showProfileStats = false
 
     let userName: String
     let userEmail: String?
@@ -41,19 +42,18 @@ struct AccountBottomSheet: View {
 
     // MARK: - Body
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 // Profile Section
                 Section {
                     if let profile = profileManager.profile {
-                        ZStack {
-                            NavigationLink(destination: ProfileStatsView(profile: profile)) {
-                                EmptyView()
-                            }
-                            .opacity(0)
-
+                        Button {
+                            showProfileStats = true
+                        } label: {
                             convexProfileHeader(profile: profile)
                         }
+                        .buttonStyle(.plain)
+                        .listRowBackground(Color(UIColor.secondarySystemGroupedBackground))
                     } else if profileManager.isLoading {
                         HStack {
                             Spacer()
@@ -61,19 +61,18 @@ struct AccountBottomSheet: View {
                             Spacer()
                         }
                         .padding()
+                        .listRowBackground(Color(UIColor.secondarySystemGroupedBackground))
                     } else {
-                        ZStack {
-                            NavigationLink(destination: ProfileStatsView(profile: nil)) {
-                                EmptyView()
-                            }
-                            .opacity(0)
-
+                        Button {
+                            showProfileStats = true
+                        } label: {
                             profileHeader
                         }
+                        .buttonStyle(.plain)
+                        .listRowBackground(Color(UIColor.secondarySystemGroupedBackground))
                     }
                 }
                 .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
 
                 // Theme Picker Section
@@ -186,6 +185,9 @@ struct AccountBottomSheet: View {
             .listSectionSpacing(23)
             .contentMargins(.top, 5, for: .scrollContent)
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(isPresented: $showProfileStats) {
+                ProfileStatsView(profile: profileManager.profile)
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
@@ -269,7 +271,6 @@ struct AccountBottomSheet: View {
                 .font(.title3)
         }
         .padding()
-        .background(Color(UIColor.secondarySystemGroupedBackground))
     }
 
     // MARK: - Data Loading
@@ -321,7 +322,6 @@ struct AccountBottomSheet: View {
                 .font(.title3)
         }
         .padding()
-        .background(Color(UIColor.secondarySystemGroupedBackground))
     }
 
     private func accountRow(title: String, systemImage: String, action: @escaping () -> Void) -> some View {
