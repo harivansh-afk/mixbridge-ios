@@ -8,6 +8,7 @@
 import Foundation
 
 enum BackgroundExecutor {
+    /// Runs `operation` in a detached task to avoid inheriting the caller's actor context and cancellation state.
     static func run<T>(
         priority: TaskPriority = .userInitiated,
         operation: @escaping @Sendable () async throws -> T
@@ -17,6 +18,7 @@ enum BackgroundExecutor {
         }.value
     }
 
+    /// Runs `operation` in a detached task to avoid inheriting the caller's actor context and cancellation state.
     static func run(
         priority: TaskPriority = .userInitiated,
         operation: @escaping @Sendable () async -> Void
