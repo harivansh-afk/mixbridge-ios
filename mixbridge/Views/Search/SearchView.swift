@@ -187,23 +187,23 @@ struct SearchView: View {
                     searchResult = nil
                     lastSearchedQuery = ""
                 }
-                .task {
-                    await viewModel.observeDatabase()
-                }
-                .task {
-                    await viewModel.observePlaylistsDatabase()
-                }
-                .task {
-                    if let userId = authManager.currentUserId {
+                .task(id: authManager.currentUserId) {
+                    let userId = authManager.currentUserId
+
+                    async let observeLikedTracks: Void = viewModel.observeDatabase()
+                    async let observeLikedPlaylists: Void = viewModel.observePlaylistsDatabase()
+                    async let observeLibrary: Void = {
+                        guard let userId else { return }
                         await libraryViewModel.observeDatabase(userId: userId)
-                    }
-                }
-                .task {
-                    if let userId = authManager.currentUserId {
+                    }()
+
+                    if let userId {
                         await viewModel.refresh(userId: userId)
                         await viewModel.refreshPlaylists(userId: userId)
                         await libraryViewModel.refresh(userId: userId)
                     }
+
+                    _ = await (observeLikedTracks, observeLikedPlaylists, observeLibrary)
                 }
         }
     }

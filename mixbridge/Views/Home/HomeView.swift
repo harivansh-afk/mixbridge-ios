@@ -33,16 +33,15 @@ struct HomeView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
             }
-            // Start database observation
-            .task {
-                await viewModel.observeDatabase()
-            }
-            // Fetch fresh data
-            .task {
+            .task(id: authManager.currentUserId) {
+                async let observe: Void = viewModel.observeDatabase()
+
                 if let userId = authManager.currentUserId {
                     await profileManager.loadProfile(userId: userId)
                     await viewModel.refresh(userId: userId)
                 }
+
+                _ = await observe
             }
         }
     }
@@ -101,44 +100,13 @@ struct HomeView: View {
     }
 
     private var profileAvatar: some View {
-        Group {
-            if let avatarUrl = profileManager.avatarUrl,
-               let url = URL(string: avatarUrl) {
-                CachedAsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                } placeholder: {
-                    Circle()
-                        .fill(Color.secondary.opacity(0.3))
-                }
-                .frame(width: 40, height: 40)
-                .clipShape(Circle())
-            } else {
-                Circle()
-                    .fill(Color.secondary.opacity(0.3))
-                    .frame(width: 40, height: 40)
-                    .overlay {
-                        Text(userInitials)
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(.primary)
-                    }
-            }
-        }
-        .onTapGesture {
-            HapticManager.light()
+        ProfileAvatarButton(
+            avatarUrl: profileManager.avatarUrl,
+            displayName: profileManager.displayName,
+            size: 40
+        ) {
             showingAccount.toggle()
         }
-    }
-
-    private var userInitials: String {
-        profileManager.displayName
-            .split(separator: " ")
-            .compactMap { $0.first }
-            .prefix(2)
-            .map(String.init)
-            .joined()
-            .uppercased()
     }
 
     private var emptyState: some View {

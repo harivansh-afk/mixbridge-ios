@@ -50,19 +50,19 @@ struct LikedView: View {
         content
             .navigationTitle("Liked")
             .navigationBarTitleDisplayMode(.large)
-            // Start database observation
-            .task {
-                await viewModel.observeDatabase()
-            }
-            .task {
-                await viewModel.observePlaylistsDatabase()
-            }
-            // Fetch fresh data
-            .task {
+            .task(id: authManager.currentUserId) {
+                async let observeTracks: Void = viewModel.observeDatabase()
+                async let observePlaylists: Void = viewModel.observePlaylistsDatabase()
+
                 if let userId = authManager.currentUserId {
                     await viewModel.refresh(userId: userId)
                     await viewModel.refreshPlaylists(userId: userId)
                 }
+
+                try? await Task.sleep(for: .seconds(1))
+                allowDismissalGesture = .all
+
+                _ = await (observeTracks, observePlaylists)
             }
             .refreshable {
                 if let userId = authManager.currentUserId {
@@ -162,10 +162,6 @@ struct LikedView: View {
         }
         .searchable(text: $searchText, isPresented: $isSearchPresented, prompt: "Search Liked")
         .navigationAllowDismissalGestures(allowDismissalGesture)
-        .task {
-            try? await Task.sleep(for: .seconds(1))
-            allowDismissalGesture = .all
-        }
     }
 
     // MARK: - Tracks Content
