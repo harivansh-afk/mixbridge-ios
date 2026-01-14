@@ -264,6 +264,23 @@ public final class DJMixerEngine {
         state = .stopped
     }
 
+    /// Pauses playback on both decks (engine keeps its graph).
+    public func pause() {
+        playerNodeA.pause()
+        playerNodeB.pause()
+    }
+
+    /// Resumes playback for the currently active deck (and the other deck if transitioning).
+    public func resume() {
+        switch state {
+        case .transitioning:
+            playerNodeA.play()
+            playerNodeB.play()
+        case .playing, .idle, .stopped:
+            playerNode(for: activeDeck).play()
+        }
+    }
+
     /// Enables manual rendering mode for offline processing.
     private func enableManualRenderingMode() throws {
         let format = AVAudioFormat(standardFormatWithSampleRate: config.sampleRate, channels: 2)!
@@ -423,6 +440,19 @@ public final class DJMixerEngine {
         transitionDurationSeconds = validatedPlan.fadeDurationSeconds
 
         state = .transitioning
+    }
+
+    /// Immediately cuts to a specific deck, stopping the other deck and making the target deck primary.
+    public func cutToDeck(_ deck: DJDeck) {
+        let other = otherDeck(than: deck)
+        playerNode(for: other).stop()
+        mixerNode(for: other).outputVolume = 0.0
+        mixerNode(for: deck).outputVolume = 1.0
+        activeDeck = deck
+        currentPlan = nil
+        transitionStartSeconds = 0
+        transitionDurationSeconds = 0
+        state = .playing
     }
 
     /// Advances transition state in real-time. Call periodically (e.g., 30–60Hz) while transitioning.
