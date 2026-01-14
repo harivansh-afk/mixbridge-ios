@@ -32,7 +32,6 @@ class QueueManager {
 
     private(set) var isLoading = false
     private var prefetchTask: Task<Void, Never>?
-    private var persistTask: Task<Void, Never>?
     private var queueRevision: Int = 0
 
     /// Check if queue has any tracks
@@ -60,15 +59,13 @@ class QueueManager {
             logWarning(.queue, "Failed to load local queue: \(error)")
         }
 
-        Task.detached(priority: .utility) { [weak self] in
+        Task(priority: .utility) { [weak self] in
             guard let self else { return }
             do {
-                let merged = try await self.queueSync.syncQueueFromServer(userId: userId)
-                await MainActor.run {
-                    self.applyQueueSnapshot(merged, context: "start(syncFromServer)")
-                }
+                let merged = try await QueueBackgroundWorker.shared.syncQueueFromServer(userId: userId)
+                self.applyQueueSnapshot(merged, context: "start(syncFromServer)")
             } catch {
-                await MainActor.run { logWarning(.queue, "Failed to sync queue from server: \(error)") }
+                logWarning(.queue, "Failed to sync queue from server: \(error)")
             }
         }
     }
@@ -86,8 +83,8 @@ class QueueManager {
             logDebug(.queue, "notifyQueueChanged: triggering handleQueueChanged + prefetch")
             PlaybackCoordinator.shared.handleQueueChanged()
 
-            Task.detached(priority: .utility) {
-                await TrackPrefetcher.shared.prefetchForQueue(snapshotTracks, currentIndex: 0)
+            Task(priority: .utility) {
+                await QueueBackgroundWorker.shared.prefetchQueue(tracks: snapshotTracks, currentIndex: 0)
             }
             PlaybackCoordinator.shared.prefetchQueue()
         }
@@ -119,19 +116,10 @@ class QueueManager {
     }
 
     private func schedulePersistSnapshot(delay: Duration = .milliseconds(200)) {
-        persistTask?.cancel()
+        guard let userId = try? requireUserId() else { return }
         let items = queue.items
-        let userId = try? requireUserId()
-        let queueSync = queueSync
-        persistTask = Task.detached(priority: .utility) {
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled else { return }
-            guard let userId else { return }
-            do {
-                try await queueSync.persistQueueSnapshot(userId: userId, items: items)
-            } catch {
-                await MainActor.run { logWarning(.queue, "Failed to persist queue snapshot: \(error)") }
-            }
+        Task {
+            await QueueBackgroundWorker.shared.schedulePersistQueueSnapshot(userId: userId, items: items, delay: delay)
         }
     }
 
@@ -206,16 +194,16 @@ class QueueManager {
         schedulePersistSnapshot()
 
         // Sync removal to backend (fire-and-forget with logging)
-        Task.detached(priority: .utility) { [serverId = item.serverId] in
+        Task(priority: .utility) { [serverId = item.serverId] in
             do {
                 guard let serverId else { return }
-                await MainActor.run { logDebug(.queue, "popNext: syncing removal to Convex for serverId=\(serverId)") }
+                logDebug(.queue, "popNext: syncing removal to Convex for serverId=\(serverId)")
                 try await BackgroundExecutor.run {
                     try await ConvexService.shared.removeTrackFromQueue(queueTrackId: serverId)
                 }
-                await MainActor.run { logDebug(.queue, "popNext: Convex removal SUCCESS for serverId=\(serverId)") }
+                logDebug(.queue, "popNext: Convex removal SUCCESS for serverId=\(serverId)")
             } catch {
-                await MainActor.run { logWarning(.queue, "popNext: Convex removal FAILED: \(error)") }
+                logWarning(.queue, "popNext: Convex removal FAILED: \(error)")
                 // Don't rollback - track already played
             }
         }
@@ -254,26 +242,23 @@ class QueueManager {
         HapticManager.success()
 
         // 2) Background sync to server + reconcile serverId back into local state
-        Task.detached(priority: .utility) { [weak self] in
+        Task(priority: .utility) { [weak self] in
             guard let self else { return }
             let serverId = await self.queueSync.syncAddedTrack(userId: userId, itemId: localId)
             guard let serverId else { return }
 
-            await MainActor.run {
-                self.queue.updateItem(withId: localId) { old in
-                    QueueItem(
-                        id: old.id,
-                        serverId: serverId,
-                        trackId: old.trackId,
-                        track: old.track,
-                        soundCloudTrack: old.soundCloudTrack
-                    )
-                }
-                self.logQueueState("addTrack AFTER reconcile")
-                self.notifyQueueChanged()
+            self.queue.updateItem(withId: localId) { old in
+                QueueItem(
+                    id: old.id,
+                    serverId: serverId,
+                    trackId: old.trackId,
+                    track: old.track,
+                    soundCloudTrack: old.soundCloudTrack
+                )
             }
-
-            await MainActor.run { self.schedulePersistSnapshot() }
+            self.logQueueState("addTrack AFTER reconcile")
+            self.notifyQueueChanged()
+            self.schedulePersistSnapshot()
         }
     }
 
@@ -303,24 +288,22 @@ class QueueManager {
         schedulePersistSnapshot(delay: .milliseconds(0))
         HapticManager.success()
 
-        Task.detached(priority: .utility) { [weak self] in
+        Task(priority: .utility) { [weak self] in
             guard let self else { return }
             let serverId = await self.queueSync.syncAddedTrack(userId: userId, itemId: localId)
             guard let serverId else { return }
 
-            await MainActor.run {
-                self.queue.updateItem(withId: localId) { old in
-                    QueueItem(
-                        id: old.id,
-                        serverId: serverId,
-                        trackId: old.trackId,
-                        track: old.track,
-                        soundCloudTrack: old.soundCloudTrack
-                    )
-                }
-                self.notifyQueueChanged()
-                self.schedulePersistSnapshot()
+            self.queue.updateItem(withId: localId) { old in
+                QueueItem(
+                    id: old.id,
+                    serverId: serverId,
+                    trackId: old.trackId,
+                    track: old.track,
+                    soundCloudTrack: old.soundCloudTrack
+                )
             }
+            self.notifyQueueChanged()
+            self.schedulePersistSnapshot()
         }
     }
 
@@ -392,9 +375,10 @@ class QueueManager {
 
             Task(priority: .utility) { [weak self] in
                 guard let self else { return }
-                await self.queueSync.syncFullQueueToServer(userId: userId, items: self.queue.items)
+                let itemsSnapshot = self.queue.items
+                await self.queueSync.syncFullQueueToServer(userId: userId, items: itemsSnapshot)
                 if let refreshed = try? await self.queueSync.loadLocalQueueItems(userId: userId) {
-                    await MainActor.run { self.applyQueueSnapshot(refreshed, context: "insertTrackNext(fullSync)") }
+                    self.applyQueueSnapshot(refreshed, context: "insertTrackNext(fullSync)")
                 }
             }
         }
@@ -421,13 +405,14 @@ class QueueManager {
             schedulePersistSnapshot(delay: .milliseconds(0))
             HapticManager.success()
 
-            Task.detached(priority: .utility) { [weak self] in
+            Task(priority: .utility) { [weak self] in
                 guard let self else { return }
 
-                if await MainActor.run { self.queue.items.contains(where: { $0.serverId == nil }) } {
-                    await self.queueSync.syncFullQueueToServer(userId: userId, items: await MainActor.run { self.queue.items })
+                let itemsSnapshot = self.queue.items
+                if itemsSnapshot.contains(where: { $0.serverId == nil }) {
+                    await self.queueSync.syncFullQueueToServer(userId: userId, items: itemsSnapshot)
                     if let refreshed = try? await self.queueSync.loadLocalQueueItems(userId: userId) {
-                        await MainActor.run { self.applyQueueSnapshot(refreshed, context: "insertTrackNextLocalFirst(fullSync)") }
+                        self.applyQueueSnapshot(refreshed, context: "insertTrackNextLocalFirst(fullSync)")
                     }
                     return
                 }
@@ -437,10 +422,8 @@ class QueueManager {
                         try await ConvexService.shared.reorderQueue(fromIndex: fromIndex, toIndex: 0)
                     }
                 } catch {
-                    await MainActor.run {
-                        self.applyQueueSnapshot(snapshotBefore, context: "insertTrackNextLocalFirst(rollback)")
-                        self.schedulePersistSnapshot()
-                    }
+                    self.applyQueueSnapshot(snapshotBefore, context: "insertTrackNextLocalFirst(rollback)")
+                    self.schedulePersistSnapshot()
                 }
             }
         } else {
@@ -460,11 +443,12 @@ class QueueManager {
             schedulePersistSnapshot(delay: .milliseconds(0))
             HapticManager.success()
 
-            Task.detached(priority: .utility) { [weak self] in
+            Task(priority: .utility) { [weak self] in
                 guard let self else { return }
-                await self.queueSync.syncFullQueueToServer(userId: userId, items: await MainActor.run { self.queue.items })
+                let itemsSnapshot = self.queue.items
+                await self.queueSync.syncFullQueueToServer(userId: userId, items: itemsSnapshot)
                 if let refreshed = try? await self.queueSync.loadLocalQueueItems(userId: userId) {
-                    await MainActor.run { self.applyQueueSnapshot(refreshed, context: "insertTrackNextLocalFirst(fullSync)") }
+                    self.applyQueueSnapshot(refreshed, context: "insertTrackNextLocalFirst(fullSync)")
                 }
             }
         }
@@ -663,10 +647,9 @@ class QueueManager {
         let expectedRevision = queueRevision
         let serverTracks = tracksToSet.map(\.soundCloudTrack)
 
-        Task.detached(priority: .utility) { [weak self] in
+        Task(priority: .utility) { [weak self] in
             guard let self else { return }
-            let userId = await MainActor.run { try? self.requireUserId() }
-            guard let userId else { return }
+            guard let userId = try? self.requireUserId() else { return }
             do {
                 if serverTracks.isEmpty {
                     try await BackgroundExecutor.run {
@@ -680,28 +663,26 @@ class QueueManager {
                 }
                 let mapping = Dictionary(uniqueKeysWithValues: results.map { ($0.trackId, $0._id) })
 
-                await MainActor.run {
-                    guard self.queueRevision == expectedRevision else { return }
+                guard self.queueRevision == expectedRevision else { return }
 
-                    for item in self.queue.items where item.serverId == nil {
-                        if let serverId = mapping[item.trackId] {
-                            self.queue.updateItem(withId: item.id) { old in
-                                QueueItem(
-                                    id: old.id,
-                                    serverId: serverId,
-                                    trackId: old.trackId,
-                                    track: old.track,
-                                    soundCloudTrack: old.soundCloudTrack
-                                )
-                            }
+                for item in self.queue.items where item.serverId == nil {
+                    if let serverId = mapping[item.trackId] {
+                        self.queue.updateItem(withId: item.id) { old in
+                            QueueItem(
+                                id: old.id,
+                                serverId: serverId,
+                                trackId: old.trackId,
+                                track: old.track,
+                                soundCloudTrack: old.soundCloudTrack
+                            )
                         }
                     }
-                    self.logQueueState("setQueue AFTER reconcile")
-                    self.notifyQueueChanged()
-                    self.schedulePersistSnapshot()
                 }
+                self.logQueueState("setQueue AFTER reconcile")
+                self.notifyQueueChanged()
+                self.schedulePersistSnapshot()
             } catch {
-                await MainActor.run { logError(.queue, "setQueue: server sync FAILED (userId=\(userId)): \(error)") }
+                logError(.queue, "setQueue: server sync FAILED (userId=\(userId)): \(error)")
             }
         }
     }
@@ -738,7 +719,7 @@ class QueueManager {
         HapticManager.success()
 
         // 2) Background: append on server + reconcile server IDs for the newly appended tracks
-        Task.detached(priority: .utility) { [weak self] in
+        Task(priority: .utility) { [weak self] in
             guard let self else { return }
             do {
                 let tracks = newItems.map(\.soundCloudTrack)
@@ -747,27 +728,25 @@ class QueueManager {
                 }
                 let mapping = Dictionary(uniqueKeysWithValues: results.map { ($0.trackId, $0._id) })
 
-                await MainActor.run {
-                    for item in self.queue.items where item.serverId == nil {
-                        if let serverId = mapping[item.trackId] {
-                            self.queue.updateItem(withId: item.id) { old in
-                                QueueItem(
-                                    id: old.id,
-                                    serverId: serverId,
-                                    trackId: old.trackId,
-                                    track: old.track,
-                                    soundCloudTrack: old.soundCloudTrack
-                                )
-                            }
+                for item in self.queue.items where item.serverId == nil {
+                    if let serverId = mapping[item.trackId] {
+                        self.queue.updateItem(withId: item.id) { old in
+                            QueueItem(
+                                id: old.id,
+                                serverId: serverId,
+                                trackId: old.trackId,
+                                track: old.track,
+                                soundCloudTrack: old.soundCloudTrack
+                            )
                         }
                     }
-                    self.logQueueState("appendTracks AFTER reconcile")
-                    self.notifyQueueChanged()
                 }
+                self.logQueueState("appendTracks AFTER reconcile")
+                self.notifyQueueChanged()
 
-                await MainActor.run { self.schedulePersistSnapshot() }
+                self.schedulePersistSnapshot()
             } catch {
-                await MainActor.run { logError(.queue, "appendTracks: server sync FAILED: \(error)") }
+                logError(.queue, "appendTracks: server sync FAILED: \(error)")
                 // Leave optimistic items; they'll reconcile on next refresh.
             }
         }
