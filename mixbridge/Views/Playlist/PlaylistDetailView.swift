@@ -14,7 +14,7 @@ struct PlaylistDetailView: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(QueueManager.self) private var queueManager
     @Environment(PlayerState.self) private var playerState
-    @StateObject private var downloadManager = DownloadManager.shared
+    @EnvironmentObject private var downloadManager: DownloadManager
 
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
@@ -294,6 +294,7 @@ struct PlaylistDetailView: View {
     .environment(AuthManager.shared)
     .environment(QueueManager.shared)
     .environment(PlayerState.shared)
+    .environmentObject(DownloadManager.shared)
     .preferredColorScheme(.light)
 }
 
@@ -308,5 +309,6 @@ struct PlaylistDetailView: View {
     .environment(AuthManager.shared)
     .environment(QueueManager.shared)
     .environment(PlayerState.shared)
+    .environmentObject(DownloadManager.shared)
     .preferredColorScheme(.dark)
 }

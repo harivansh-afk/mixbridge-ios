@@ -17,7 +17,7 @@ enum DownloadsTab: String, CaseIterable, Identifiable {
 }
 
 struct DownloadsView: View {
-    @StateObject private var downloadManager = DownloadManager.shared
+    @EnvironmentObject private var downloadManager: DownloadManager
     @Environment(QueueManager.self) private var queueManager
 
     @State private var selectedTab: DownloadsTab = .tracks
@@ -231,6 +231,7 @@ struct DownloadsView: View {
     NavigationStack {
         DownloadsView()
             .environment(QueueManager.shared)
+            .environmentObject(DownloadManager.shared)
     }
     .preferredColorScheme(.light)
 }
@@ -239,6 +240,7 @@ struct DownloadsView: View {
     NavigationStack {
         DownloadsView()
             .environment(QueueManager.shared)
+            .environmentObject(DownloadManager.shared)
     }
     .preferredColorScheme(.dark)
 }

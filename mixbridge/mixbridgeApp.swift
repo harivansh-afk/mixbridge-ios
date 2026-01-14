@@ -47,6 +47,7 @@ struct mixbridgeApp: App {
             .environment(profileManager)
             .environment(queueManager)
             .environment(playerState)
+            .environmentObject(DownloadManager.shared)
             .onAppear {
                 // No preloading needed - views load from local database
                 // Short delay for splash timing only
