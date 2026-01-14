@@ -72,7 +72,7 @@ struct ExpandedMusicPlayer: View {
     private func prefetchSurroundingTracks() {
         let snapshot = queueManager.queueTracks
         let next = getNextTrack()
-        Task.detached(priority: .utility) {
+        Task(priority: .utility) {
             await TrackPrefetcher.shared.prefetchForQueue(snapshot, currentIndex: 0)
             if let next {
                 await TrackPrefetcher.shared.preloadTrackImmediately(next)
@@ -183,7 +183,6 @@ struct ExpandedPlayerView: View {
     @State private var isDraggingArtwork = false
     @State private var showQueueSheet: Bool
     @State private var queueExpansion: CGFloat // How much queue pushes content up
-    @State private var queueDragStart: CGFloat = 0 // Starting expansion when drag begins
 
     // Crossfade-safe background handoff (never swap to an unready image).
     @State private var backgroundStableArtwork: String
@@ -192,7 +191,6 @@ struct ExpandedPlayerView: View {
 
     // Haptic generators (prepared for instant feedback)
     @State private var lightHaptic = UIImpactFeedbackGenerator(style: .light)
-    @State private var mediumHaptic = UIImpactFeedbackGenerator(style: .medium)
     @State private var heavyHaptic = UIImpactFeedbackGenerator(style: .heavy)
     @State private var lastHapticThreshold: Int = 0
     @State private var confirmDeleteQueue: Bool = false
@@ -250,52 +248,29 @@ struct ExpandedPlayerView: View {
             // so we never briefly show the previous track at the end of a crossfade.
             let shouldPreferPlaybackTrack = !isDraggingArtwork && abs(dragOffset) < 0.5 && displayedTrack.id != currentTrack.id
             let effectiveDisplayedTrack = shouldPreferPlaybackTrack ? currentTrack : displayedTrack
+            let previousSwipeOpacity = (displayedPrevious != nil && dragOffset > 0)
+                ? calculateBackgroundOpacity(offset: dragOffset, direction: .left, screenWidth: screenWidth)
+                : 0
+            let nextSwipeOpacity = (displayedNext != nil && dragOffset < 0)
+                ? calculateBackgroundOpacity(offset: dragOffset, direction: .right, screenWidth: screenWidth)
+                : 0
+            let queueRows = queueManager.queue.items.indexedRows()
 
             //Main stack below body
             ZStack(alignment: .top) {
-                // Multi-layer blended background
-                ZStack {
-                    // Layer 0: Solid black base - prevents GPU garbage from showing through
-                    Color.black
-                        .ignoresSafeArea()
-
-                    // Layer 1: Previous track background (fades in when swiping right)
-                    if let prevTrack = displayedPrevious, dragOffset > 0 {
-                        PlayerBackgroundView(artwork: prevTrack.artwork)
-                            .opacity(calculateBackgroundOpacity(offset: dragOffset, direction: .left, screenWidth: screenWidth))
-                            .blur(radius: 80)
-                    }
-
-                    // Layer 2: Stable background (never swaps to an unready image)
-                    PlayerBackgroundView(artwork: backgroundStableArtwork)
-                        .blur(radius: 60)
-                        .opacity(playerState.isCrossfading && backgroundPendingReady ? 1.0 - playerState.crossfadeProgress : 1.0)
-
-                    // Layer 3: Next track background during crossfade (fades in)
-                    if playerState.isCrossfading,
-                       backgroundPendingReady,
-                       let pendingArtwork = backgroundPendingArtwork {
-                        PlayerBackgroundView(artwork: pendingArtwork)
-                            .blur(radius: 60)
-                            .opacity(playerState.crossfadeProgress)
-                    }
-
-                    // Layer 4: Next track background (fades in when swiping left)
-                    if let nextTrack = displayedNext, dragOffset < 0 {
-                        PlayerBackgroundView(artwork: nextTrack.artwork)
-                            .opacity(calculateBackgroundOpacity(offset: dragOffset, direction: .right, screenWidth: screenWidth))
-                            .blur(radius: 80)
-                            .blendMode(.screen)
-                    }
-
-                    // Layer 5: Subtle overlay for depth
-                    Rectangle()
-                        .fill(.ultraThinMaterial)
-                        .opacity(0.12)
-                        .ignoresSafeArea()
-                }
-                .animation(.interactiveSpring(response: 0.4, dampingFraction: 0.75), value: dragOffset)
-                .animation(.smooth(duration: 0.7), value: displayedTrack.id)
+                ExpandedPlayerBackgroundStack(
+                    previousArtwork: displayedPrevious?.artwork,
+                    nextArtwork: displayedNext?.artwork,
+                    stableArtwork: backgroundStableArtwork,
+                    pendingArtwork: backgroundPendingArtwork,
+                    pendingReady: backgroundPendingReady,
+                    isCrossfading: playerState.isCrossfading,
+                    crossfadeProgress: playerState.crossfadeProgress,
+                    dragOffset: dragOffset,
+                    previousSwipeOpacity: previousSwipeOpacity,
+                    nextSwipeOpacity: nextSwipeOpacity,
+                    animationKey: displayedTrack.id
+                )
 
                 VStack(spacing: 0) {
                     // Top section (artwork + controls) - moves up when queue expands
@@ -505,109 +480,18 @@ struct ExpandedPlayerView: View {
 
                     // 4. Queue List (when shown)
                     if showQueueSheet {
-                        VStack(spacing: 0) {
-                            // Drag handle area - larger hit target
-                            VStack(spacing: 8) {
-                                Capsule()
-                                    .fill(Color.white.opacity(0.2))
-                                    .frame(width: 60, height: 5)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, queueHandleTopPadding)
-                            .padding(.bottom, queueHandleBottomPadding)
-                            .background(Color.clear)
-                            .contentShape(Rectangle())
-                            .highPriorityGesture(
-                                DragGesture(minimumDistance: 5)
-                                    .onChanged { value in
-                                        // Capture start position on first drag movement
-                                        if queueDragStart == 0 {
-                                            queueDragStart = queueExpansion
-                                        }
-
-                                        // Negative translation = dragging up = expand
-                                        let drag = -value.translation.height
-                                        let newExpansion = max(0, min(300, queueDragStart + drag))
-
-                                        // Haptic at thresholds
-                                        let oldThreshold = Int(queueExpansion / 50)
-                                        let newThreshold = Int(newExpansion / 50)
-                                        if newThreshold != oldThreshold {
-                                            lightHaptic.impactOccurred(intensity: 0.5)
-                                        }
-
-                                        withAnimation(.interactiveSpring(response: 0.15, dampingFraction: 0.8)) {
-                                            queueExpansion = newExpansion
-                                        }
-                                    }
-                                    .onEnded { value in
-                                        queueDragStart = 0
-
-                                        let velocity = value.velocity.height
-
-                                        // Swipe down to close
-                                        if value.translation.height > 100 && queueExpansion < 100 {
-                                            mediumHaptic.impactOccurred()
-                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                                showQueueSheet = false
-                                                queueExpansion = 0
-                                            }
-                                        }
-                                        // Swipe UP and release: fling up then gravity pulls it down to hide
-                                        else if value.translation.height < -30 && velocity < -300 {
-                                            mediumHaptic.impactOccurred()
-                                            // Gravity-like fall: slightly longer response, lower damping for natural drop
-                                            withAnimation(.spring(response: 0.45, dampingFraction: 0.65)) {
-                                                showQueueSheet = false
-                                                queueExpansion = 0
-                                            }
-                                        } else {
-                                            // Snap to expanded or collapsed based on position
-                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                                queueExpansion = queueExpansion > 100 ? 200 : 0
-                                            }
-                                        }
-                                    }
-                            )
-
-                            List {
-                                ForEach(Array(queueManager.queue.items.enumerated()), id: \.element.id) { index, item in
-                                    TrackRow(
-                                        item.track,
-                                        number: index + 1,
-                                        showCover: true,
-                                        isQueueContext: true,
-                                        onRemoveFromQueue: {
-                                            removeFromQueue(item: item)
-                                        }
-                                    )
-                                    .listRowSeparator(.hidden)
-                                }
-                                .onMove(perform: moveQueueItem)
-                            }
-                            .listStyle(.plain)
-                            .scrollContentBackground(.hidden)
-                            // Keep the original top fade, but start rows slightly below it so the first row
-                            // doesn't look "cut off" when the queue is lifted closer to the controls.
-                            .contentMargins(.top, queueListTopInset, for: .scrollContent)
-                            .contentMargins(.bottom, 60, for: .scrollContent)
-                            .mask(
-                                VStack(spacing: 0) {
-                                    LinearGradient(
-                                        colors: [.clear, .white],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                    .frame(height: queueTopFadeHeight)
-                                    Color.black
-                                }
-                            )
-                        }
-                        .frame(height: 280 + queueExpansion)
-                        .offset(y: -queueExpansion - queueSectionVisualLift)
-                        .layoutPriority(1)
-                        .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.8), value: queueExpansion)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        ExpandedPlayerQueueSheet(
+                            isVisible: $showQueueSheet,
+                            expansion: $queueExpansion,
+                            queueRows: queueRows,
+                            queueTopFadeHeight: queueTopFadeHeight,
+                            queueListTopInset: queueListTopInset,
+                            queueHandleTopPadding: queueHandleTopPadding,
+                            queueHandleBottomPadding: queueHandleBottomPadding,
+                            queueSectionVisualLift: queueSectionVisualLift,
+                            onMove: moveQueueItem,
+                            onRemove: removeFromQueue
+                        )
                     } else {
                         Spacer()
                     }
@@ -805,10 +689,7 @@ struct ExpandedPlayerView: View {
                     isDraggingArtwork = false
                 }
 
-                // Update player in background
-                Task.detached { @MainActor in
-                    onPrevious()
-                }
+                onPrevious()
             } else if translation < 0 && displayedNext != nil {
                 // Swipe left → next
                 heavyHaptic.impactOccurred(intensity: 1.0) // Final heavy haptic on commit
@@ -1190,10 +1071,11 @@ struct HexagonArtworkFace: View {
         .padding(.bottom, 6)
 
         List {
-            ForEach(Array(Track.sampleTracks.enumerated()), id: \.element.id) { index, track in
+            let rows = Track.sampleTracks.indexedRows()
+            ForEach(rows) { row in
                 TrackRow(
-                    track,
-                    number: index + 1,
+                    row.item,
+                    number: row.index + 1,
                     showCover: true
                 )
                 .listRowSeparator(.hidden)

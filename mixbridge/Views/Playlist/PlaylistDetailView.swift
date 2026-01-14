@@ -65,16 +65,16 @@ struct PlaylistDetailView: View {
         .navigationAllowDismissalGestures(allowDismissalGesture)
         .navigationBarBackButtonHidden(true)
         // Start database observation and fetch fresh data
-        .task {
-            async let observe: () = viewModel.observeDatabase()
+        .task(id: authManager.currentUserId) {
+            async let observe: Void = viewModel.observeDatabase()
             if !viewModel.hasAttemptedLoad, let userId = authManager.currentUserId {
                 await viewModel.refresh(userId: userId)
             }
-            await observe
-        }
-        .task {
+
             try? await Task.sleep(for: .seconds(1))
             allowDismissalGesture = .all
+
+            _ = await observe
         }
         .refreshable {
             if let userId = authManager.currentUserId {
@@ -149,40 +149,15 @@ struct PlaylistDetailView: View {
 
     @ViewBuilder
     private var artwork: some View {
-        Group {
-            if playlist.artwork.starts(with: "http") {
-                CachedAsyncImagePhase(url: URL(string: playlist.artwork)) { phase in
-                    switch phase {
-                    case .empty:
-                        artworkPlaceholder
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: artworkSize, height: artworkSize)
-                            .clipped()
-                            .clipShape(RoundedRectangle(cornerRadius: 20))
-                            .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
-                    case .failure:
-                        artworkPlaceholder
-                    }
-                }
-            } else {
-                artworkPlaceholder
-            }
-        }
-    }
-
-    private var artworkPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 20)
-            .fill(Color(.systemGray5))
-            .frame(width: artworkSize, height: artworkSize)
-            .overlay {
-                Image("music-note")
-                    .renderingMode(.template)
-                    .font(.system(size: 60))
-                    .foregroundStyle(.secondary)
-            }
+        ArtworkView(
+            artwork: playlist.artwork,
+            size: artworkSize,
+            cornerRadius: 20,
+            placeholderIcon: "music-note",
+            placeholderIconSize: 60,
+            showsProgressWhileLoading: true,
+            shadow: (color: .black.opacity(0.3), radius: 20, y: 10)
+        )
     }
 
     private var playlistInfo: some View {
@@ -246,21 +221,21 @@ struct PlaylistDetailView: View {
                 .padding()
                 .listRowBackground(Color.clear)
             } else if !viewModel.trackItems.isEmpty {
-                ForEach(Array(viewModel.trackItems.enumerated()), id: \.element.id) { index, item in
+                ForEach(viewModel.trackRows) { row in
                     TrackRow(
-                        item.track,
-                        number: index + 1,
+                        row.item.track,
+                        number: row.index + 1,
                         showCover: true,
-                        soundCloudTrack: item.soundCloudTrack,
+                        soundCloudTrack: row.item.soundCloudTrack,
                         listContext: viewModel.trackItems,
-                        indexInList: index
+                        indexInList: row.index
                     )
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                 }
             } else if !playlist.tracks.isEmpty {
-                ForEach(Array(playlist.tracks.enumerated()), id: \.element.id) { index, track in
-                    TrackRow(track, number: index + 1, showCover: true)
+                ForEach(playlist.tracks.indexedRows()) { row in
+                    TrackRow(row.item, number: row.index + 1, showCover: true)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 }

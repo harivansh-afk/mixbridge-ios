@@ -50,19 +50,19 @@ struct LikedView: View {
         content
             .navigationTitle("Liked")
             .navigationBarTitleDisplayMode(.large)
-            // Start database observation
-            .task {
-                await viewModel.observeDatabase()
-            }
-            .task {
-                await viewModel.observePlaylistsDatabase()
-            }
-            // Fetch fresh data
-            .task {
+            .task(id: authManager.currentUserId) {
+                async let observeTracks: Void = viewModel.observeDatabase()
+                async let observePlaylists: Void = viewModel.observePlaylistsDatabase()
+
                 if let userId = authManager.currentUserId {
                     await viewModel.refresh(userId: userId)
                     await viewModel.refreshPlaylists(userId: userId)
                 }
+
+                try? await Task.sleep(for: .seconds(1))
+                allowDismissalGesture = .all
+
+                _ = await (observeTracks, observePlaylists)
             }
             .refreshable {
                 if let userId = authManager.currentUserId {
@@ -162,10 +162,6 @@ struct LikedView: View {
         }
         .searchable(text: $searchText, isPresented: $isSearchPresented, prompt: "Search Liked")
         .navigationAllowDismissalGestures(allowDismissalGesture)
-        .task {
-            try? await Task.sleep(for: .seconds(1))
-            allowDismissalGesture = .all
-        }
     }
 
     // MARK: - Tracks Content
@@ -180,18 +176,19 @@ struct LikedView: View {
             ContentUnavailableView("No liked tracks", systemImage: "music.note")
                 .listRowSeparator(.hidden)
         } else {
-            ForEach(Array(filteredTracks.enumerated()), id: \.element.id) { index, item in
+            let rows = filteredTracks.indexedRows()
+            ForEach(rows) { row in
                 TrackRow(
-                    item.track,
-                    number: index + 1,
+                    row.item.track,
+                    number: row.index + 1,
                     showCover: true,
-                    soundCloudTrack: item.soundCloudTrack,
+                    soundCloudTrack: row.item.soundCloudTrack,
                     listContext: filteredTracks,
-                    indexInList: index
+                    indexInList: row.index
                 )
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
-                .listRowSeparator(index == filteredTracks.count - 1 ? .hidden : .visible, edges: .bottom)
+                .listRowSeparator(row.index == 0 ? .hidden : .visible, edges: .top)
+                .listRowSeparator(row.index == rows.count - 1 ? .hidden : .visible, edges: .bottom)
             }
         }
     }
@@ -215,8 +212,9 @@ struct LikedView: View {
             ContentUnavailableView("No liked playlists", systemImage: "music.note.list")
                 .listRowSeparator(.hidden)
         } else {
-            ForEach(Array(filteredPlaylists.enumerated()), id: \.element.id) { index, item in
-                playlistRow(item: item, index: index, total: filteredPlaylists.count)
+            let rows = filteredPlaylists.indexedRows()
+            ForEach(rows) { row in
+                playlistRow(item: row.item, index: row.index, total: rows.count)
             }
         }
     }

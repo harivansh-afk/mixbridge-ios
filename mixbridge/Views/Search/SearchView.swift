@@ -33,6 +33,28 @@ enum SearchTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+private struct SoundCloudPlaylistRow: Identifiable, Equatable {
+    let playlist: SoundCloudPlaylist
+    let index: Int
+
+    var id: Int { playlist.id }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
+private struct SoundCloudUserRow: Identifiable, Equatable {
+    let user: SoundCloudUser
+    let index: Int
+
+    var id: Int { user.id }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 struct SearchView: View {
     @State private var searchText = ""
     @Environment(AuthManager.self) private var authManager
@@ -165,23 +187,23 @@ struct SearchView: View {
                     searchResult = nil
                     lastSearchedQuery = ""
                 }
-                .task {
-                    await viewModel.observeDatabase()
-                }
-                .task {
-                    await viewModel.observePlaylistsDatabase()
-                }
-                .task {
-                    if let userId = authManager.currentUserId {
+                .task(id: authManager.currentUserId) {
+                    let userId = authManager.currentUserId
+
+                    async let observeLikedTracks: Void = viewModel.observeDatabase()
+                    async let observeLikedPlaylists: Void = viewModel.observePlaylistsDatabase()
+                    async let observeLibrary: Void = {
+                        guard let userId else { return }
                         await libraryViewModel.observeDatabase(userId: userId)
-                    }
-                }
-                .task {
-                    if let userId = authManager.currentUserId {
+                    }()
+
+                    if let userId {
                         await viewModel.refresh(userId: userId)
                         await viewModel.refreshPlaylists(userId: userId)
                         await libraryViewModel.refresh(userId: userId)
                     }
+
+                    _ = await (observeLikedTracks, observeLikedPlaylists, observeLibrary)
                 }
         }
     }
@@ -233,7 +255,6 @@ struct SearchView: View {
     }
 
     private var libraryResultsView: some View {
-        let listContext = Array(filteredLibraryTracks)
         let hasContent: Bool = {
             switch selectedTab {
             case .tracks: return !filteredLibraryTracks.isEmpty
@@ -258,28 +279,32 @@ struct SearchView: View {
             if hasContent {
                 switch selectedTab {
                 case .tracks:
-                    ForEach(Array(filteredLibraryTracks.enumerated()), id: \.element.id) { index, item in
+                    let listContext = Array(filteredLibraryTracks)
+                    let trackRows = filteredLibraryTracks.indexedRows()
+                    ForEach(trackRows) { row in
                         TrackRow(
-                            item.track,
-                            number: index + 1,
+                            row.item.track,
+                            number: row.index + 1,
                             showCover: true,
-                            soundCloudTrack: item.soundCloudTrack,
+                            soundCloudTrack: row.item.soundCloudTrack,
                             listContext: listContext,
-                            indexInList: index
+                            indexInList: row.index
                         )
                         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                        .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
-                        .listRowSeparator(index == filteredLibraryTracks.count - 1 ? .hidden : .visible, edges: .bottom)
+                        .listRowSeparator(row.index == 0 ? .hidden : .visible, edges: .top)
+                        .listRowSeparator(row.index == trackRows.count - 1 ? .hidden : .visible, edges: .bottom)
                     }
 
                 case .playlists:
-                    ForEach(Array(filteredLibraryPlaylists.enumerated()), id: \.element.id) { index, playlist in
-                        libraryPlaylistRow(playlist: playlist, index: index, total: filteredLibraryPlaylists.count)
+                    let playlistRows = filteredLibraryPlaylists.indexedRows()
+                    ForEach(playlistRows) { row in
+                        libraryPlaylistRow(playlist: row.item, index: row.index, total: playlistRows.count)
                     }
 
                 case .artists:
-                    ForEach(Array(filteredLibraryArtists.enumerated()), id: \.element.id) { index, artist in
-                        libraryArtistRow(artist: artist, index: index, total: filteredLibraryArtists.count)
+                    let artistRows = filteredLibraryArtists.indexedRows()
+                    ForEach(artistRows) { row in
+                        libraryArtistRow(artist: row.item, index: row.index, total: artistRows.count)
                     }
                 }
             } else {
@@ -464,8 +489,6 @@ struct SearchView: View {
     }
 
     private func resultsView(results: SearchResult) -> some View {
-        let trackItems = results.tracks.prefix(20).map { TrackItem(soundCloudTrack: $0) }
-        let listContext = Array(trackItems)
         let hasContent: Bool = {
             switch selectedTab {
             case .tracks: return !results.tracks.isEmpty
@@ -490,29 +513,35 @@ struct SearchView: View {
             if hasContent {
                 switch selectedTab {
                 case .tracks:
-                    ForEach(Array(trackItems.enumerated()), id: \.element.id) { index, item in
+                    let trackItems = results.tracks.prefix(20).map { TrackItem(soundCloudTrack: $0) }
+                    let listContext = Array(trackItems)
+                    let trackRows = trackItems.indexedRows()
+                    ForEach(trackRows) { row in
                         TrackRow(
-                            item.track,
-                            number: index + 1,
+                            row.item.track,
+                            number: row.index + 1,
                             showCover: true,
-                            soundCloudTrack: item.soundCloudTrack,
+                            soundCloudTrack: row.item.soundCloudTrack,
                             listContext: listContext,
-                            indexInList: index
+                            indexInList: row.index
                         )
                         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                        .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
-                        .listRowSeparator(index == trackItems.count - 1 ? .hidden : .visible, edges: .bottom)
+                        .listRowSeparator(row.index == 0 ? .hidden : .visible, edges: .top)
+                        .listRowSeparator(row.index == trackRows.count - 1 ? .hidden : .visible, edges: .bottom)
                     }
 
                 case .playlists:
                     let playlists = Array(results.playlists.prefix(15))
-                    ForEach(Array(playlists.enumerated()), id: \.element.id) { index, scPlaylist in
-                        playlistRow(scPlaylist: scPlaylist, index: index, total: playlists.count)
+                    let playlistRows = playlists.enumerated().map { SoundCloudPlaylistRow(playlist: $0.element, index: $0.offset) }
+                    ForEach(playlistRows) { row in
+                        playlistRow(scPlaylist: row.playlist, index: row.index, total: playlistRows.count)
                     }
 
                 case .artists:
-                    ForEach(Array(results.users.prefix(15).enumerated()), id: \.element.id) { index, scUser in
-                        artistRow(scUser: scUser, index: index, total: min(results.users.count, 15))
+                    let users = Array(results.users.prefix(15))
+                    let userRows = users.enumerated().map { SoundCloudUserRow(user: $0.element, index: $0.offset) }
+                    ForEach(userRows) { row in
+                        artistRow(scUser: row.user, index: row.index, total: userRows.count)
                     }
                 }
             } else {
