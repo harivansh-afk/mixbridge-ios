@@ -166,10 +166,29 @@ final class CreatePlaylistViewModel {
     
     private func loadRecentlyPlayed(userId: String) async {
         do {
-            let history = try await convex.getPlayHistory(userId: userId, limit: 30)
-            
-            recentlyPlayed = history.map { record -> TrackItem in
-                TrackItem(soundCloudTrack: record.trackData)
+            // Fetch more to account for duplicates after deduping
+            let history = try await convex.getPlayHistory(userId: userId, limit: 50)
+
+            // Dedupe by track ID, keeping first occurrence (most recent)
+            var seenIds = Set<String>()
+            recentlyPlayed = history.compactMap { record -> TrackItem? in
+                let trackData = record.trackData
+
+                // Skip invalid/incomplete tracks
+                guard !trackData.id.isEmpty,
+                      !trackData.title.trimmingCharacters(in: .whitespaces).isEmpty,
+                      !trackData.user.username.trimmingCharacters(in: .whitespaces).isEmpty
+                else {
+                    return nil
+                }
+
+                // Skip duplicates
+                guard !seenIds.contains(trackData.id) else {
+                    return nil
+                }
+                seenIds.insert(trackData.id)
+
+                return TrackItem(soundCloudTrack: trackData)
             }
         } catch {
             logError(.sync, "Failed to load play history: \(error)")
