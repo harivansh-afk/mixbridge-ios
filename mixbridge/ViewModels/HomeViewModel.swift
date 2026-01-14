@@ -15,6 +15,7 @@ final class HomeViewModel {
     // MARK: - Observable State
 
     private(set) var playHistory: [TrackItem] = []
+    private(set) var playHistoryRows: [IndexedRow<TrackItem>] = []
     private(set) var isLoading = false
     private(set) var error: Error?
 
@@ -57,6 +58,10 @@ final class HomeViewModel {
 
                 if self.playHistory != items {
                     self.playHistory = items
+                }
+                let nextRows = items.indexedRows()
+                if self.playHistoryRows != nextRows {
+                    self.playHistoryRows = nextRows
                 }
                 self.error = nil
             }

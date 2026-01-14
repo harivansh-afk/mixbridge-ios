@@ -87,7 +87,7 @@ struct LibraryView: View {
                 ],
                 spacing: 20
             ) {
-                ForEach(Array(viewModel.playlists.prefix(6).enumerated()), id: \.element.id) { index, playlist in
+                ForEach(viewModel.playlists.prefix(6)) { playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
                             .navigationTransition(.zoom(sourceID: "top-\(playlist.id)", in: namespace))
@@ -252,7 +252,7 @@ struct LibraryView: View {
                 ],
                 spacing: 20
             ) {
-                ForEach(Array(recentlyAddedPlaylists.enumerated()), id: \.element.id) { index, playlist in
+                ForEach(recentlyAddedPlaylists) { playlist in
                     NavigationLink {
                         PlaylistDetailView(playlist: playlist)
                             .navigationTransition(.zoom(sourceID: "recent-\(playlist.id)", in: namespace))

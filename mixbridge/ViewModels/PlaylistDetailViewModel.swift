@@ -15,6 +15,7 @@ final class PlaylistDetailViewModel {
     // MARK: - Observable State
 
     private(set) var trackItems: [TrackItem] = []
+    private(set) var trackRows: [IndexedRow<TrackItem>] = []
     private(set) var isLoading = false
     private(set) var error: Error?
     private(set) var hasAttemptedLoad = false
@@ -75,6 +76,10 @@ final class PlaylistDetailViewModel {
 
                 if self.trackItems != items {
                     self.trackItems = items
+                }
+                let nextRows = items.indexedRows()
+                if self.trackRows != nextRows {
+                    self.trackRows = nextRows
                 }
                 self.error = nil
             }

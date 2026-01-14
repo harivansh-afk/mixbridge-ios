@@ -571,14 +571,15 @@ struct ExpandedPlayerView: View {
                             )
 
                             List {
-                                ForEach(Array(queueManager.queue.items.enumerated()), id: \.element.id) { index, item in
+                                let queueRows = queueManager.queue.items.indexedRows()
+                                ForEach(queueRows) { row in
                                     TrackRow(
-                                        item.track,
-                                        number: index + 1,
+                                        row.item.track,
+                                        number: row.index + 1,
                                         showCover: true,
                                         isQueueContext: true,
                                         onRemoveFromQueue: {
-                                            removeFromQueue(item: item)
+                                            removeFromQueue(item: row.item)
                                         }
                                     )
                                     .listRowSeparator(.hidden)
@@ -1190,10 +1191,11 @@ struct HexagonArtworkFace: View {
         .padding(.bottom, 6)
 
         List {
-            ForEach(Array(Track.sampleTracks.enumerated()), id: \.element.id) { index, track in
+            let rows = Track.sampleTracks.indexedRows()
+            ForEach(rows) { row in
                 TrackRow(
-                    track,
-                    number: index + 1,
+                    row.item,
+                    number: row.index + 1,
                     showCover: true
                 )
                 .listRowSeparator(.hidden)

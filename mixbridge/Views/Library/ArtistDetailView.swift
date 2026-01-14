@@ -190,14 +190,15 @@ struct ArtistDetailView: View {
                     .listRowBackground(Color.clear)
             }
 
-            ForEach(Array(combinedTrackItems.prefix(5).enumerated()), id: \.element.id) { index, item in
+            let rows = combinedTrackItems.prefix(5).indexedRows()
+            ForEach(rows) { row in
                 TrackRow(
-                    item.track,
-                    number: index + 1,
+                    row.item.track,
+                    number: row.index + 1,
                     showCover: true,
-                    soundCloudTrack: item.soundCloudTrack,
+                    soundCloudTrack: row.item.soundCloudTrack,
                     listContext: combinedTrackItems,
-                    indexInList: index
+                    indexInList: row.index
                 )
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
@@ -366,17 +367,18 @@ struct ArtistAllSongsView: View {
 
     var body: some View {
         List {
-            ForEach(Array(trackItems.enumerated()), id: \.element.id) { index, item in
+            let rows = trackItems.indexedRows()
+            ForEach(rows) { row in
                 TrackRow(
-                    item.track,
-                    number: index + 1,
+                    row.item.track,
+                    number: row.index + 1,
                     showCover: true,
-                    soundCloudTrack: item.soundCloudTrack,
+                    soundCloudTrack: row.item.soundCloudTrack,
                     listContext: trackItems,
-                    indexInList: index
+                    indexInList: row.index
                 )
-                .listRowSeparator(index == 0 ? .hidden : .visible, edges: .top)
-                .listRowSeparator(index == trackItems.count - 1 ? .hidden : .visible, edges: .bottom)
+                .listRowSeparator(row.index == 0 ? .hidden : .visible, edges: .top)
+                .listRowSeparator(row.index == rows.count - 1 ? .hidden : .visible, edges: .bottom)
             }
         }
         .listStyle(.plain)
