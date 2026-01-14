@@ -365,6 +365,10 @@ final class PlaybackCoordinator: NSObject {
     /// Keeps internal preloads/prewarms from diverging from the queue's "top of cue" policy.
     func handleQueueChanged() {
         logDebug(.queue, "handleQueueChanged: mixMode=\(isUsingMixMode)")
+
+        // Notify DJPrepService to prep upcoming tracks if DJ mode is enabled
+        DJPrepService.shared.prepNextTracks()
+
         if isUsingMixMode {
             mixEngine.handleQueueChanged()
             return

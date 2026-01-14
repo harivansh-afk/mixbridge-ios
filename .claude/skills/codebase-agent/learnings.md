@@ -1149,6 +1149,11 @@ if !timingValid {
 - **Learning**: When creating a new Swift package, SourceKit will show "Cannot find type" and "No such module" errors before the package is built. These are expected - SourceKit doesn't have full module context until `swift build` runs. Continue implementation and verify by running `swift test`.
 - **Session**: AI DJ Engine Core implementation (2026-01-14)
 
+### Verifier Catches Missing Imports
+- **Context**: Implementing features across multiple new files
+- **Learning**: The eval-verifier subagent catches issues that IDE transient errors may hide. In this session, the verifier found 2 missing `import Combine` statements in DJPrepService and DJAuditionController that weren't visible due to SourceKit lag. Always run the verifier even when IDE shows no errors - it runs the actual build which reveals real compilation issues.
+- **Session**: DJ Prep Service implementation (2026-01-14)
+
 ---
 
 ## Audio Analysis with Accelerate/vDSP
@@ -1246,3 +1251,59 @@ func generateClickTrack(bpm: Double, duration: Double, sampleRate: Double) -> [F
 - **Context**: Testing cache behavior where first lookup always misses (empty cache)
 - **Learning**: When testing cache invalidation, account for both the initial miss (empty cache) and the invalidation miss. First analysis: missCount=1, hitCount=0. Second analysis with same file: missCount=1, hitCount=1. Second analysis with changed file identity: missCount=2, hitCount=0 (or hitCount from before).
 - **Session**: AI DJ Local Analysis Core implementation (2026-01-14)
+
+---
+
+## iOS App / Swift Package Integration
+
+### Adding Local Swift Package to Xcode Project
+- **Context**: Integrating a local Swift package (like `Packages/MixBridgeDJ`) into an existing iOS app
+- **Learning**: Edit `project.pbxproj` to add three things: (1) XCLocalSwiftPackageReference in PBXProject's packageReferences, (2) XCSwiftPackageProductDependency in target's packageProductDependencies, (3) The build phases reference. Use a unique UUID for each new entry.
+- **Session**: DJ Prep Service implementation (2026-01-14)
+
+### Background Prep Service Pattern for Queue-Based Apps
+- **Context**: Preloading/preparing content for items ahead in a playback queue
+- **Learning**: Create a dedicated prep service with: (1) debounced queue change handler (300ms), (2) cancellation-safe tasks, (3) status tracking per item, (4) serial processing (one at a time) to avoid overwhelming resources. Hook into `handleQueueChanged()` with a guard on feature flag.
+- **Example**:
+```swift
+@MainActor
+final class PrepService: ObservableObject {
+    @Published private(set) var prepStatuses: [String: PrepStatus] = [:]
+    private var prepTask: Task<Void, Never>?
+
+    func prepNextItems() {
+        guard featureEnabled else { return }
+        prepTask?.cancel()
+        prepTask = Task {
+            try? await Task.sleep(for: .milliseconds(300))  // Debounce
+            guard !Task.isCancelled else { return }
+            await performPrep()
+        }
+    }
+}
+```
+- **Session**: DJ Prep Service implementation (2026-01-14)
+
+### Dev-Only Features with BuildEnvironment Guard
+- **Context**: Adding features that should only be visible in development builds
+- **Learning**: Gate dev-only UI with `BuildEnvironment.isDevMode`. Add navigation links in existing dev sections (like in AccountBottomSheet) rather than creating new entry points. Use `if BuildEnvironment.isDevMode { ... }` around NavigationLinks.
+- **Session**: DJ Lab View implementation (2026-01-14)
+
+### Download Completion Polling Pattern
+- **Context**: Waiting for a download to complete when DownloadManager uses async callbacks
+- **Learning**: When download completion is communicated via published state rather than async return, use polling with timeout. Check `isDownloaded(trackId:)` in a loop with `Task.sleep`, check for failure states, and implement a reasonable timeout (2 min for audio files).
+- **Example**:
+```swift
+let timeout = Date().addingTimeInterval(120)
+while !downloadManager.isDownloaded(trackId: trackId) {
+    if Date() > timeout {
+        throw DownloadTimeout()
+    }
+    if case .failed = downloadManager.downloadStatuses[trackId] {
+        throw DownloadFailed()
+    }
+    try await Task.sleep(for: .milliseconds(500))
+    guard !Task.isCancelled else { throw CancellationError() }
+}
+```
+- **Session**: DJ Prep Service implementation (2026-01-14)

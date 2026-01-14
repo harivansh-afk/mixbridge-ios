@@ -172,6 +172,20 @@ struct AccountBottomSheet: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
+
+                        NavigationLink {
+                            DJLabView()
+                        } label: {
+                            HStack {
+                                Image(systemName: "waveform.badge.mic")
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(.purple)
+                                Text("DJ Lab")
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(.purple)
+                                Spacer()
+                            }
+                        }
                     }
                 }
 

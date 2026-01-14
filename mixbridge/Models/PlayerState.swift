@@ -103,6 +103,34 @@ final class PlayerState: NSObject {
         }
     }
 
+    // MARK: - DJ Mode Settings
+
+    /// Enable DJ mode for beat-aware transitions (default: false)
+    var djEnabled: Bool = false {
+        didSet {
+            UserDefaults.standard.set(djEnabled, forKey: kDJEnabled)
+        }
+    }
+
+    /// Number of upcoming tracks to download ahead when DJ mode is enabled (default: 2)
+    var djDownloadAheadCount: Int = 2 {
+        didSet {
+            let clamped = max(1, min(5, djDownloadAheadCount))
+            if clamped != djDownloadAheadCount {
+                djDownloadAheadCount = clamped
+                return
+            }
+            UserDefaults.standard.set(djDownloadAheadCount, forKey: kDJDownloadAheadCount)
+        }
+    }
+
+    /// Automatically download upcoming tracks when DJ mode is enabled (default: true)
+    var djAutoDownloadAhead: Bool = true {
+        didSet {
+            UserDefaults.standard.set(djAutoDownloadAhead, forKey: kDJAutoDownloadAhead)
+        }
+    }
+
     /// Crossfade duration in seconds (default: 6, clamped to 1...20)
     var crossfadeSeconds: Double = 6 {
         didSet {
@@ -206,6 +234,9 @@ final class PlayerState: NSObject {
     let kCrossfadeSeconds = "mixbridge.crossfadeSeconds"
     let kPrewarmSeconds = "mixbridge.prewarmSeconds"
     let kFadeCurve = "mixbridge.fadeCurve"
+    let kDJEnabled = "mixbridge.djEnabled"
+    let kDJDownloadAheadCount = "mixbridge.djDownloadAheadCount"
+    let kDJAutoDownloadAhead = "mixbridge.djAutoDownloadAhead"
 
     private override init() {
         // Initialize with placeholder initially

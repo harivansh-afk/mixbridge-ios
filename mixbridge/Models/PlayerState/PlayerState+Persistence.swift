@@ -29,6 +29,17 @@ extension PlayerState {
             fadeCurve = curve
         }
 
+        // Load DJ Mode settings
+        if defaults.object(forKey: kDJEnabled) != nil {
+            djEnabled = defaults.bool(forKey: kDJEnabled)
+        }
+        if defaults.object(forKey: kDJDownloadAheadCount) != nil {
+            djDownloadAheadCount = max(1, min(5, defaults.integer(forKey: kDJDownloadAheadCount)))
+        }
+        if defaults.object(forKey: kDJAutoDownloadAhead) != nil {
+            djAutoDownloadAhead = defaults.bool(forKey: kDJAutoDownloadAhead)
+        }
+
         // Sync to coordinator
         playbackCoordinator.mixEnabled = mixEnabled
         playbackCoordinator.crossfadeSeconds = crossfadeSeconds

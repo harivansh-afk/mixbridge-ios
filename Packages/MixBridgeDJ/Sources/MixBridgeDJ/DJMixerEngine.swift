@@ -90,9 +90,13 @@ public final class DJMixerEngine {
 
     private(set) public var state: DJMixerState = .idle
 
+    /// Which physical deck is currently the "primary" (audible) deck.
+    /// Defaults to `.a` to preserve existing behavior and tests.
+    private var activeDeck: DJDeck = .a
+
     private var currentPlan: DJTransitionPlan?
-    private var transitionStartSampleTime: AVAudioFramePosition = 0
-    private var transitionDurationSamples: AVAudioFramePosition = 0
+    private var transitionStartSeconds: Double = 0
+    private var transitionDurationSeconds: Double = 0
 
     private let validator: DJPlanValidator
 
@@ -175,6 +179,53 @@ public final class DJMixerEngine {
         mixerNodeB.outputVolume = 0.0 // B starts silent
     }
 
+    // MARK: - Deck Helpers
+
+    private func playerNode(for deck: DJDeck) -> AVAudioPlayerNode {
+        deck == .a ? playerNodeA : playerNodeB
+    }
+
+    private func timePitch(for deck: DJDeck) -> AVAudioUnitTimePitch {
+        deck == .a ? timePitchA : timePitchB
+    }
+
+    private func eqController(for deck: DJDeck) -> DJThreeBandEQ {
+        deck == .a ? eqA : eqB
+    }
+
+    private func mixerNode(for deck: DJDeck) -> AVAudioMixerNode {
+        deck == .a ? mixerNodeA : mixerNodeB
+    }
+
+    private func audioFile(for deck: DJDeck) -> AVAudioFile? {
+        deck == .a ? audioFileA : audioFileB
+    }
+
+    private func timing(for deck: DJDeck) -> DJTrackTiming? {
+        deck == .a ? timingA : timingB
+    }
+
+    private func setAudioFile(_ file: AVAudioFile?, timing: DJTrackTiming?, for deck: DJDeck) {
+        switch deck {
+        case .a:
+            audioFileA = file
+            timingA = timing
+        case .b:
+            audioFileB = file
+            timingB = timing
+        }
+    }
+
+    private func otherDeck(than deck: DJDeck) -> DJDeck {
+        deck == .a ? .b : .a
+    }
+
+    private func setActiveDeck(_ deck: DJDeck) {
+        activeDeck = deck
+        mixerNode(for: deck).outputVolume = 1.0
+        mixerNode(for: otherDeck(than: deck)).outputVolume = 0.0
+    }
+
     // MARK: - Track Loading
 
     /// Loads an audio file into the specified deck.
@@ -190,14 +241,7 @@ public final class DJMixerEngine {
             throw DJMixerError.audioFileLoadFailed(url, error.localizedDescription)
         }
 
-        switch deck {
-        case .a:
-            audioFileA = audioFile
-            timingA = timing
-        case .b:
-            audioFileB = audioFile
-            timingB = timing
-        }
+        setAudioFile(audioFile, timing: timing, for: deck)
     }
 
     // MARK: - Engine Control
@@ -235,19 +279,53 @@ public final class DJMixerEngine {
 
     /// Starts playing deck A from the beginning.
     public func playDeckA() throws {
-        guard let audioFile = audioFileA else {
-            throw DJMixerError.invalidConfiguration("No audio file loaded on deck A")
-        }
-
-        playerNodeA.scheduleFile(audioFile, at: nil)
-        playerNodeA.play()
-        state = .playing
+        try play(deck: .a, fromSeconds: 0)
     }
 
     /// Gets the current playback time of deck A in seconds.
     public func currentTimeA() -> Double {
-        guard let nodeTime = playerNodeA.lastRenderTime,
-              let playerTime = playerNodeA.playerTime(forNodeTime: nodeTime) else {
+        currentTime(for: .a)
+    }
+
+    /// Starts playing the given deck from an optional offset.
+    /// The started deck becomes the active (primary) deck and the other deck is silenced.
+    public func play(deck: DJDeck, fromSeconds: Double) throws {
+        guard let file = audioFile(for: deck) else {
+            throw DJMixerError.invalidConfiguration("No audio file loaded on deck \(deck)")
+        }
+
+        let startSeconds = max(0, fromSeconds)
+        let fileSampleRate = file.processingFormat.sampleRate
+        let startFrame = AVAudioFramePosition(startSeconds * fileSampleRate)
+        let clampedStartFrame = max(0, min(file.length, startFrame))
+        let remaining = max(0, file.length - clampedStartFrame)
+
+        let node = playerNode(for: deck)
+        node.stop()
+
+        if clampedStartFrame > 0 {
+            node.scheduleSegment(
+                file,
+                startingFrame: clampedStartFrame,
+                frameCount: AVAudioFrameCount(remaining),
+                at: nil
+            )
+        } else {
+            node.scheduleFile(file, at: nil)
+        }
+
+        // Ensure only this deck is audible.
+        setActiveDeck(deck)
+
+        node.play()
+        state = .playing
+    }
+
+    /// Gets the current playback time of the specified deck in seconds.
+    public func currentTime(for deck: DJDeck) -> Double {
+        let node = playerNode(for: deck)
+        guard let nodeTime = node.lastRenderTime,
+              let playerTime = node.playerTime(forNodeTime: nodeTime) else {
             return 0
         }
         return Double(playerTime.sampleTime) / playerTime.sampleRate
@@ -262,37 +340,41 @@ public final class DJMixerEngine {
             throw DJMixerError.engineNotRunning
         }
 
-        guard let audioFileB = audioFileB else {
-            throw DJMixerError.invalidConfiguration("No audio file loaded on deck B")
+        let outgoingDeck = activeDeck
+        let incomingDeck = otherDeck(than: outgoingDeck)
+
+        guard let audioFileIncoming = audioFile(for: incomingDeck) else {
+            throw DJMixerError.invalidConfiguration("No audio file loaded on incoming deck")
         }
 
         // Validate the plan
         let validationResult = validator.validate(
             plan: plan,
-            outgoingTiming: timingA,
-            incomingTiming: timingB
+            outgoingTiming: timing(for: outgoingDeck),
+            incomingTiming: timing(for: incomingDeck)
         )
 
         let validatedPlan = validationResult.validatedPlan
         currentPlan = validatedPlan
 
-        // Apply tempo matching to deck B
-        if validatedPlan.tempoMatch.enabled, let incomingBPM = timingB?.bpm {
+        // Apply tempo matching to incoming deck
+        let incomingTimePitch = timePitch(for: incomingDeck)
+        if validatedPlan.tempoMatch.enabled, let incomingBPM = timing(for: incomingDeck)?.bpm {
             // Compute rate: targetBPM / incomingBPM, clamped to safe range
             let rate = validatedPlan.tempoMatch.computeRate(incomingBPM: incomingBPM)
-            timePitchB.rate = Float(rate)
+            incomingTimePitch.rate = Float(rate)
             // Keep pitch at 0 (pitch-preserving time stretch)
-            timePitchB.pitch = 0.0
+            incomingTimePitch.pitch = 0.0
         } else {
-            timePitchB.rate = 1.0
-            timePitchB.pitch = 0.0
+            incomingTimePitch.rate = 1.0
+            incomingTimePitch.pitch = 0.0
         }
 
         // Compute incoming start time based on beat alignment
         let fadeStartTime = validatedPlan.fadeStartSeconds
         var incomingStartTime = fadeStartTime
 
-        if let outgoingTiming = timingA {
+        if let outgoingTiming = timing(for: outgoingDeck) {
             incomingStartTime = validatedPlan.computeIncomingStartTime(
                 outgoingTiming: outgoingTiming,
                 fadeStartTime: fadeStartTime
@@ -300,42 +382,62 @@ public final class DJMixerEngine {
         }
 
         // Calculate the start offset for incoming track to align its downbeat
-        var incomingStartOffset: AVAudioFramePosition = 0
-        if let incomingTiming = timingB {
-            // Start from the downbeat offset so the first downbeat aligns
-            incomingStartOffset = AVAudioFramePosition(incomingTiming.downbeatOffsetSeconds * config.sampleRate)
+        var incomingStartOffsetFrames: AVAudioFramePosition = 0
+        if let incomingTiming = timing(for: incomingDeck) {
+            // Segment offsets are in *file frames*, not engine sample rate.
+            incomingStartOffsetFrames = AVAudioFramePosition(incomingTiming.downbeatOffsetSeconds * audioFileIncoming.processingFormat.sampleRate)
         }
 
-        // Schedule deck B to start at the computed time
-        let startSampleTime = AVAudioFramePosition(incomingStartTime * config.sampleRate)
+        // Schedule the incoming deck to start at the computed time (in outgoing track seconds).
+        let outgoingNode = playerNode(for: outgoingDeck)
+        let incomingNode = playerNode(for: incomingDeck)
 
-        if let nodeTime = playerNodeA.lastRenderTime {
-            let startTime = AVAudioTime(sampleTime: startSampleTime + nodeTime.sampleTime, atRate: config.sampleRate)
+        let startTime: AVAudioTime?
+        if let nodeTime = outgoingNode.lastRenderTime,
+           let outgoingPlayerTime = outgoingNode.playerTime(forNodeTime: nodeTime) {
+            // Map outgoing track timeline to engine timeline:
+            // engineNowSeconds - outgoingNowSeconds = engineStartOffsetSeconds
+            let engineNowSeconds = Double(nodeTime.sampleTime) / nodeTime.sampleRate
+            let outgoingNowSeconds = Double(outgoingPlayerTime.sampleTime) / outgoingPlayerTime.sampleRate
+            let engineStartOffsetSeconds = engineNowSeconds - outgoingNowSeconds
 
-            // Schedule deck B with offset to align downbeat
-            playerNodeB.scheduleSegment(
-                audioFileB,
-                startingFrame: incomingStartOffset,
-                frameCount: AVAudioFrameCount(audioFileB.length - incomingStartOffset),
-                at: startTime
-            )
-            playerNodeB.play()
+            let targetEngineSeconds = engineStartOffsetSeconds + incomingStartTime
+            let targetEngineSampleTime = AVAudioFramePosition(targetEngineSeconds * config.sampleRate)
+            startTime = AVAudioTime(sampleTime: targetEngineSampleTime, atRate: config.sampleRate)
         } else {
-            // Fallback: schedule immediately
-            playerNodeB.scheduleSegment(
-                audioFileB,
-                startingFrame: incomingStartOffset,
-                frameCount: AVAudioFrameCount(audioFileB.length - incomingStartOffset),
-                at: nil
-            )
-            playerNodeB.play()
+            startTime = nil
         }
 
-        // Record transition timing for progress calculation
-        transitionStartSampleTime = AVAudioFramePosition(incomingStartTime * config.sampleRate)
-        transitionDurationSamples = AVAudioFramePosition(validatedPlan.fadeDurationSeconds * config.sampleRate)
+        // Schedule incoming deck with offset to align downbeat (offset in file frames).
+        let remainingFrames = max(0, audioFileIncoming.length - incomingStartOffsetFrames)
+        incomingNode.scheduleSegment(
+            audioFileIncoming,
+            startingFrame: incomingStartOffsetFrames,
+            frameCount: AVAudioFrameCount(remainingFrames),
+            at: startTime
+        )
+        incomingNode.play()
+
+        // Record transition timing for progress calculation (seconds on outgoing track timeline).
+        transitionStartSeconds = incomingStartTime
+        transitionDurationSeconds = validatedPlan.fadeDurationSeconds
 
         state = .transitioning
+    }
+
+    /// Advances transition state in real-time. Call periodically (e.g., 30–60Hz) while transitioning.
+    /// - Returns: current transition progress (0..1) if transitioning, else nil.
+    @discardableResult
+    public func tick() -> Double? {
+        guard state == .transitioning, let plan = currentPlan else { return nil }
+
+        let outgoingDeck = activeDeck
+        let currentSeconds = currentTime(for: outgoingDeck)
+        updateTransitionProgress(currentSeconds: currentSeconds, plan: plan, outgoingDeck: outgoingDeck)
+
+        let elapsed = currentSeconds - transitionStartSeconds
+        guard transitionDurationSeconds > 0 else { return 1.0 }
+        return min(1.0, max(0.0, elapsed / transitionDurationSeconds))
     }
 
     // MARK: - Manual Rendering
@@ -371,9 +473,10 @@ public final class DJMixerEngine {
                 copyBuffer(from: tempBuffer, to: outputBuffer, atFrame: renderedFrames)
                 renderedFrames += tempBuffer.frameLength
 
-                // Update crossfade and EQ during transition
+                // Update crossfade and EQ during transition (manual render uses engine timeline seconds)
                 if state == .transitioning, let plan = currentPlan {
-                    updateTransitionProgress(currentFrame: renderedFrames, plan: plan)
+                    let currentSeconds = Double(renderedFrames) / config.sampleRate
+                    updateTransitionProgress(currentSeconds: currentSeconds, plan: plan, outgoingDeck: activeDeck)
                 }
 
             case .insufficientDataFromInputNode:
@@ -400,30 +503,38 @@ public final class DJMixerEngine {
     }
 
     /// Updates transition progress and applies crossfade/EQ changes.
-    private func updateTransitionProgress(currentFrame: AVAudioFrameCount, plan: DJTransitionPlan) {
-        guard transitionDurationSamples > 0 else { return }
+    private func updateTransitionProgress(currentSeconds: Double, plan: DJTransitionPlan, outgoingDeck: DJDeck) {
+        guard transitionDurationSeconds > 0 else { return }
 
-        let currentSampleTime = AVAudioFramePosition(currentFrame)
-        let elapsed = currentSampleTime - transitionStartSampleTime
-
+        let elapsed = currentSeconds - transitionStartSeconds
         guard elapsed >= 0 else { return }
 
-        let progress = min(1.0, Double(elapsed) / Double(transitionDurationSamples))
+        let progress = min(1.0, elapsed / transitionDurationSeconds)
+
+        let incomingDeck = otherDeck(than: outgoingDeck)
 
         // Apply crossfade gains
         let (outgoingGain, incomingGain) = plan.crossfadeGains(at: progress)
-        mixerNodeA.outputVolume = Float(outgoingGain)
-        mixerNodeB.outputVolume = Float(incomingGain)
+        mixerNode(for: outgoingDeck).outputVolume = Float(outgoingGain)
+        mixerNode(for: incomingDeck).outputVolume = Float(incomingGain)
 
         // Apply EQ curves
-        eqA.applyEQCurves(plan.outgoingEQCurves, at: progress)
-        eqB.applyEQCurves(plan.incomingEQCurves, at: progress)
+        eqController(for: outgoingDeck).applyEQCurves(plan.outgoingEQCurves, at: progress)
+        eqController(for: incomingDeck).applyEQCurves(plan.incomingEQCurves, at: progress)
 
-        // Check if transition is complete
         if progress >= 1.0 {
-            state = .playing
-            // Deck B is now primary
+            finalizeTransition(outgoingDeck: outgoingDeck, incomingDeck: incomingDeck)
         }
+    }
+
+    private func finalizeTransition(outgoingDeck: DJDeck, incomingDeck: DJDeck) {
+        // Stop outgoing deck to conserve CPU and avoid accidental overlap.
+        playerNode(for: outgoingDeck).stop()
+        mixerNode(for: outgoingDeck).outputVolume = 0.0
+        mixerNode(for: incomingDeck).outputVolume = 1.0
+        activeDeck = incomingDeck
+        state = .playing
+        currentPlan = nil
     }
 
     private func copyBuffer(from source: AVAudioPCMBuffer, to dest: AVAudioPCMBuffer, atFrame offset: AVAudioFrameCount) {
@@ -444,39 +555,27 @@ public final class DJMixerEngine {
 
     /// Gets the EQ for the specified deck.
     public func eq(for deck: DJDeck) -> DJThreeBandEQ {
-        switch deck {
-        case .a: return eqA
-        case .b: return eqB
-        }
+        deck == .a ? eqA : eqB
     }
 
     // MARK: - Volume Access
 
     /// Gets the current volume of the specified deck.
     public func volume(for deck: DJDeck) -> Float {
-        switch deck {
-        case .a: return mixerNodeA.outputVolume
-        case .b: return mixerNodeB.outputVolume
-        }
+        mixerNode(for: deck).outputVolume
     }
 
     /// Sets the volume of the specified deck.
     public func setVolume(_ volume: Float, for deck: DJDeck) {
         let clampedVolume = max(0.0, min(1.0, volume))
-        switch deck {
-        case .a: mixerNodeA.outputVolume = clampedVolume
-        case .b: mixerNodeB.outputVolume = clampedVolume
-        }
+        mixerNode(for: deck).outputVolume = clampedVolume
     }
 
     // MARK: - Tempo Access
 
     /// Gets the playback rate of the specified deck.
     public func rate(for deck: DJDeck) -> Float {
-        switch deck {
-        case .a: return timePitchA.rate
-        case .b: return timePitchB.rate
-        }
+        timePitch(for: deck).rate
     }
 
     /// Sets the playback rate of the specified deck.
@@ -485,9 +584,9 @@ public final class DJMixerEngine {
     ///   - deck: Which deck to adjust.
     ///   - preservePitch: Whether to preserve pitch (default true).
     public func setRate(_ rate: Float, for deck: DJDeck, preservePitch: Bool = true) {
-        let timePitch = deck == .a ? timePitchA : timePitchB
-        timePitch.rate = rate
-        timePitch.pitch = preservePitch ? 0.0 : (rate - 1.0) * 1200.0 // cents
+        let unit = timePitch(for: deck)
+        unit.rate = rate
+        unit.pitch = preservePitch ? 0.0 : (rate - 1.0) * 1200.0 // cents
     }
 }
 

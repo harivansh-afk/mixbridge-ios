@@ -88,7 +88,7 @@ building_spec:
     - mixbridge/Services/DJ/DJAnalysisManager.swift
     - mixbridge/Services/DJ/DJPrepService.swift
     - mixbridge/Services/DJ/DJAuditionController.swift
-    - mixbridge/Views/Dev/DJLabView.swift
+    - mixbridge/Views/Debug/DJLabView.swift
     - mixbridge.xcodeproj/project.pbxproj
 
 test_output:
@@ -110,7 +110,7 @@ verification_spec:
     pattern: "DJ Lab"
 
   - type: file-contains
-    path: mixbridge/Views/Dev/DJLabView.swift
+    path: mixbridge/Views/Debug/DJLabView.swift
     pattern: "import MixBridgeDJ"
 
   - type: file-contains
