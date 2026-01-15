@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UIKit
+import SystemNotification
 
 // MARK: - Smart Container
 /// The "Smart" container that connects the PlayerState (Data) to the ExpandedPlayerView (UI).
@@ -16,6 +17,7 @@ struct ExpandedMusicPlayer: View {
     let namespace: Namespace.ID
 
     @Environment(PlayerState.self) private var playerState
+    @EnvironmentObject private var systemNotification: SystemNotificationContext
 
     init(isPresented: Binding<Bool>, namespace: Namespace.ID) {
         self._isPresented = isPresented
@@ -137,6 +139,9 @@ struct ExpandedMusicPlayer: View {
             // Prefetch when track changes
             prefetchSurroundingTracks()
         }
+        // `ExpandedMusicPlayer` is presented via `fullScreenCover`, so it needs
+        // its own `systemNotification` host to show above the cover.
+        .systemNotification(systemNotification)
     }
 }
 
@@ -156,6 +161,7 @@ struct ExpandedPlayerView: View {
     private var queueManager = QueueManager.shared
 
     @Environment(PlayerState.self) private var playerState
+    @EnvironmentObject private var systemNotification: SystemNotificationContext
 
     // Bindings
     @Binding var playbackPosition: Double
@@ -195,9 +201,6 @@ struct ExpandedPlayerView: View {
     @State private var lastHapticThreshold: Int = 0
     @State private var confirmDeleteQueue: Bool = false
     @Namespace private var toolbarUnionNamespace
-
-    // Automix toast state
-    @State private var showAutomixToast: Bool = false
 
     init(currentTrack: Track, currentQueueIndex: Int = -1, nextTrack: Track?, previousTrack: Track?, isPlaying: Bool, namespace: Namespace.ID, playbackPosition: Binding<Double>, duration: Double, volume: Binding<Double>, isDraggingProgress: Binding<Bool>, onPlayPause: @escaping () -> Void, onNext: @escaping () -> Void, onPrevious: @escaping () -> Void, onSeek: @escaping (Bool) -> Void, onDismiss: @escaping () -> Void, previewQueueTracks: [Track]? = nil, initialShowQueue: Bool = false) {
         self.currentTrack = currentTrack
@@ -508,6 +511,7 @@ struct ExpandedPlayerView: View {
                                     }
                                     Task {
                                         try? await queueManager.clearQueueWithSync()
+                                        presentQueueClearedNotification()
                                     }
                                 } else {
                                     withAnimation(.smooth(duration: 0.3)) {
@@ -536,9 +540,7 @@ struct ExpandedPlayerView: View {
                                     Button {
                                         playerState.mixEnabled.toggle()
                                         HapticManager.selection()
-                                        // Reset then show to ensure onChange fires
-                                        showAutomixToast = false
-                                        showAutomixToast = true
+                                        presentAutomixNotification(isEnabled: playerState.mixEnabled)
                                     } label: {
                                         Image("wave-sine")
                                             .renderingMode(.template)
@@ -583,16 +585,6 @@ struct ExpandedPlayerView: View {
 
         // Setup the hero transition
         .navigationTransition(.zoom(sourceID: "MINIPLAYER", in: namespace))
-        .dynamicIslandToast(
-            isPresented: $showAutomixToast,
-            value: Toast(
-                symbol: playerState.mixEnabled ? "checkmark.seal.fill" : "xmark.seal.fill",
-                symbolFont: .system(size: 35),
-                symbolForegroundStyle: playerState.mixEnabled ? (.white, .green) : (.white, .red),
-                title: playerState.mixEnabled ? "On" : "Off",
-                message: playerState.mixEnabled ? "Automix is turned on" : "Automix is turned off"
-            )
-        )
         .onChange(of: showQueueSheet) { _, newValue in
             // Reset delete confirmation when queue sheet state changes
             if newValue {
@@ -609,6 +601,20 @@ struct ExpandedPlayerView: View {
                 // Reset confirmation state when queue becomes empty
                 confirmDeleteQueue = false
             }
+        }
+    }
+
+    @MainActor
+    private func presentAutomixNotification(isEnabled: Bool) {
+        systemNotification.present {
+            AutomixSystemNotificationContent(isEnabled: isEnabled)
+        }
+    }
+
+    @MainActor
+    private func presentQueueClearedNotification() {
+        systemNotification.present {
+            QueueClearedSystemNotificationContent()
         }
     }
 
@@ -838,6 +844,114 @@ struct ExpandedPlayerView: View {
         case .center:
             return 1.0
         }
+    }
+}
+
+private struct AutomixSystemNotificationContent: View {
+    let isEnabled: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            AutomixSystemNotificationIcon(isEnabled: isEnabled)
+
+            Text("Automix")
+                .font(.footnote.bold())
+                .foregroundStyle(.primary)
+
+            Text(isEnabled ? "On" : "Off")
+                .font(.footnote.bold())
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 7)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+private struct AutomixSystemNotificationIcon: View {
+    let isEnabled: Bool
+
+    @State private var isRotated = false
+    @State private var isAnimated = false
+
+    var body: some View {
+        Image("wave-sine")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 18, height: 18)
+            .rotationEffect(.degrees(isRotated ? -14 : 0), anchor: .center)
+            .animation(
+                .interpolatingSpring(
+                    mass: 0.5,
+                    stiffness: isEnabled ? 140 : 180,
+                    damping: isEnabled ? 5 : 2,
+                    initialVelocity: 0
+                ),
+                value: isAnimated
+            )
+            .foregroundStyle(isEnabled ? .white : Color.gray)
+            .shadow(color: isEnabled ? .white.opacity(0.7) : .clear, radius: 6)
+            .shadow(color: isEnabled ? .white.opacity(0.3) : .clear, radius: 12)
+            .onAppear(perform: animate)
+    }
+}
+
+@MainActor
+private extension AutomixSystemNotificationIcon {
+
+    func animate() {
+        withAnimation { isRotated = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            isRotated = false
+            isAnimated = true
+        }
+    }
+}
+
+private struct QueueClearedSystemNotificationContent: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            QueueClearedSystemNotificationIcon()
+
+            Text("Queue")
+                .font(.footnote.bold())
+                .foregroundStyle(.primary)
+
+            Text("Cleared")
+                .font(.footnote.bold())
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 7)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+private struct QueueClearedSystemNotificationIcon: View {
+    @State private var isAnimated = false
+
+    var body: some View {
+        Image("queue")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 18, height: 18)
+            .scaleEffect(isAnimated ? 1.0 : 0.8)
+            .opacity(isAnimated ? 1.0 : 0.6)
+            .animation(
+                .interpolatingSpring(
+                    mass: 0.5,
+                    stiffness: 150,
+                    damping: 6,
+                    initialVelocity: 0
+                ),
+                value: isAnimated
+            )
+            .foregroundStyle(.white)
+            .onAppear {
+                isAnimated = true
+            }
     }
 }
 

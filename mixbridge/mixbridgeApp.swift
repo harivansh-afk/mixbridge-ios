@@ -9,6 +9,7 @@ import SwiftUI
 import Foundation
 import Lottie
 import MixBridgeDB
+import SystemNotification
 
 @main
 struct mixbridgeApp: App {
@@ -18,6 +19,7 @@ struct mixbridgeApp: App {
     @State private var profileManager = UserProfileManager.shared
     @State private var queueManager = QueueManager.shared
     @State private var playerState = PlayerState.shared
+    @StateObject private var systemNotification = SystemNotificationContext()
 
     // Splash state management
     @State private var finishedSplash: Bool = false
@@ -48,6 +50,8 @@ struct mixbridgeApp: App {
             .environment(queueManager)
             .environment(playerState)
             .environmentObject(DownloadManager.shared)
+            .environmentObject(systemNotification)
+            .systemNotification(systemNotification)
             .onAppear {
                 // No preloading needed - views load from local database
                 // Short delay for splash timing only
