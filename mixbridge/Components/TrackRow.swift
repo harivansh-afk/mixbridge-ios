@@ -87,14 +87,7 @@ struct TrackRow: View {
             isLiked = await LikedSync.shared.isTrackLiked(trackId: track.id)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            if isQueueContext {
-                Button {
-                    onRemoveFromQueue?()
-                } label: {
-                    Label("", systemImage: "minus")
-                }
-                .tint(.red)
-            } else {
+            if !isQueueContext {
                 Button {
                     handleAddToQueue()
                 } label: {
@@ -111,7 +104,14 @@ struct TrackRow: View {
             }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            if !isQueueContext {
+            if isQueueContext {
+                Button {
+                    onRemoveFromQueue?()
+                } label: {
+                    Label("", systemImage: "minus")
+                }
+                .tint(.red)
+            } else {
                 Button {
                     isLiked ? handleUnlike() : handleLike()
                 } label: {
