@@ -48,11 +48,10 @@ final class PlaybackCoordinator: NSObject {
     /// Enable automatic crossfade between tracks
     var mixEnabled: Bool = false {
         didSet {
-            // If mix mode is disabled while active, stop the mix engine immediately to prevent
-            // overlapping audio if we later start the AVQueuePlayer.
+            // If mix mode is disabled while active, just cancel pending crossfades
+            // Let the current track finish playing - next track will use AVQueuePlayer
             if !mixEnabled && isUsingMixMode {
-                mixEngine.stop()
-                isUsingMixMode = false
+                mixEngine.handleMixDisabled()
             }
         }
     }
