@@ -1,5 +1,5 @@
 {
-  "originHash" : "a99bf3c5fb3d107e1e7a4784eecb58f7ea610e826b500b293de2db6e73a6775c",
+  "originHash" : "719e7706da8afc081bbc7418920e51cc7e1e2f411e0e68c8ed1140ce49dca133",
   "pins" : [
     {
       "identity" : "grdb.swift",
@@ -17,6 +17,15 @@
       "state" : {
         "revision" : "04f2fd18cc9404a0a0917265a449002674f24ec9",
         "version" : "4.5.2"
+      }
+    },
+    {
+      "identity" : "systemnotification",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/danielsaidi/SystemNotification",
+      "state" : {
+        "revision" : "31a63e5674d8ca0b4ae646142a7a53c50b1937fa",
+        "version" : "1.4.0"
       }
     }
   ],
