@@ -913,11 +913,6 @@ private struct QueueClearedSystemNotificationContent: View {
     var body: some View {
         HStack(spacing: 12) {
             QueueClearedSystemNotificationIcon()
-
-            Text("Queue")
-                .font(.footnote.bold())
-                .foregroundStyle(.primary)
-
             Text("Cleared")
                 .font(.footnote.bold())
                 .foregroundStyle(.secondary)
