@@ -597,6 +597,30 @@ final class ConvexService {
         ])
     }
 
+    // MARK: - SoundCloud Playlist User Tracks
+
+    /// Add a track to a SoundCloud playlist (user modification that persists across syncs)
+    func addTrackToSoundCloudPlaylist(userId: String, playlistId: String, track: SoundCloudTrack) async throws {
+        let trackData = try JSONEncoder().encode(track)
+        let trackDict = try JSONSerialization.jsonObject(with: trackData) as? [String: Any] ?? [:]
+
+        try await mutation("playlistUserTracks:addTrack", args: [
+            "userId": userId,
+            "playlistId": playlistId,
+            "trackId": String(track.id),
+            "trackData": trackDict
+        ])
+    }
+
+    /// Remove a user-added track from a SoundCloud playlist
+    func removeTrackFromSoundCloudPlaylist(userId: String, playlistId: String, trackId: String) async throws {
+        try await mutation("playlistUserTracks:removeTrack", args: [
+            "userId": userId,
+            "playlistId": playlistId,
+            "trackId": trackId
+        ])
+    }
+
     // MARK: - Stream URL (Direct CDN Access)
 
     /// Get stream URL with OAuth token for direct SoundCloud CDN access

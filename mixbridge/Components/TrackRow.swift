@@ -60,6 +60,7 @@ struct TrackRow: View {
     @State private var errorMessage: String?
     @State private var showError = false
     @State private var isLiked = false
+    @State private var showAddToPlaylist = false
     @EnvironmentObject private var downloadManager: DownloadManager
 
     private var downloadStatus: DownloadStatus {
@@ -127,10 +128,15 @@ struct TrackRow: View {
                 Text(errorMessage)
             }
         }
+        .sheet(isPresented: $showAddToPlaylist) {
+            if let soundCloudTrack {
+                AddToPlaylistSheet(track: track, soundCloudTrack: soundCloudTrack)
+            }
+        }
         .contextMenu {
             if !isQueueContext {
                 downloadContextMenuItems
-                Divider()
+                playlistContextMenuItems
                 queueContextMenuItems
             }
         }
@@ -161,6 +167,17 @@ struct TrackRow: View {
             }
         }
 
+    }
+
+    @ViewBuilder
+    private var playlistContextMenuItems: some View {
+        if soundCloudTrack != nil {
+            Button {
+                showAddToPlaylist = true
+            } label: {
+                Label("Add to Playlist", systemImage: "text.badge.plus")
+            }
+        }
     }
 
     @ViewBuilder

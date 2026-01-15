@@ -400,6 +400,60 @@ final class PlaylistSync: Sendable {
         logInfo(.sync, "Added track \(track.id) to playlist \(playlistId)")
     }
 
+    /// Add a track to a SoundCloud playlist (persisted across syncs)
+    /// This stores the track in a separate table that gets merged during playlist fetch
+    func addTrackToSoundCloudPlaylist(
+        userId: String,
+        playlistId: String,
+        track: PersistedTrack,
+        soundCloudTrack: SoundCloudTrack
+    ) async throws {
+        let now = Date()
+
+        // Store locally in the junction table for immediate display
+        try await db.writer.write { db in
+            try track.upsert(db)
+
+            // Check if already exists
+            let existing = try PlaylistTrack
+                .filter(PlaylistTrack.Columns.playlistId == playlistId)
+                .filter(PlaylistTrack.Columns.trackId == track.id)
+                .fetchOne(db)
+
+            if existing == nil {
+                let currentCount = try PlaylistTrack
+                    .filter(PlaylistTrack.Columns.playlistId == playlistId)
+                    .fetchCount(db)
+
+                let junction = PlaylistTrack(
+                    playlistId: playlistId,
+                    trackId: track.id,
+                    position: currentCount,
+                    addedAt: now
+                )
+                try junction.insert(db)
+
+                // Update playlist track count
+                try PersistedPlaylist
+                    .filter(PersistedPlaylist.Columns.id == playlistId)
+                    .updateAll(db,
+                        PersistedPlaylist.Columns.trackCount.set(to: currentCount + 1),
+                        PersistedPlaylist.Columns.lastUpdated.set(to: now)
+                    )
+            }
+        }
+
+        // Sync to Convex (stored in playlistUserTracks table)
+        // This must complete before returning to ensure the track persists across syncs
+        try await convex.addTrackToSoundCloudPlaylist(
+            userId: userId,
+            playlistId: playlistId,
+            track: soundCloudTrack
+        )
+
+        logInfo(.sync, "Added track \(track.id) to SoundCloud playlist \(playlistId)")
+    }
+
     /// Remove a track from a user-created playlist
     func removeTrackFromUserPlaylist(userId: String, playlistId: String, trackId: String) async throws {
         try await db.writer.write { db in
