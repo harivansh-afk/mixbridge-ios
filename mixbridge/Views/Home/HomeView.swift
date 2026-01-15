@@ -10,6 +10,7 @@ import SwiftUI
 struct HomeView: View {
     @State private var viewModel = HomeViewModel()
     @State private var showingAccount = false
+    @State private var hideToolbarAvatar = false
     @Environment(AuthManager.self) private var authManager
     @Environment(UserProfileManager.self) private var profileManager
     @Environment(QueueManager.self) private var queueManager
@@ -17,10 +18,29 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             content
+                .navigationBarTitleDisplayMode(.inline)
+                .contentMargins(.top, 0, for: .scrollContent)
                 .refreshable {
                     if let userId = authManager.currentUserId {
                         await viewModel.refresh(userId: userId)
                     }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Text("Home")
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+                            .fixedSize()
+                            .padding(.leading, -4)
+                            .opacity(hideToolbarAvatar ? 0 : 1)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+
+                    ToolbarItem(placement: .topBarTrailing) {
+                        profileAvatar
+                            .opacity(hideToolbarAvatar ? 0 : 1)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
                 }
             .sheet(isPresented: $showingAccount) {
                 AccountBottomSheet(
@@ -44,19 +64,6 @@ struct HomeView: View {
                 _ = await observe
             }
         }
-    }
-
-    private var headerView: some View {
-        HStack {
-            Text("Home")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-
-            Spacer()
-
-            profileAvatar
-        }
-        .padding(.horizontal)
     }
 
     @ViewBuilder
@@ -122,12 +129,6 @@ struct HomeView: View {
         let rows = viewModel.playHistoryRows
 
         return List {
-            Section {
-                headerView
-            }
-            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 0, trailing: 0))
-            .listRowSeparator(.hidden)
-
             if !rows.isEmpty {
                 Section {
                     Text("Recents")
@@ -154,6 +155,16 @@ struct HomeView: View {
             }
         }
         .listStyle(.plain)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y
+        } action: { _, newValue in
+            let shouldHide = newValue > 0
+            if shouldHide != hideToolbarAvatar {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    hideToolbarAvatar = shouldHide
+                }
+            }
+        }
     }
 }
 

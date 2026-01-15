@@ -10,6 +10,7 @@ import SwiftUI
 struct LibraryView: View {
     @State private var viewModel = LibraryViewModel()
     @State private var showingAccount = false
+    @State private var hideToolbarAvatar = false
     @Environment(UserProfileManager.self) private var profileManager
     @Environment(AuthManager.self) private var authManager
     @Namespace private var namespace
@@ -17,8 +18,27 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             content
+                .navigationBarTitleDisplayMode(.inline)
+                .contentMargins(.top, 0, for: .scrollContent)
                 .refreshable {
                     await loadPlaylists(forceRefresh: true)
+                }
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Text("Library")
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+                            .fixedSize()
+                            .padding(.leading, -4)
+                            .opacity(hideToolbarAvatar ? 0 : 1)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+
+                    ToolbarItem(placement: .topBarTrailing) {
+                        profileAvatar
+                            .opacity(hideToolbarAvatar ? 0 : 1)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
                 }
                 .sheet(isPresented: $showingAccount) {
                     AccountBottomSheet(
@@ -60,8 +80,7 @@ struct LibraryView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    headerView
+                VStack(alignment: .leading, spacing: 24) {
                     if !viewModel.playlists.isEmpty {
                         playlistGridSection
                     }
@@ -71,26 +90,22 @@ struct LibraryView: View {
                     }
                 }
             }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y
+            } action: { _, newValue in
+                let shouldHide = newValue > 0
+                if shouldHide != hideToolbarAvatar {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        hideToolbarAvatar = shouldHide
+                    }
+                }
+            }
         }
     }
 
     private func loadPlaylists(forceRefresh: Bool = false) async {
         guard let userId = authManager.currentUserId else { return }
         await viewModel.refresh(userId: userId, forceRefresh: forceRefresh)
-    }
-
-    private var headerView: some View {
-        HStack {
-            Text("Library")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-
-            Spacer()
-
-            profileAvatar
-        }
-        .padding(.horizontal)
-        .padding(.top, 8)
     }
 
     private var profileAvatar: some View {

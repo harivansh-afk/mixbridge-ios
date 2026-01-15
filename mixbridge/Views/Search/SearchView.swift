@@ -140,29 +140,21 @@ struct SearchView: View {
         return artistsDict.values.sorted { $0.trackCount > $1.trackCount }
     }
 
-    private var headerView: some View {
-        Text("Search")
-            .font(.largeTitle)
-            .fontWeight(.bold)
-            .padding(.horizontal)
-            .padding(.top, 8)
-            .padding(.bottom, 6)
-    }
-
-    private var showHeader: Bool {
-        searchText.isEmpty
-    }
-
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 0) {
-                if showHeader {
-                    headerView
+            content
+                .navigationBarTitleDisplayMode(.inline)
+                .contentMargins(.top, 0, for: .scrollContent)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Text("Search")
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+                            .fixedSize()
+                            .padding(.leading, -4)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
                 }
-                content
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(.hidden, for: .navigationBar)
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: searchSource.placeholder)
                 .onChange(of: searchText) { oldValue, newValue in
                     guard searchSource == .soundcloud else { return }
