@@ -7,6 +7,7 @@
 
 import SwiftUI
 import MixBridgeDB
+import SystemNotification
 
 struct SharedPlaylistView: View {
     let shareId: String
@@ -19,6 +20,7 @@ struct SharedPlaylistView: View {
     @Environment(PlayerState.self) private var playerState
     @Environment(DeepLinkRouter.self) private var deepLinkRouter
     @EnvironmentObject private var downloadManager: DownloadManager
+    @EnvironmentObject private var systemNotification: SystemNotificationContext
     @Environment(FeatureFlags.self) private var featureFlags
 
     @State private var playlist: SharedPlaylistResponse?
@@ -260,8 +262,23 @@ struct SharedPlaylistView: View {
                     throw ConvexError.notFound
                 }
 
-                // Create a copy in user's library
-                let persistedTracks = (fullPlaylist.trackData ?? []).map { PersistedTrack(from: $0) }
+                // Create persisted tracks - use trackData if available, fallback to already-loaded trackItems
+                let persistedTracks: [PersistedTrack]
+                if let trackData = fullPlaylist.trackData, !trackData.isEmpty {
+                    persistedTracks = trackData.map { PersistedTrack(from: $0) }
+                } else if !trackItems.isEmpty {
+                    // Fallback to tracks already loaded in the view
+                    persistedTracks = trackItems.compactMap { item -> PersistedTrack? in
+                        return PersistedTrack(from: item.soundCloudTrack)
+                    }
+                } else {
+                    throw PlaylistSyncError.emptyPlaylistNotAllowed
+                }
+
+                guard !persistedTracks.isEmpty else {
+                    throw PlaylistSyncError.emptyPlaylistNotAllowed
+                }
+
                 _ = try await PlaylistSync.shared.createUserPlaylistWithTracks(
                     userId: userId,
                     name: fullPlaylist.name,
@@ -275,6 +292,7 @@ struct SharedPlaylistView: View {
                     showAddedConfirmation = true
                     isInLibrary = true
                     HapticManager.success()
+                    showLibraryAddedNotification()
                 }
 
                 // Reset confirmation after delay
@@ -285,9 +303,16 @@ struct SharedPlaylistView: View {
             } catch {
                 await MainActor.run {
                     isAddingToLibrary = false
+                    self.error = "Failed to add to library"
                 }
                 logError(.sync, "Failed to add shared playlist to library: \(error)")
             }
+        }
+    }
+
+    private func showLibraryAddedNotification() {
+        systemNotification.present {
+            LibraryAddedNotificationContent()
         }
     }
 
@@ -388,6 +413,29 @@ struct SharedPlaylistView: View {
         } else {
             dismiss()
         }
+    }
+}
+
+// MARK: - Library Added Notification
+
+private struct LibraryAddedNotificationContent: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "square.stack.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.primary)
+
+            Text("Library")
+                .font(.footnote.bold())
+                .foregroundStyle(.primary)
+
+            Text("Added")
+                .font(.footnote.bold())
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 7)
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 
