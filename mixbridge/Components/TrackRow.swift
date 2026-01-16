@@ -61,6 +61,8 @@ struct TrackRow: View {
     @State private var showError = false
     @State private var isLiked = false
     @State private var showAddToPlaylist = false
+    @State private var shareURL: URL?
+    @State private var isGeneratingShareLink = false
     @EnvironmentObject private var downloadManager: DownloadManager
 
     private var downloadStatus: DownloadStatus {
@@ -135,10 +137,41 @@ struct TrackRow: View {
         }
         .contextMenu {
             if !isQueueContext {
+                // Share
+                shareContextMenuItems
+
+                Divider()
+
+                // Download & Like
                 downloadContextMenuItems
+                likeContextMenuItem
+
+                Divider()
+
+                // Playlist & Queue
                 playlistContextMenuItems
                 queueContextMenuItems
             }
+        }
+    }
+
+    @ViewBuilder
+    private var shareContextMenuItems: some View {
+        if let shareURL {
+            ShareLink(item: shareURL) {
+                Label("Share Track", systemImage: "square.and.arrow.up")
+            }
+        } else {
+            Button {
+                handleShare()
+            } label: {
+                if isGeneratingShareLink {
+                    Label("Generating...", systemImage: "ellipsis")
+                } else {
+                    Label("Share Track", systemImage: "square.and.arrow.up")
+                }
+            }
+            .disabled(isGeneratingShareLink || soundCloudTrack == nil)
         }
     }
 
@@ -181,13 +214,16 @@ struct TrackRow: View {
     }
 
     @ViewBuilder
-    private var queueContextMenuItems: some View {
+    private var likeContextMenuItem: some View {
         Button {
             isLiked ? handleUnlike() : handleLike()
         } label: {
             Label(isLiked ? "Unlike" : "Like", systemImage: isLiked ? "heart.slash" : "heart")
         }
+    }
 
+    @ViewBuilder
+    private var queueContextMenuItems: some View {
         Button {
             handleAddToQueue()
         } label: {
@@ -380,6 +416,34 @@ struct TrackRow: View {
             HapticManager.error()
             errorMessage = "Delete action not configured"
             showError = true
+        }
+    }
+
+    private func handleShare() {
+        guard let soundCloudTrack else { return }
+
+        isGeneratingShareLink = true
+        HapticManager.light()
+
+        Task {
+            do {
+                let response = try await ConvexService.shared.shareTrack(
+                    trackId: String(soundCloudTrack.id),
+                    trackData: soundCloudTrack
+                )
+                await MainActor.run {
+                    shareURL = URL(string: response.shareUrl)
+                    isGeneratingShareLink = false
+                    HapticManager.success()
+                }
+            } catch {
+                await MainActor.run {
+                    isGeneratingShareLink = false
+                    errorMessage = "Failed to generate share link"
+                    showError = true
+                }
+                logError(.network, "Failed to generate track share link: \(error)")
+            }
         }
     }
 }

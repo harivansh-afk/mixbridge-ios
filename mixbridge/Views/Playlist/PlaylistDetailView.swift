@@ -101,33 +101,30 @@ struct PlaylistDetailView: View {
 
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    // Share option for user-created playlists
-                    if playlist.isUserCreated {
-                        if let shareURL {
-                            ShareLink(item: shareURL) {
-                                Label("Share Playlist", systemImage: "square.and.arrow.up")
-                            }
-
-                            Button {
-                                copyShareLink()
-                            } label: {
-                                Label(showCopiedConfirmation ? "Link Copied!" : "Copy Link", systemImage: showCopiedConfirmation ? "checkmark" : "doc.on.doc")
-                            }
-                        } else {
-                            Button {
-                                generateShareLink()
-                            } label: {
-                                if isGeneratingShareLink {
-                                    Label("Generating...", systemImage: "ellipsis")
-                                } else {
-                                    Label("Share Playlist", systemImage: "square.and.arrow.up")
-                                }
-                            }
-                            .disabled(isGeneratingShareLink)
+                    // Share option - works for all playlists
+                    if let shareURL {
+                        ShareLink(item: shareURL) {
+                            Label("Share Playlist", systemImage: "square.and.arrow.up")
                         }
 
-                        Divider()
+                        Button {
+                            copyShareLink()
+                        } label: {
+                            Label(showCopiedConfirmation ? "Link Copied!" : "Copy Link", systemImage: showCopiedConfirmation ? "checkmark" : "doc.on.doc")
+                        }
+                    } else {
+                        Button {
+                            generateShareLink()
+                        } label: {
+                            if isGeneratingShareLink {
+                                Label("Generating...", systemImage: "ellipsis")
+                            } else {
+                                Label("Share Playlist", systemImage: "square.and.arrow.up")
+                            }
+                        }
+                        .disabled(isGeneratingShareLink)
                     }
+
 
                     Button {
                         downloadAllTracks()
@@ -137,7 +134,6 @@ struct PlaylistDetailView: View {
                     .disabled(viewModel.trackItems.isEmpty)
 
                     if playlist.isUserCreated {
-                        Divider()
 
                         Button(role: .destructive) {
                             showDeleteConfirmation = true
@@ -292,14 +288,19 @@ struct PlaylistDetailView: View {
     }
 
     private func generateShareLink() {
-        guard playlist.isUserCreated else { return }
-
         isGeneratingShareLink = true
         HapticManager.light()
 
         Task {
             do {
-                let response = try await ConvexService.shared.createShareLink(playlistId: playlist.id)
+                let response: ShareLinkResponse
+                if playlist.isUserCreated {
+                    response = try await ConvexService.shared.createShareLink(playlistId: playlist.id)
+                } else {
+                    // SoundCloud playlist - use the different endpoint
+                    response = try await ConvexService.shared.shareSoundCloudPlaylist(playlistId: playlist.id)
+                }
+
                 await MainActor.run {
                     shareURL = URL(string: response.shareUrl)
                     isGeneratingShareLink = false

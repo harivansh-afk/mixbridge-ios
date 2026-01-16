@@ -14,10 +14,12 @@ final class DeepLinkRouter {
     static let shared = DeepLinkRouter()
 
     var pendingDeepLink: DeepLink?
-    var isShowingSharedPlaylist: Bool = false
+    var isShowingSharedContent: Bool = false
 
     enum DeepLink: Equatable {
         case sharedPlaylist(shareId: String)
+        case sharedSoundCloudPlaylist(shareId: String)
+        case sharedTrack(shareId: String)
     }
 
     private init() {}
@@ -47,17 +49,36 @@ final class DeepLinkRouter {
 
     private func handleUniversalLink(components: URLComponents) {
         let pathComponents = components.path.split(separator: "/").map(String.init)
-
-        // Handle /p/{shareId} - shared playlist
-        if pathComponents.count >= 2, pathComponents[0] == "p" {
-            let shareId = pathComponents[1]
-            logInfo(.app, "Deep link: shared playlist \(shareId)")
-            pendingDeepLink = .sharedPlaylist(shareId: shareId)
-            isShowingSharedPlaylist = true
+        guard pathComponents.count >= 2 else {
+            logWarning(.app, "Unhandled Universal Link path: \(components.path)")
             return
         }
 
-        logWarning(.app, "Unhandled Universal Link path: \(components.path)")
+        let prefix = pathComponents[0]
+        let shareId = pathComponents[1]
+
+        switch prefix {
+        case "p":
+            // /p/{shareId} - shared custom playlist
+            logInfo(.app, "Deep link: shared custom playlist \(shareId)")
+            pendingDeepLink = .sharedPlaylist(shareId: shareId)
+            isShowingSharedContent = true
+
+        case "s":
+            // /s/{shareId} - shared SoundCloud playlist
+            logInfo(.app, "Deep link: shared SoundCloud playlist \(shareId)")
+            pendingDeepLink = .sharedSoundCloudPlaylist(shareId: shareId)
+            isShowingSharedContent = true
+
+        case "t":
+            // /t/{shareId} - shared track
+            logInfo(.app, "Deep link: shared track \(shareId)")
+            pendingDeepLink = .sharedTrack(shareId: shareId)
+            isShowingSharedContent = true
+
+        default:
+            logWarning(.app, "Unhandled Universal Link path: \(components.path)")
+        }
     }
 
     private func handleCustomScheme(url: URL) {
@@ -71,9 +92,9 @@ final class DeepLinkRouter {
         pendingDeepLink = nil
     }
 
-    /// Dismiss shared playlist sheet
-    func dismissSharedPlaylist() {
-        isShowingSharedPlaylist = false
+    /// Dismiss shared content sheet
+    func dismissSharedContent() {
+        isShowingSharedContent = false
         pendingDeepLink = nil
     }
 }

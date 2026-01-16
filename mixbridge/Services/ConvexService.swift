@@ -689,6 +689,52 @@ final class ConvexService {
         ])
     }
 
+    // MARK: - Track Sharing
+
+    /// Share a track
+    func shareTrack(trackId: String, trackData: SoundCloudTrack) async throws -> ShareLinkResponse {
+        guard let userId = KeychainManager.shared.getUserId() else {
+            throw ConvexError.notAuthenticated
+        }
+
+        let trackDataEncoded = try JSONEncoder().encode(trackData)
+        let trackDict = try JSONSerialization.jsonObject(with: trackDataEncoded) as? [String: Any] ?? [:]
+
+        return try await mutationGeneric("sharing:shareTrack", args: [
+            "userId": userId,
+            "trackId": String(trackId),
+            "trackData": trackDict
+        ])!
+    }
+
+    /// Get a shared track by share ID (public - no auth required)
+    func getSharedTrack(shareId: String) async throws -> SharedTrackResponse? {
+        return try await query("sharing:getTrackByShareId", args: [
+            "shareId": shareId
+        ])
+    }
+
+    // MARK: - SoundCloud Playlist Sharing
+
+    /// Share a SoundCloud playlist (points to live data)
+    func shareSoundCloudPlaylist(playlistId: String) async throws -> ShareLinkResponse {
+        guard let userId = KeychainManager.shared.getUserId() else {
+            throw ConvexError.notAuthenticated
+        }
+
+        return try await mutationGeneric("sharing:shareSoundCloudPlaylist", args: [
+            "userId": userId,
+            "playlistId": playlistId
+        ])!
+    }
+
+    /// Get a shared SoundCloud playlist by share ID (public - no auth required)
+    func getSharedSoundCloudPlaylist(shareId: String) async throws -> SharedSoundCloudPlaylistResponse? {
+        return try await query("sharing:getSoundCloudPlaylistByShareId", args: [
+            "shareId": shareId
+        ])
+    }
+
 }
 
 // MARK: - Response Types
@@ -760,7 +806,8 @@ struct PlaylistVisibilityResponse: Codable {
     let shareUrl: String?
 }
 
-struct SharedPlaylistOwner: Codable {
+/// Unified type for playlist owner/sharer info
+struct SharedUserInfo: Codable {
     let username: String?
     let avatarUrl: String?
 }
@@ -771,6 +818,27 @@ struct SharedPlaylistTrack: Codable {
     let artwork_url: String?
     let duration: Int?
     let user: SoundCloudUser?
+
+    /// Convert to SoundCloudTrack if all required fields are present
+    func toSoundCloudTrack() -> SoundCloudTrack? {
+        guard let id, let title, let user else { return nil }
+        return SoundCloudTrack(
+            id: id,
+            title: title,
+            user: user,
+            duration: duration ?? 0,
+            artwork_url: artwork_url,
+            permalink_url: nil,
+            playback_count: nil,
+            genre: nil,
+            description: nil,
+            created_at: nil,
+            waveform_url: nil,
+            likes_count: nil,
+            comment_count: nil,
+            reposts_count: nil
+        )
+    }
 }
 
 struct SharedPlaylistResponse: Codable {
@@ -780,7 +848,7 @@ struct SharedPlaylistResponse: Codable {
     let trackCount: Int
     let tracks: [SharedPlaylistTrack]
     let createdAt: Int
-    let owner: SharedPlaylistOwner?
+    let owner: SharedUserInfo?
 }
 
 struct FullSharedPlaylistResponse: Codable {
@@ -790,6 +858,58 @@ struct FullSharedPlaylistResponse: Codable {
     let trackIds: [String]
     let trackData: [SoundCloudTrack]?
     let ownerId: String
+}
+
+// MARK: - Track Sharing Response Types
+
+struct SharedTrackData: Codable {
+    let id: Int?
+    let title: String?
+    let artwork_url: String?
+    let duration: Int?
+    let genre: String?
+    let description: String?
+    let user: SoundCloudUser?
+
+    /// Convert to SoundCloudTrack if all required fields are present
+    func toSoundCloudTrack() -> SoundCloudTrack? {
+        guard let id, let title, let user else { return nil }
+        return SoundCloudTrack(
+            id: id,
+            title: title,
+            user: user,
+            duration: duration ?? 0,
+            artwork_url: artwork_url,
+            permalink_url: nil,
+            playback_count: nil,
+            genre: genre,
+            description: description,
+            created_at: nil,
+            waveform_url: nil,
+            likes_count: nil,
+            comment_count: nil,
+            reposts_count: nil
+        )
+    }
+}
+
+struct SharedTrackResponse: Codable {
+    let trackData: SharedTrackData?
+    let createdAt: Int
+    let sharer: SharedUserInfo?
+}
+
+// MARK: - SoundCloud Playlist Sharing Response Types
+
+struct SharedSoundCloudPlaylistResponse: Codable {
+    let name: String
+    let description: String?
+    let artwork: String?
+    let trackCount: Int
+    let tracks: [SharedPlaylistTrack]
+    let createdAt: Int
+    let sharer: SharedUserInfo?
+    let isFromSoundCloud: Bool?
 }
 
 // MARK: - Errors

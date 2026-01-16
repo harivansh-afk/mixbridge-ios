@@ -57,14 +57,13 @@ struct mixbridgeApp: App {
             .onOpenURL { url in
                 deepLinkRouter.handle(url: url)
             }
-            .sheet(isPresented: Bindable(deepLinkRouter).isShowingSharedPlaylist) {
-                if case .sharedPlaylist(let shareId) = deepLinkRouter.pendingDeepLink {
-                    SharedPlaylistView(shareId: shareId)
-                        .environment(authManager)
-                        .environment(queueManager)
-                        .environment(playerState)
-                        .environmentObject(DownloadManager.shared)
-                }
+            .sheet(isPresented: Bindable(deepLinkRouter).isShowingSharedContent) {
+                sharedContentView
+                    .environment(authManager)
+                    .environment(queueManager)
+                    .environment(playerState)
+                    .environment(deepLinkRouter)
+                    .environmentObject(DownloadManager.shared)
             }
             .onAppear {
                 // No preloading needed - views load from local database
@@ -96,6 +95,20 @@ struct mixbridgeApp: App {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { authManager.checkAuthStatus() }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var sharedContentView: some View {
+        switch deepLinkRouter.pendingDeepLink {
+        case .sharedPlaylist(let shareId):
+            SharedPlaylistView(shareId: shareId)
+        case .sharedSoundCloudPlaylist(let shareId):
+            SharedPlaylistView(shareId: shareId, isSoundCloudPlaylist: true)
+        case .sharedTrack(let shareId):
+            SharedTrackView(shareId: shareId)
+        case .none:
+            EmptyView()
         }
     }
 

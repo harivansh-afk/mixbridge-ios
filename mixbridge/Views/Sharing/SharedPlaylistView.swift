@@ -10,6 +10,7 @@ import MixBridgeDB
 
 struct SharedPlaylistView: View {
     let shareId: String
+    var isSoundCloudPlaylist: Bool = false
 
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
@@ -45,7 +46,7 @@ struct SharedPlaylistView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        deepLinkRouter.dismissSharedPlaylist()
+                        deepLinkRouter.dismissSharedContent()
                     } label: {
                         Image(systemName: "xmark")
                             .font(.body)
@@ -72,7 +73,7 @@ struct SharedPlaylistView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 Button("Dismiss") {
-                    deepLinkRouter.dismissSharedPlaylist()
+                    deepLinkRouter.dismissSharedContent()
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -202,7 +203,23 @@ struct SharedPlaylistView: View {
 
     private func loadPlaylist() async {
         do {
-            playlist = try await ConvexService.shared.getSharedPlaylist(shareId: shareId)
+            if isSoundCloudPlaylist {
+                // Fetch SoundCloud playlist and adapt to SharedPlaylistResponse format
+                if let scPlaylist = try await ConvexService.shared.getSharedSoundCloudPlaylist(shareId: shareId) {
+                    playlist = SharedPlaylistResponse(
+                        name: scPlaylist.name,
+                        description: scPlaylist.description,
+                        artwork: scPlaylist.artwork,
+                        trackCount: scPlaylist.trackCount,
+                        tracks: scPlaylist.tracks,
+                        createdAt: scPlaylist.createdAt,
+                        owner: scPlaylist.sharer
+                    )
+                }
+            } else {
+                playlist = try await ConvexService.shared.getSharedPlaylist(shareId: shareId)
+            }
+
             if playlist == nil {
                 error = "This playlist is no longer available"
             }
@@ -260,35 +277,9 @@ struct SharedPlaylistView: View {
 
         HapticManager.medium()
 
-        // Convert shared tracks to playable format
-        let tracks: [SoundCloudTrack] = playlist.tracks.compactMap { track in
-            guard let id = track.id,
-                  let title = track.title,
-                  let user = track.user else {
-                return nil
-            }
-
-            return SoundCloudTrack(
-                id: id,
-                title: title,
-                user: user,
-                duration: track.duration ?? 0,
-                artwork_url: track.artwork_url,
-                permalink_url: nil,
-                playback_count: nil,
-                genre: nil,
-                description: nil,
-                created_at: nil,
-                waveform_url: nil,
-                likes_count: nil,
-                comment_count: nil,
-                reposts_count: nil
-            )
-        }
-
+        let tracks = playlist.tracks.compactMap { $0.toSoundCloudTrack() }
         guard !tracks.isEmpty else { return }
 
-        // Convert to TrackListItems and play
         let items = tracks.map { TrackItem(soundCloudTrack: $0) }
         playerState.playFromList(items: items, startIndex: 0)
     }
