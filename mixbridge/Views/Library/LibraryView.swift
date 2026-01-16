@@ -239,10 +239,10 @@ struct LibraryView: View {
             .buttonStyle(.plain)
             .haptic(.selection)
 
-            Divider()
-                .padding(.leading, 60)
-
             if featureFlags.downloadsEnabled {
+                Divider()
+                    .padding(.leading, 60)
+
                 NavigationLink {
                     DownloadsView()
                 } label: {
