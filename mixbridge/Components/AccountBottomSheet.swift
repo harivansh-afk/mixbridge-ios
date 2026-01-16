@@ -113,7 +113,8 @@ struct AccountBottomSheet: View {
                             Spacer()
                         }
                     }
-
+                }
+                Section {
                 // Logout Section
                     Button(action: {
                         authManager.logout()
