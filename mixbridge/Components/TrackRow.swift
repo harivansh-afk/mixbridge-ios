@@ -66,6 +66,7 @@ struct TrackRow: View {
     @State private var showShareSheet = false
     @State private var pendingShareSheetPresentation = false
     @EnvironmentObject private var downloadManager: DownloadManager
+    @Environment(FeatureFlags.self) private var featureFlags
 
     private var downloadStatus: DownloadStatus {
         downloadManager.downloadStatuses[track.id] ?? .notDownloaded
@@ -150,7 +151,9 @@ struct TrackRow: View {
                 Divider()
 
                 // Download & Like
-                downloadContextMenuItems
+                if featureFlags.downloadsEnabled {
+                    downloadContextMenuItems
+                }
                 likeContextMenuItem
 
                 Divider()

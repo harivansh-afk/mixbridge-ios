@@ -16,6 +16,7 @@ struct PlaylistDetailView: View {
     @Environment(QueueManager.self) private var queueManager
     @Environment(PlayerState.self) private var playerState
     @EnvironmentObject private var downloadManager: DownloadManager
+    @Environment(FeatureFlags.self) private var featureFlags
 
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
 
@@ -124,12 +125,14 @@ struct PlaylistDetailView: View {
                     }
 
 
-                    Button {
-                        downloadAllTracks()
-                    } label: {
-                        Label("Download All", systemImage: "arrow.down.circle")
+                    if featureFlags.downloadsEnabled {
+                        Button {
+                            downloadAllTracks()
+                        } label: {
+                            Label("Download All", systemImage: "arrow.down.circle")
+                        }
+                        .disabled(viewModel.trackItems.isEmpty)
                     }
-                    .disabled(viewModel.trackItems.isEmpty)
 
                     if playlist.isUserCreated {
 

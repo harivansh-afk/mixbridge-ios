@@ -20,6 +20,7 @@ struct mixbridgeApp: App {
     @State private var queueManager = QueueManager.shared
     @State private var playerState = PlayerState.shared
     @State private var deepLinkRouter = DeepLinkRouter.shared
+    @State private var featureFlags = FeatureFlags.shared
     @StateObject private var systemNotification = SystemNotificationContext()
 
     // Splash state management
@@ -51,6 +52,7 @@ struct mixbridgeApp: App {
             .environment(queueManager)
             .environment(playerState)
             .environment(deepLinkRouter)
+            .environment(featureFlags)
             .environmentObject(DownloadManager.shared)
             .environmentObject(systemNotification)
             .systemNotification(systemNotification)
@@ -66,6 +68,11 @@ struct mixbridgeApp: App {
                     .environmentObject(DownloadManager.shared)
             }
             .onAppear {
+                // Initialize Statsig feature flags
+                Task {
+                    await featureFlags.initialize(userId: authManager.currentUserId)
+                }
+                
                 // No preloading needed - views load from local database
                 // Short delay for splash timing only
                 Task { @MainActor in

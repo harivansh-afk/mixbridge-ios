@@ -13,6 +13,7 @@ struct LibraryView: View {
     @State private var hideToolbarAvatar = false
     @Environment(UserProfileManager.self) private var profileManager
     @Environment(AuthManager.self) private var authManager
+    @Environment(FeatureFlags.self) private var featureFlags
     @Namespace private var namespace
 
     var body: some View {
@@ -241,18 +242,20 @@ struct LibraryView: View {
             Divider()
                 .padding(.leading, 60)
 
-            NavigationLink {
-                DownloadsView()
-            } label: {
-                LibraryNavigationRow(
-                    icon: "arrow-circle-down",
-                    title: "Downloads",
-                    iconColor: .primary,
-                    isSystemImage: false
-                )
+            if featureFlags.downloadsEnabled {
+                NavigationLink {
+                    DownloadsView()
+                } label: {
+                    LibraryNavigationRow(
+                        icon: "arrow-circle-down",
+                        title: "Downloads",
+                        iconColor: .primary,
+                        isSystemImage: false
+                    )
+                }
+                .buttonStyle(.plain)
+                .haptic(.selection)
             }
-            .buttonStyle(.plain)
-            .haptic(.selection)
         }
     }
 

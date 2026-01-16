@@ -19,6 +19,7 @@ struct SharedPlaylistView: View {
     @Environment(PlayerState.self) private var playerState
     @Environment(DeepLinkRouter.self) private var deepLinkRouter
     @EnvironmentObject private var downloadManager: DownloadManager
+    @Environment(FeatureFlags.self) private var featureFlags
 
     @State private var playlist: SharedPlaylistResponse?
     @State private var trackItems: [TrackItem] = []
@@ -85,12 +86,14 @@ struct SharedPlaylistView: View {
                             .disabled(isAddingToLibrary || showAddedConfirmation || !authManager.isAuthenticated)
                         }
 
-                        Button {
-                            downloadAllTracks()
-                        } label: {
-                            Label("Download All", systemImage: "arrow.down.circle")
+                        if featureFlags.downloadsEnabled {
+                            Button {
+                                downloadAllTracks()
+                            } label: {
+                                Label("Download All", systemImage: "arrow.down.circle")
+                            }
+                            .disabled(trackItems.isEmpty)
                         }
-                        .disabled(trackItems.isEmpty)
                     } label: {
                         Image(systemName: "ellipsis")
                             .font(.body)

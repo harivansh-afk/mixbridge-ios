@@ -15,6 +15,7 @@ struct SharedTrackView: View {
     @Environment(PlayerState.self) private var playerState
     @Environment(DeepLinkRouter.self) private var deepLinkRouter
     @EnvironmentObject private var downloadManager: DownloadManager
+    @Environment(FeatureFlags.self) private var featureFlags
 
     @State private var trackData: SharedTrackResponse?
     @State private var trackItem: TrackItem?
@@ -58,12 +59,14 @@ struct SharedTrackView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Button {
-                            downloadTrack()
-                        } label: {
-                            Label("Download", systemImage: "arrow.down.circle")
+                        if featureFlags.downloadsEnabled {
+                            Button {
+                                downloadTrack()
+                            } label: {
+                                Label("Download", systemImage: "arrow.down.circle")
+                            }
+                            .disabled(trackItem?.soundCloudTrack == nil || !authManager.isAuthenticated)
                         }
-                        .disabled(trackItem?.soundCloudTrack == nil || !authManager.isAuthenticated)
                     } label: {
                         Image(systemName: "ellipsis")
                             .font(.body)

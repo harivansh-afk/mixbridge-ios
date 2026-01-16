@@ -1,5 +1,5 @@
 {
-  "originHash" : "719e7706da8afc081bbc7418920e51cc7e1e2f411e0e68c8ed1140ce49dca133",
+  "originHash" : "a4ea5c933c1a2e6b94f0a55751cbe2577fae6803b1494e492f9e9aa9f3b659d8",
   "pins" : [
     {
       "identity" : "grdb.swift",
@@ -17,6 +17,15 @@
       "state" : {
         "revision" : "04f2fd18cc9404a0a0917265a449002674f24ec9",
         "version" : "4.5.2"
+      }
+    },
+    {
+      "identity" : "statsig-kit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/statsig-io/statsig-kit",
+      "state" : {
+        "revision" : "40adf1e74af3386d7614c85fa18956f8a080ba7c",
+        "version" : "1.56.0"
       }
     },
     {
