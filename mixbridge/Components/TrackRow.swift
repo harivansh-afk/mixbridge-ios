@@ -63,6 +63,8 @@ struct TrackRow: View {
     @State private var showAddToPlaylist = false
     @State private var shareURL: URL?
     @State private var isGeneratingShareLink = false
+    @State private var showShareSheet = false
+    @State private var pendingShareSheetPresentation = false
     @EnvironmentObject private var downloadManager: DownloadManager
 
     private var downloadStatus: DownloadStatus {
@@ -135,6 +137,11 @@ struct TrackRow: View {
                 AddToPlaylistSheet(track: track, soundCloudTrack: soundCloudTrack)
             }
         }
+        .sheet(isPresented: $showShareSheet) {
+            if let shareURL {
+                ShareSheet(items: [shareURL])
+            }
+        }
         .contextMenu {
             if !isQueueContext {
                 // Share
@@ -157,22 +164,16 @@ struct TrackRow: View {
 
     @ViewBuilder
     private var shareContextMenuItems: some View {
-        if let shareURL {
-            ShareLink(item: shareURL) {
+        Button {
+            handleShareTapped()
+        } label: {
+            if isGeneratingShareLink {
+                Label("Generating...", systemImage: "ellipsis")
+            } else {
                 Label("Share Track", systemImage: "square.and.arrow.up")
             }
-        } else {
-            Button {
-                handleShare()
-            } label: {
-                if isGeneratingShareLink {
-                    Label("Generating...", systemImage: "ellipsis")
-                } else {
-                    Label("Share Track", systemImage: "square.and.arrow.up")
-                }
-            }
-            .disabled(isGeneratingShareLink || soundCloudTrack == nil)
         }
+        .disabled(isGeneratingShareLink || soundCloudTrack == nil)
     }
 
     @ViewBuilder
@@ -435,16 +436,31 @@ struct TrackRow: View {
                     shareURL = URL(string: response.shareUrl)
                     isGeneratingShareLink = false
                     HapticManager.success()
+                    if pendingShareSheetPresentation {
+                        pendingShareSheetPresentation = false
+                        showShareSheet = true
+                    }
                 }
             } catch {
                 await MainActor.run {
                     isGeneratingShareLink = false
+                    pendingShareSheetPresentation = false
                     errorMessage = "Failed to generate share link"
                     showError = true
                 }
                 logError(.network, "Failed to generate track share link: \(error)")
             }
         }
+    }
+
+    private func handleShareTapped() {
+        if shareURL != nil {
+            showShareSheet = true
+            return
+        }
+
+        pendingShareSheetPresentation = true
+        handleShare()
     }
 }
 
