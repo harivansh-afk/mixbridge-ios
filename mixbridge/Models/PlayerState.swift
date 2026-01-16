@@ -112,6 +112,14 @@ final class PlayerState: NSObject {
         }
     }
 
+    /// If true, DJ mode will NOT fall back to the basic AVPlayer mix engine.
+    /// Useful for testing to ensure you’re actually using the DJ backend.
+    var djStrictMode: Bool = false {
+        didSet {
+            UserDefaults.standard.set(djStrictMode, forKey: kDJStrictMode)
+        }
+    }
+
     /// Number of upcoming tracks to download ahead when DJ mode is enabled (default: 2)
     var djDownloadAheadCount: Int = 2 {
         didSet {
@@ -231,6 +239,7 @@ final class PlayerState: NSObject {
     let kSavedPosition = "mixbridge.savedPosition"
     let kSavedDuration = "mixbridge.savedDuration"
     let kMixEnabled = "mixbridge.mixEnabled"
+    let kDJStrictMode = "mixbridge.djStrictMode"
     let kCrossfadeSeconds = "mixbridge.crossfadeSeconds"
     let kPrewarmSeconds = "mixbridge.prewarmSeconds"
     let kFadeCurve = "mixbridge.fadeCurve"

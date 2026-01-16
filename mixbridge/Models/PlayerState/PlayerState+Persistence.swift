@@ -33,6 +33,9 @@ extension PlayerState {
         if defaults.object(forKey: kDJEnabled) != nil {
             djEnabled = defaults.bool(forKey: kDJEnabled)
         }
+        if defaults.object(forKey: kDJStrictMode) != nil {
+            djStrictMode = defaults.bool(forKey: kDJStrictMode)
+        }
         if defaults.object(forKey: kDJDownloadAheadCount) != nil {
             djDownloadAheadCount = max(1, min(5, defaults.integer(forKey: kDJDownloadAheadCount)))
         }

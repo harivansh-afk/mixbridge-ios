@@ -97,6 +97,13 @@ public final class DJMixerEngine {
     private var currentPlan: DJTransitionPlan?
     private var transitionStartSeconds: Double = 0
     private var transitionDurationSeconds: Double = 0
+    
+    /// Track timeline offset for each deck, in seconds.
+    /// AVAudioPlayerNode's `playerTime` resets to 0 for each scheduled segment, so we keep
+    /// an explicit base offset to report absolute "seconds into file" times for seeking,
+    /// UI time, and scheduling transitions.
+    private var deckStartOffsetSecondsA: Double = 0
+    private var deckStartOffsetSecondsB: Double = 0
 
     private let validator: DJPlanValidator
 
@@ -213,6 +220,20 @@ public final class DJMixerEngine {
         case .b:
             audioFileB = file
             timingB = timing
+        }
+    }
+    
+    private func deckStartOffsetSeconds(for deck: DJDeck) -> Double {
+        deck == .a ? deckStartOffsetSecondsA : deckStartOffsetSecondsB
+    }
+    
+    private func setDeckStartOffsetSeconds(_ seconds: Double, for deck: DJDeck) {
+        let clamped = max(0, seconds)
+        switch deck {
+        case .a:
+            deckStartOffsetSecondsA = clamped
+        case .b:
+            deckStartOffsetSecondsB = clamped
         }
     }
 
@@ -333,6 +354,7 @@ public final class DJMixerEngine {
 
         // Ensure only this deck is audible.
         setActiveDeck(deck)
+        setDeckStartOffsetSeconds(Double(clampedStartFrame) / fileSampleRate, for: deck)
 
         node.play()
         state = .playing
@@ -345,7 +367,8 @@ public final class DJMixerEngine {
               let playerTime = node.playerTime(forNodeTime: nodeTime) else {
             return 0
         }
-        return Double(playerTime.sampleTime) / playerTime.sampleRate
+        let segmentSeconds = Double(playerTime.sampleTime) / playerTime.sampleRate
+        return deckStartOffsetSeconds(for: deck) + segmentSeconds
     }
 
     // MARK: - Transition Execution
@@ -404,6 +427,7 @@ public final class DJMixerEngine {
             // Segment offsets are in *file frames*, not engine sample rate.
             incomingStartOffsetFrames = AVAudioFramePosition(incomingTiming.downbeatOffsetSeconds * audioFileIncoming.processingFormat.sampleRate)
         }
+        setDeckStartOffsetSeconds(Double(incomingStartOffsetFrames) / audioFileIncoming.processingFormat.sampleRate, for: incomingDeck)
 
         // Schedule the incoming deck to start at the computed time (in outgoing track seconds).
         let outgoingNode = playerNode(for: outgoingDeck)
@@ -413,10 +437,11 @@ public final class DJMixerEngine {
         if let nodeTime = outgoingNode.lastRenderTime,
            let outgoingPlayerTime = outgoingNode.playerTime(forNodeTime: nodeTime) {
             // Map outgoing track timeline to engine timeline:
-            // engineNowSeconds - outgoingNowSeconds = engineStartOffsetSeconds
+            // engineNowSeconds - outgoingAbsoluteNowSeconds = engineStartOffsetSeconds
             let engineNowSeconds = Double(nodeTime.sampleTime) / nodeTime.sampleRate
-            let outgoingNowSeconds = Double(outgoingPlayerTime.sampleTime) / outgoingPlayerTime.sampleRate
-            let engineStartOffsetSeconds = engineNowSeconds - outgoingNowSeconds
+            let outgoingSegmentSeconds = Double(outgoingPlayerTime.sampleTime) / outgoingPlayerTime.sampleRate
+            let outgoingAbsoluteNowSeconds = deckStartOffsetSeconds(for: outgoingDeck) + outgoingSegmentSeconds
+            let engineStartOffsetSeconds = engineNowSeconds - outgoingAbsoluteNowSeconds
 
             let targetEngineSeconds = engineStartOffsetSeconds + incomingStartTime
             let targetEngineSampleTime = AVAudioFramePosition(targetEngineSeconds * config.sampleRate)
@@ -505,7 +530,7 @@ public final class DJMixerEngine {
 
                 // Update crossfade and EQ during transition (manual render uses engine timeline seconds)
                 if state == .transitioning, let plan = currentPlan {
-                    let currentSeconds = Double(renderedFrames) / config.sampleRate
+                    let currentSeconds = deckStartOffsetSeconds(for: activeDeck) + (Double(renderedFrames) / config.sampleRate)
                     updateTransitionProgress(currentSeconds: currentSeconds, plan: plan, outgoingDeck: activeDeck)
                 }
 

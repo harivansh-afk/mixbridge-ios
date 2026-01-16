@@ -37,6 +37,16 @@ struct AutomixSettingsView: View {
                     Text("Automix")
                 }
                 .tint(.blue)
+
+                Toggle(isOn: $playerState.djEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("DJ Mode (Downloaded-only)")
+                        Text("Beat/tempo mixing requires offline downloads. Streaming uses normal crossfade.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .tint(.purple)
             }
 
             // Duration Section
@@ -110,6 +120,31 @@ struct AutomixSettingsView: View {
                 }
             } header: {
                 Text("Fade Curve")
+            }
+
+            // DJ Download Prep
+            Section {
+                Toggle(isOn: $playerState.djStrictMode) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Force DJ backend (no fallback)")
+                        Text("For testing: if a track isn’t downloaded or DJ can’t start, playback will error instead of using normal crossfade.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(!playerState.djEnabled)
+
+                Toggle(isOn: $playerState.djAutoDownloadAhead) {
+                    Text("Auto-download upcoming tracks")
+                }
+                .disabled(!playerState.djEnabled)
+
+                Stepper(value: $playerState.djDownloadAheadCount, in: 1...5) {
+                    Text("Download ahead: \(playerState.djDownloadAheadCount)")
+                }
+                .disabled(!playerState.djEnabled || !playerState.djAutoDownloadAhead)
+            } header: {
+                Text("DJ Prep")
             }
         }
         .listStyle(InsetGroupedListStyle())

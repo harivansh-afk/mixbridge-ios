@@ -583,12 +583,17 @@ final class PlaybackCoordinator: NSObject {
         guard activeRequestId == requestId else { return }
 
         status = .loading
+        let djEnabled = PlayerState.shared.djEnabled
+        let djStrictMode = PlayerState.shared.djStrictMode
+        logDebug(.playback, "[MixMode] startMixPlayback: trackId=\(context.track.id), scId=\(context.soundCloudTrack?.id ?? -1), djEnabled=\(djEnabled), djStrict=\(djStrictMode)")
 
         do {
             // Check for downloaded file first - use local file with fake stream data
             if let localURL = await DownloadManager.shared.getLocalFileURL(trackId: context.track.id) {
-                if PlayerState.shared.djEnabled {
+                logInfo(.playback, "[MixMode] Local file available for current track: \(context.track.id) (\(localURL.lastPathComponent))")
+                if djEnabled {
                     do {
+                        logInfo(.playback, "[DJMixMode] Attempting DJ backend for: \(context.track.title)")
                         let analysis = try await DJAnalysisManager.shared.analyze(url: localURL, trackId: context.track.id)
 
                         // Stop regular playback and switch to DJ mix mode
@@ -611,6 +616,7 @@ final class PlaybackCoordinator: NSObject {
                         currentContext = context
                         handleTrackStartedPlaying(context: context)
                         retryAttempts.removeValue(forKey: context.track.id)
+                        logInfo(.playback, "[DJMixMode] Using DJ backend for: \(context.track.title)")
 
                         // Publish snapshot immediately so UI reflects the new track
                         status = .playing
@@ -635,8 +641,13 @@ final class PlaybackCoordinator: NSObject {
                         }
                         return
                     } catch {
-                        logWarning(.playback, "[DJMixMode] Failed to start DJ mix, falling back to AVPlayer mix: \(error)")
-                        // Fall back to MixPlaybackEngine local-file path below.
+                        if djStrictMode {
+                            logError(.playback, "[DJMixMode] Strict mode: DJ backend failed to start, not falling back: \(error)")
+                            throw error
+                        } else {
+                            logWarning(.playback, "[DJMixMode] Failed to start DJ mix, falling back to AVPlayer mix: \(error)")
+                            // Fall back to MixPlaybackEngine local-file path below.
+                        }
                     }
                 }
 
@@ -694,6 +705,19 @@ final class PlaybackCoordinator: NSObject {
                 return
             }
 
+            if djEnabled {
+                let isMarkedDownloaded = DownloadManager.shared.isDownloaded(trackId: context.track.id)
+                if isMarkedDownloaded {
+                    logError(.playback, "[DJMixMode] Track is marked downloaded but local file URL is nil. trackId=\(context.track.id)")
+                }
+            }
+
+            if djEnabled && djStrictMode {
+                logError(.playback, "[DJMixMode] Strict mode: current track not downloaded, refusing to start streaming mixer: \(context.track.title)")
+                throw PlayerState.PlaybackError.invalidStreamURL
+            }
+
+            logInfo(.playback, "[MixMode] No local file for current track; using streaming mixer for: \(context.track.title)")
             logDebug(.playback, "[MixMode] Fetching stream URL\(forceRefreshURL ? " (force refresh)" : "")...")
 
             let stream: CachedStreamData
