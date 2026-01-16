@@ -14,22 +14,30 @@ struct SharedPlaylistView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
-    @Environment(QueueManager.self) private var queueManager
     @Environment(PlayerState.self) private var playerState
     @Environment(DeepLinkRouter.self) private var deepLinkRouter
+    @EnvironmentObject private var downloadManager: DownloadManager
 
     @State private var playlist: SharedPlaylistResponse?
+    @State private var trackItems: [TrackItem] = []
     @State private var isLoading = true
     @State private var error: String?
     @State private var isAddingToLibrary = false
     @State private var showAddedConfirmation = false
 
+    private var playlistArtwork: String {
+        if let artwork = playlist?.artwork?.upgradeArtworkQuality(), !artwork.isEmpty {
+            return artwork
+        }
+        return trackItems.first?.track.artwork ?? ""
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 // Background
-                if let artwork = playlist?.artwork {
-                    PlayerBackgroundView(artwork: artwork)
+                if !playlistArtwork.isEmpty {
+                    PlayerBackgroundView(artwork: playlistArtwork)
                         .blur(radius: 60)
                 } else {
                     Color.black.ignoresSafeArea()
@@ -46,9 +54,35 @@ struct SharedPlaylistView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        deepLinkRouter.dismissSharedContent()
+                        dismissSharedContent()
                     } label: {
                         Image(systemName: "xmark")
+                            .font(.body)
+                            .fontWeight(.semibold)
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            addToLibrary()
+                        } label: {
+                            if isAddingToLibrary {
+                                Label("Adding...", systemImage: "ellipsis")
+                            } else {
+                                Label(showAddedConfirmation ? "Added" : "Add to Library",
+                                      systemImage: showAddedConfirmation ? "checkmark" : "plus")
+                            }
+                        }
+                        .disabled(isAddingToLibrary || showAddedConfirmation || !authManager.isAuthenticated)
+
+                        Button {
+                            downloadAllTracks()
+                        } label: {
+                            Label("Download All", systemImage: "arrow.down.circle")
+                        }
+                        .disabled(trackItems.isEmpty)
+                    } label: {
+                        Image(systemName: "ellipsis")
                             .font(.body)
                             .fontWeight(.semibold)
                     }
@@ -73,7 +107,7 @@ struct SharedPlaylistView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 Button("Dismiss") {
-                    deepLinkRouter.dismissSharedContent()
+                    dismissSharedContent()
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -85,15 +119,17 @@ struct SharedPlaylistView: View {
 
     @ViewBuilder
     private func playlistContent(_ playlist: SharedPlaylistResponse) -> some View {
+        let artwork = playlistArtwork
+
         List {
             // Header section
             Section {
                 VStack(spacing: 20) {
                     // Artwork
                     ArtworkView(
-                        artwork: playlist.artwork ?? "",
-                        size: 200,
-                        cornerRadius: 16,
+                        artwork: artwork,
+                        size: 300,
+                        cornerRadius: 20,
                         placeholderIcon: "music.note.list",
                         placeholderIconSize: 60,
                         showsProgressWhileLoading: true,
@@ -103,13 +139,19 @@ struct SharedPlaylistView: View {
 
                     // Info
                     VStack(spacing: 8) {
-                        Text(playlist.name)
-                            .font(.title2.bold())
-                            .multilineTextAlignment(.center)
+                        MarqueeGlassText(
+                            text: playlist.name,
+                            font: .systemFont(ofSize: 28, weight: .bold),
+                            startDelay: 3.0,
+                            loopsBeforePause: 2,
+                            isPlaying: true
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 20)
 
                         if let owner = playlist.owner, let username = owner.username {
                             HStack(spacing: 6) {
-                                if let avatarUrl = owner.avatarUrl {
+                                if let avatarUrl = owner.avatarUrl?.upgradeArtworkQuality() {
                                     AsyncImage(url: URL(string: avatarUrl)) { image in
                                         image.resizable()
                                     } placeholder: {
@@ -119,47 +161,21 @@ struct SharedPlaylistView: View {
                                     .clipShape(Circle())
                                 }
                                 Text("@\(username)")
-                                    .font(.subheadline)
+                                    .font(.body)
                                     .foregroundStyle(.secondary)
                             }
                         }
-
-                        Text("\(playlist.trackCount) tracks")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
                     }
 
-                    // Action buttons
-                    HStack(spacing: 16) {
-                        Button {
-                            addToLibrary()
-                        } label: {
-                            HStack {
-                                if isAddingToLibrary {
-                                    ProgressView()
-                                        .tint(.white)
-                                } else {
-                                    Image(systemName: showAddedConfirmation ? "checkmark" : "plus")
-                                }
-                                Text(showAddedConfirmation ? "Added" : "Add to Library")
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(isAddingToLibrary || !authManager.isAuthenticated)
-
-                        Button {
+                    PlaylistActionButtons(
+                        onPlay: {
                             playAll()
-                        } label: {
-                            HStack {
-                                Image(systemName: "play.fill")
-                                Text("Play")
-                            }
-                            .frame(maxWidth: .infinity)
+                        },
+                        onShuffle: {
+                            shuffleAll()
                         }
-                        .buttonStyle(.bordered)
-                        .disabled(!authManager.isAuthenticated)
-                    }
+                    )
+                    .disabled(trackItems.isEmpty || !authManager.isAuthenticated)
                     .padding(.horizontal)
                     .padding(.bottom, 24)
 
@@ -167,7 +183,7 @@ struct SharedPlaylistView: View {
                         Text("Sign in to play or save this playlist")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .padding(.bottom)
+                            .padding(.bottom, 8)
                     }
                 }
                 .listRowInsets(EdgeInsets())
@@ -176,26 +192,7 @@ struct SharedPlaylistView: View {
             }
 
             // Tracks section
-            Section {
-                if playlist.tracks.isEmpty {
-                    Text("No tracks in this playlist")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding()
-                        .listRowBackground(Color.clear)
-                } else {
-                    ForEach(Array(playlist.tracks.enumerated()), id: \.offset) { index, track in
-                        SharedTrackRow(track: track, number: index + 1)
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                    }
-                }
-            } header: {
-                Text("Tracks")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-            }
-            .listSectionSeparator(.hidden)
+            tracksSection
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -220,7 +217,12 @@ struct SharedPlaylistView: View {
                 playlist = try await ConvexService.shared.getSharedPlaylist(shareId: shareId)
             }
 
-            if playlist == nil {
+            if let playlist {
+                let items = playlist.tracks.compactMap { $0.toSoundCloudTrack() }.map { TrackItem(soundCloudTrack: $0) }
+                await MainActor.run {
+                    trackItems = items
+                }
+            } else {
                 error = "This playlist is no longer available"
             }
         } catch {
@@ -273,87 +275,64 @@ struct SharedPlaylistView: View {
     }
 
     private func playAll() {
-        guard let playlist, !playlist.tracks.isEmpty else { return }
+        guard !trackItems.isEmpty else { return }
 
         HapticManager.medium()
 
-        let tracks = playlist.tracks.compactMap { $0.toSoundCloudTrack() }
-        guard !tracks.isEmpty else { return }
-
-        let items = tracks.map { TrackItem(soundCloudTrack: $0) }
-        playerState.playFromList(items: items, startIndex: 0)
+        playerState.playFromList(items: trackItems, startIndex: 0)
     }
-}
+    private func shuffleAll() {
+        guard !trackItems.isEmpty else { return }
+        HapticManager.medium()
+        playerState.playFromList(items: trackItems, startIndex: 0, shuffle: true)
+    }
 
-// MARK: - Shared Track Row
-
-private struct SharedTrackRow: View {
-    let track: SharedPlaylistTrack
-    let number: Int
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // Number
-            Text("\(number)")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(width: 24)
-
-            // Artwork
-            if let artworkUrl = track.artwork_url {
-                AsyncImage(url: URL(string: artworkUrl.replacingOccurrences(of: "-large", with: "-t200x200"))) { image in
-                    image.resizable()
-                } placeholder: {
-                    Rectangle().fill(.secondary.opacity(0.2))
-                }
-                .frame(width: 44, height: 44)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-            } else {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(.secondary.opacity(0.2))
-                    .frame(width: 44, height: 44)
-                    .overlay {
-                        Image(systemName: "music.note")
-                            .foregroundStyle(.secondary)
-                    }
-            }
-
-            // Info
-            VStack(alignment: .leading, spacing: 2) {
-                Text(track.title ?? "Unknown Track")
-                    .font(.subheadline)
-                    .lineLimit(1)
-
-                Text(track.user?.username ?? "Unknown Artist")
-                    .font(.caption)
+    private var tracksSection: some View {
+        Section {
+            if trackItems.isEmpty {
+                Text("No tracks in this playlist")
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            // Duration
-            if let duration = track.duration {
-                Text(formatDuration(duration))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .padding()
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            } else {
+                ForEach(Array(trackItems.enumerated()), id: \.element.id) { index, item in
+                    TrackRow(
+                        item.track,
+                        number: index + 1,
+                        showCover: true,
+                        soundCloudTrack: item.soundCloudTrack,
+                        listContext: trackItems,
+                        indexInList: index
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
             }
         }
-        .padding(.vertical, 4)
+        .listSectionSeparator(.hidden)
     }
 
-    private func formatDuration(_ ms: Int) -> String {
-        let seconds = ms / 1000
-        let minutes = seconds / 60
-        let remainingSeconds = seconds % 60
-        return String(format: "%d:%02d", minutes, remainingSeconds)
+    private func downloadAllTracks() {
+        let soundCloudTracks = trackItems.map(\.soundCloudTrack)
+        guard !soundCloudTracks.isEmpty else { return }
+        HapticManager.medium()
+        downloadManager.downloadTracks(soundCloudTracks)
+    }
+
+    private func dismissSharedContent() {
+        if deepLinkRouter.isShowingSharedContent {
+            deepLinkRouter.dismissSharedContent()
+        } else {
+            dismiss()
+        }
     }
 }
 
 #Preview {
     SharedPlaylistView(shareId: "test123")
         .environment(AuthManager.shared)
-        .environment(QueueManager.shared)
         .environment(PlayerState.shared)
         .environment(DeepLinkRouter.shared)
+        .environmentObject(DownloadManager.shared)
 }
