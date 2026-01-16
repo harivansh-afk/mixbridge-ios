@@ -19,6 +19,7 @@ struct mixbridgeApp: App {
     @State private var profileManager = UserProfileManager.shared
     @State private var queueManager = QueueManager.shared
     @State private var playerState = PlayerState.shared
+    @State private var deepLinkRouter = DeepLinkRouter.shared
     @StateObject private var systemNotification = SystemNotificationContext()
 
     // Splash state management
@@ -49,9 +50,21 @@ struct mixbridgeApp: App {
             .environment(profileManager)
             .environment(queueManager)
             .environment(playerState)
+            .environment(deepLinkRouter)
             .environmentObject(DownloadManager.shared)
             .environmentObject(systemNotification)
             .systemNotification(systemNotification)
+            .onOpenURL { url in
+                deepLinkRouter.handle(url: url)
+            }
+            .sheet(isPresented: Bindable(deepLinkRouter).isShowingSharedContent) {
+                sharedContentView
+                    .environment(authManager)
+                    .environment(queueManager)
+                    .environment(playerState)
+                    .environment(deepLinkRouter)
+                    .environmentObject(DownloadManager.shared)
+            }
             .onAppear {
                 // No preloading needed - views load from local database
                 // Short delay for splash timing only
@@ -82,6 +95,20 @@ struct mixbridgeApp: App {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { authManager.checkAuthStatus() }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var sharedContentView: some View {
+        switch deepLinkRouter.pendingDeepLink {
+        case .sharedPlaylist(let shareId):
+            SharedPlaylistView(shareId: shareId)
+        case .sharedSoundCloudPlaylist(let shareId):
+            SharedPlaylistView(shareId: shareId, isSoundCloudPlaylist: true)
+        case .sharedTrack(let shareId):
+            SharedTrackView(shareId: shareId)
+        case .none:
+            EmptyView()
         }
     }
 

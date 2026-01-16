@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct PlaylistDetailView: View {
     let playlist: Playlist
@@ -17,6 +18,11 @@ struct PlaylistDetailView: View {
     @EnvironmentObject private var downloadManager: DownloadManager
 
     @State private var allowDismissalGesture: AllowedNavigationDismissalGestures = .none
+
+    // Sharing state
+    @State private var shareURL: URL?
+    @State private var isGeneratingShareLink = false
+    @State private var showCopiedConfirmation = false
 
     private let artworkSize: CGFloat = 300
 
@@ -95,17 +101,41 @@ struct PlaylistDetailView: View {
 
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    // Share option - works for all playlists
+                    if let shareURL {
+                        ShareLink(item: shareURL) {
+                            Label("Share Playlist", systemImage: "square.and.arrow.up")
+                        }
+
+                        Button {
+                            copyShareLink()
+                        } label: {
+                            Label(showCopiedConfirmation ? "Link Copied!" : "Copy Link", systemImage: showCopiedConfirmation ? "checkmark" : "doc.on.doc")
+                        }
+                    } else {
+                        Button {
+                            generateShareLink()
+                        } label: {
+                            if isGeneratingShareLink {
+                                Label("Generating...", systemImage: "ellipsis")
+                            } else {
+                                Label("Share Playlist", systemImage: "square.and.arrow.up")
+                            }
+                        }
+                        .disabled(isGeneratingShareLink)
+                    }
+
+
                     Button {
                         downloadAllTracks()
                     } label: {
                         Label("Download All", systemImage: "arrow.down.circle")
                     }
                     .disabled(viewModel.trackItems.isEmpty)
-                    
+
                     if playlist.isUserCreated {
-                        Divider()
-                        
-                        Button {
+
+                        Button(role: .destructive) {
                             showDeleteConfirmation = true
                         } label: {
                             Label("Delete Playlist", systemImage: "trash")
@@ -255,6 +285,48 @@ struct PlaylistDetailView: View {
         guard !soundCloudTracks.isEmpty else { return }
         HapticManager.medium()
         downloadManager.downloadTracks(soundCloudTracks)
+    }
+
+    private func generateShareLink() {
+        isGeneratingShareLink = true
+        HapticManager.light()
+
+        Task {
+            do {
+                let response: ShareLinkResponse
+                if playlist.isUserCreated {
+                    response = try await ConvexService.shared.createShareLink(playlistId: playlist.id)
+                } else {
+                    // SoundCloud playlist - use the different endpoint
+                    response = try await ConvexService.shared.shareSoundCloudPlaylist(playlistId: playlist.id)
+                }
+
+                await MainActor.run {
+                    shareURL = URL(string: response.shareUrl)
+                    isGeneratingShareLink = false
+                    HapticManager.success()
+                }
+            } catch {
+                await MainActor.run {
+                    isGeneratingShareLink = false
+                }
+                logError(.network, "Failed to generate share link: \(error)")
+            }
+        }
+    }
+
+    private func copyShareLink() {
+        guard let shareURL else { return }
+        UIPasteboard.general.url = shareURL
+        HapticManager.medium()
+
+        showCopiedConfirmation = true
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            await MainActor.run {
+                showCopiedConfirmation = false
+            }
+        }
     }
 }
 
