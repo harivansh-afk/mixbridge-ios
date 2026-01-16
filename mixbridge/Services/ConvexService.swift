@@ -636,6 +636,59 @@ final class ConvexService {
         ])
     }
 
+    // MARK: - Playlist Sharing
+
+    /// Create a share link for a playlist
+    func createShareLink(playlistId: String) async throws -> ShareLinkResponse {
+        guard let userId = KeychainManager.shared.getUserId() else {
+            throw ConvexError.notAuthenticated
+        }
+
+        return try await mutationGeneric("sharing:createShareLink", args: [
+            "userId": userId,
+            "playlistId": playlistId
+        ])!
+    }
+
+    /// Update playlist visibility
+    func updatePlaylistVisibility(playlistId: String, visibility: String) async throws {
+        guard let userId = KeychainManager.shared.getUserId() else {
+            throw ConvexError.notAuthenticated
+        }
+
+        try await mutation("sharing:updateVisibility", args: [
+            "userId": userId,
+            "playlistId": playlistId,
+            "visibility": visibility
+        ])
+    }
+
+    /// Get playlist visibility status
+    func getPlaylistVisibility(playlistId: String) async throws -> PlaylistVisibilityResponse? {
+        guard let userId = KeychainManager.shared.getUserId() else {
+            throw ConvexError.notAuthenticated
+        }
+
+        return try await query("sharing:getVisibility", args: [
+            "userId": userId,
+            "playlistId": playlistId
+        ])
+    }
+
+    /// Get a shared playlist by share ID (public - no auth required)
+    func getSharedPlaylist(shareId: String) async throws -> SharedPlaylistResponse? {
+        return try await query("sharing:getPlaylistByShareId", args: [
+            "shareId": shareId
+        ])
+    }
+
+    /// Get full shared playlist data for adding to library
+    func getFullSharedPlaylist(shareId: String) async throws -> FullSharedPlaylistResponse? {
+        return try await query("sharing:getFullPlaylistByShareId", args: [
+            "shareId": shareId
+        ])
+    }
+
 }
 
 // MARK: - Response Types
@@ -691,6 +744,52 @@ struct ConvexCustomPlaylist: Codable {
     let trackIds: [String]
     let createdAt: Int
     let updatedAt: Int
+}
+
+// MARK: - Sharing Response Types
+
+struct ShareLinkResponse: Codable {
+    let shareId: String
+    let shareUrl: String
+    let isNew: Bool
+}
+
+struct PlaylistVisibilityResponse: Codable {
+    let visibility: String
+    let shareId: String?
+    let shareUrl: String?
+}
+
+struct SharedPlaylistOwner: Codable {
+    let username: String?
+    let avatarUrl: String?
+}
+
+struct SharedPlaylistTrack: Codable {
+    let id: Int?
+    let title: String?
+    let artwork_url: String?
+    let duration: Int?
+    let user: SoundCloudUser?
+}
+
+struct SharedPlaylistResponse: Codable {
+    let name: String
+    let description: String?
+    let artwork: String?
+    let trackCount: Int
+    let tracks: [SharedPlaylistTrack]
+    let createdAt: Int
+    let owner: SharedPlaylistOwner?
+}
+
+struct FullSharedPlaylistResponse: Codable {
+    let name: String
+    let description: String?
+    let artwork: String?
+    let trackIds: [String]
+    let trackData: [SoundCloudTrack]?
+    let ownerId: String
 }
 
 // MARK: - Errors

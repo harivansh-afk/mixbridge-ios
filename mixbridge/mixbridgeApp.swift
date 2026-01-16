@@ -19,6 +19,7 @@ struct mixbridgeApp: App {
     @State private var profileManager = UserProfileManager.shared
     @State private var queueManager = QueueManager.shared
     @State private var playerState = PlayerState.shared
+    @State private var deepLinkRouter = DeepLinkRouter.shared
     @StateObject private var systemNotification = SystemNotificationContext()
 
     // Splash state management
@@ -49,9 +50,22 @@ struct mixbridgeApp: App {
             .environment(profileManager)
             .environment(queueManager)
             .environment(playerState)
+            .environment(deepLinkRouter)
             .environmentObject(DownloadManager.shared)
             .environmentObject(systemNotification)
             .systemNotification(systemNotification)
+            .onOpenURL { url in
+                deepLinkRouter.handle(url: url)
+            }
+            .sheet(isPresented: Bindable(deepLinkRouter).isShowingSharedPlaylist) {
+                if case .sharedPlaylist(let shareId) = deepLinkRouter.pendingDeepLink {
+                    SharedPlaylistView(shareId: shareId)
+                        .environment(authManager)
+                        .environment(queueManager)
+                        .environment(playerState)
+                        .environmentObject(DownloadManager.shared)
+                }
+            }
             .onAppear {
                 // No preloading needed - views load from local database
                 // Short delay for splash timing only
