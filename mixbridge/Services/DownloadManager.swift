@@ -188,15 +188,18 @@ final class DownloadManager: ObservableObject {
         guard let downloaded = try? await getDownloadedTrack(trackId: trackId) else {
             return nil
         }
-        let url = URL(fileURLWithPath: downloaded.localPath)
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            // File missing - clean up stale database entry
-            Task {
-                await cleanupStaleDownload(trackId: trackId)
+        if let resolvedPath = resolveLocalPath(for: downloaded) {
+            if resolvedPath != downloaded.localPath {
+                await updateDownloadedTrackPath(trackId: trackId, localPath: resolvedPath)
             }
-            return nil
+            return URL(fileURLWithPath: resolvedPath)
         }
-        return url
+
+        // File missing - clean up stale database entry
+        Task {
+            await cleanupStaleDownload(trackId: trackId)
+        }
+        return nil
     }
 
     /// Get total storage used by downloads
@@ -268,6 +271,43 @@ final class DownloadManager: ObservableObject {
             try DownloadedTrack.deleteOne(db, key: trackId)
         }
         downloadStatuses[trackId] = .notDownloaded
+    }
+
+    private func resolveLocalPath(for download: DownloadedTrack) -> String? {
+        if FileManager.default.fileExists(atPath: download.localPath) {
+            return download.localPath
+        }
+
+        guard let downloadsDir = try? getDownloadsDirectory() else {
+            return nil
+        }
+
+        if !download.localPath.hasPrefix("/") {
+            let candidate = downloadsDir.appendingPathComponent(download.localPath).path
+            if FileManager.default.fileExists(atPath: candidate) {
+                return candidate
+            }
+        }
+
+        let mp3Path = downloadsDir.appendingPathComponent("\(download.trackId).mp3").path
+        if FileManager.default.fileExists(atPath: mp3Path) {
+            return mp3Path
+        }
+
+        let m4aPath = downloadsDir.appendingPathComponent("\(download.trackId).m4a").path
+        if FileManager.default.fileExists(atPath: m4aPath) {
+            return m4aPath
+        }
+
+        return nil
+    }
+
+    private func updateDownloadedTrackPath(trackId: String, localPath: String) async {
+        _ = try? await db.writer.write { db in
+            try DownloadedTrack
+                .filter(key: trackId)
+                .updateAll(db, [DownloadedTrack.Columns.localPath.set(to: localPath)])
+        }
     }
 
     private func performDownload(track: SoundCloudTrack) async {
@@ -504,8 +544,15 @@ final class DownloadManager: ObservableObject {
             var staleTrackIds: [String] = []
 
             for download in downloads {
-                if FileManager.default.fileExists(atPath: download.localPath) {
-                    validDownloads.append(download)
+                if let resolvedPath = resolveLocalPath(for: download) {
+                    if resolvedPath != download.localPath {
+                        await updateDownloadedTrackPath(trackId: download.trackId, localPath: resolvedPath)
+                        var updatedDownload = download
+                        updatedDownload.localPath = resolvedPath
+                        validDownloads.append(updatedDownload)
+                    } else {
+                        validDownloads.append(download)
+                    }
                     downloadStatuses[download.trackId] = .downloaded
                 } else {
                     staleTrackIds.append(download.trackId)
