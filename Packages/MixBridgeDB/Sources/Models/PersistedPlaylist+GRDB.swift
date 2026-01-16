@@ -30,10 +30,11 @@ extension PersistedPlaylist: @retroactive FetchableRecord, @retroactive Persista
         public static let genre = Column(CodingKeys.genre)
         public static let createdAt = Column(CodingKeys.createdAt)
         public static let lastUpdated = Column(CodingKeys.lastUpdated)
-        public static let soundCloudData = Column(CodingKeys.soundCloudData)
-        public static let libraryOwnerUserId = Column(CodingKeys.libraryOwnerUserId)
-        public static let isUserCreated = Column(CodingKeys.isUserCreated)
-    }
+		public static let soundCloudData = Column(CodingKeys.soundCloudData)
+		public static let libraryOwnerUserId = Column(CodingKeys.libraryOwnerUserId)
+		public static let isUserCreated = Column(CodingKeys.isUserCreated)
+		public static let sourcePlaylistId = Column(CodingKeys.sourcePlaylistId)
+	}
 }
 
 // MARK: - Associations

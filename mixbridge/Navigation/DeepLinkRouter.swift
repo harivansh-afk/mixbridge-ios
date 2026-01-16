@@ -82,9 +82,48 @@ final class DeepLinkRouter {
     }
 
     private func handleCustomScheme(url: URL) {
-        // Currently only used for OAuth callbacks
-        // Auth callbacks are handled by AuthManager
+        // Support shared content links for easier local testing.
+        // Example: mixbridge://p/{shareId} or mixbridge://t/{shareId}
+        let pathComponents = url.path.split(separator: "/").map(String.init)
+
+        if let host = url.host, ["p", "s", "t"].contains(host) {
+            let shareId = pathComponents.first ?? ""
+            if !shareId.isEmpty {
+                handleSharedContent(prefix: host, shareId: shareId)
+                return
+            }
+        }
+
+        if pathComponents.count >= 2 {
+            let prefix = pathComponents[0]
+            let shareId = pathComponents[1]
+            if ["p", "s", "t"].contains(prefix) {
+                handleSharedContent(prefix: prefix, shareId: shareId)
+                return
+            }
+        }
+
+        // OAuth callbacks are handled by AuthManager.
         logInfo(.app, "Custom scheme URL: \(url)")
+    }
+
+    private func handleSharedContent(prefix: String, shareId: String) {
+        switch prefix {
+        case "p":
+            logInfo(.app, "Custom scheme: shared custom playlist \(shareId)")
+            pendingDeepLink = .sharedPlaylist(shareId: shareId)
+            isShowingSharedContent = true
+        case "s":
+            logInfo(.app, "Custom scheme: shared SoundCloud playlist \(shareId)")
+            pendingDeepLink = .sharedSoundCloudPlaylist(shareId: shareId)
+            isShowingSharedContent = true
+        case "t":
+            logInfo(.app, "Custom scheme: shared track \(shareId)")
+            pendingDeepLink = .sharedTrack(shareId: shareId)
+            isShowingSharedContent = true
+        default:
+            break
+        }
     }
 
     /// Clear pending deep link after handling
