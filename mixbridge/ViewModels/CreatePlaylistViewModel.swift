@@ -201,6 +201,7 @@ final class CreatePlaylistViewModel {
                 try PersistedPlaylist
                     .filter(PersistedPlaylist.Columns.libraryOwnerUserId == userId)
                     .filter(PersistedPlaylist.Columns.isUserCreated == false)
+                    .filter(PersistedPlaylist.Columns.isHiddenFromLibrary == false)
                     .order(PersistedPlaylist.Columns.lastUpdated.desc)
                     .limit(20)
                     .fetchAll(db)

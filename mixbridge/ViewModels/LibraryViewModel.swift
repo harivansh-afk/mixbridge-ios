@@ -35,6 +35,7 @@ final class LibraryViewModel {
         let observation = ValueObservation.tracking { db in
             try PersistedPlaylist
                 .filter(PersistedPlaylist.Columns.libraryOwnerUserId == userId)
+                .filter(PersistedPlaylist.Columns.isHiddenFromLibrary == false)
                 .order(PersistedPlaylist.Columns.lastUpdated.desc)
                 .fetchAll(db)
         }

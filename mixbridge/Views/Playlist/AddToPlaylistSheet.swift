@@ -97,10 +97,11 @@ struct AddToPlaylistSheet: View {
         }
 
         do {
-            // Load all playlists the user owns (both user-created and SoundCloud)
+            // Load all playlists the user owns (both user-created and SoundCloud), excluding hidden ones
             let allPlaylists = try await db.reader.read { db in
                 try PersistedPlaylist
                     .filter(PersistedPlaylist.Columns.libraryOwnerUserId == userId)
+                    .filter(PersistedPlaylist.Columns.isHiddenFromLibrary == false)
                     .order(PersistedPlaylist.Columns.lastUpdated.desc)
                     .fetchAll(db)
             }

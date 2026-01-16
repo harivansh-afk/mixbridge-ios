@@ -12,6 +12,7 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
 		case id, name, creator, creatorId, artwork, trackCount, duration
 		case description, genre, createdAt, lastUpdated, soundCloudData
 		case libraryOwnerUserId, isUserCreated, sourcePlaylistId
+		case customName, isHiddenFromLibrary
 	}
 
     public var id: String
@@ -37,6 +38,17 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
 	/// For shared playlist imports, stores the original playlist id.
 	public var sourcePlaylistId: String?
 
+	/// User's custom name for this playlist (overrides `name` in UI if set)
+	public var customName: String?
+
+	/// If true, this SoundCloud playlist is hidden from the user's library
+	public var isHiddenFromLibrary: Bool
+
+	/// Returns the display name (custom name if set, otherwise original name)
+	public var displayName: String {
+		customName ?? name
+	}
+
 	public init(
 		id: String,
 		name: String,
@@ -52,7 +64,9 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
 		soundCloudData: Data? = nil,
 		libraryOwnerUserId: String? = nil,
 		isUserCreated: Bool = false,
-		sourcePlaylistId: String? = nil
+		sourcePlaylistId: String? = nil,
+		customName: String? = nil,
+		isHiddenFromLibrary: Bool = false
 	) {
         self.id = id
         self.name = name
@@ -69,5 +83,7 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
 		self.libraryOwnerUserId = libraryOwnerUserId
 		self.isUserCreated = isUserCreated
 		self.sourcePlaylistId = sourcePlaylistId
+		self.customName = customName
+		self.isHiddenFromLibrary = isHiddenFromLibrary
 	}
 }

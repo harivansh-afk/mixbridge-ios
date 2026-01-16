@@ -8,6 +8,7 @@
 
 import Foundation
 import MixBridgeDB
+import MixBridgeDomain
 
 @Observable
 @MainActor
@@ -19,6 +20,7 @@ final class PlaylistDetailViewModel {
     private(set) var isLoading = false
     private(set) var error: Error?
     private(set) var hasAttemptedLoad = false
+    private(set) var playlist: Playlist?
 
     // MARK: - Configuration
 
@@ -32,22 +34,28 @@ final class PlaylistDetailViewModel {
 
     // MARK: - Initialization
 
-    init(playlistId: String, isUserCreated: Bool = false) {
+    init(playlistId: String, isUserCreated: Bool = false, initialPlaylist: Playlist? = nil) {
         self.playlistId = playlistId
         self.isUserCreated = isUserCreated
+        self.playlist = initialPlaylist
     }
 
     // MARK: - Database Observation
 
-    /// Start observing playlist tracks from local database
+    /// Start observing playlist and tracks from local database
     /// Call this from view's .task modifier
     func observeDatabase() async {
         let playlistId = self.playlistId
         logInfo(.db, "Starting observation for playlist: \(playlistId)")
 
-        let observation = ValueObservation.tracking { [playlistId] db in
+        // Observe both playlist metadata and tracks together
+        let observation = ValueObservation.tracking { [playlistId] db -> (PersistedPlaylist?, [PersistedTrack]) in
+            // Fetch the playlist itself (for name updates)
+            let persistedPlaylist = try PersistedPlaylist
+                .filter(PersistedPlaylist.Columns.id == playlistId)
+                .fetchOne(db)
+
             // Fetch tracks via the junction table, ordered by position
-            // First get the playlist tracks in order, then fetch the associated tracks
             let playlistTracks = try PlaylistTrack
                 .filter(PlaylistTrack.Columns.playlistId == playlistId)
                 .order(PlaylistTrack.Columns.position)
@@ -60,13 +68,22 @@ final class PlaylistDetailViewModel {
                 .reduce(into: [String: PersistedTrack]()) { $0[$1.id] = $1 }
 
             // Return tracks in the correct order
-            return trackIds.compactMap { tracksDict[$0] }
+            let tracks = trackIds.compactMap { tracksDict[$0] }
+            return (persistedPlaylist, tracks)
         }
         .values(in: db.reader)
 
         do {
-            for try await tracks in observation {
+            for try await (persistedPlaylist, tracks) in observation {
                 logInfo(.db, "Observed \(tracks.count) tracks for playlist \(playlistId)")
+
+                // Update playlist if changed
+                if let persistedPlaylist {
+                    let updatedPlaylist = persistedPlaylist.toPlaylist()
+                    if self.playlist != updatedPlaylist {
+                        self.playlist = updatedPlaylist
+                    }
+                }
 
                 // Convert to TrackItems for UI
                 let items = tracks.compactMap { track -> TrackItem? in

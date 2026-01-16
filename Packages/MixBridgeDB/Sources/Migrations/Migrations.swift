@@ -185,6 +185,18 @@ extension MixBridgeDB {
             )
         }
 
+        migrator.registerMigration("v7_playlist_local_modifications") { db in
+            try db.alter(table: PersistedPlaylist.databaseTableName) { t in
+                t.add(column: "customName", .text)
+                t.add(column: "isHiddenFromLibrary", .boolean).notNull().defaults(to: false)
+            }
+            try db.create(
+                index: "idx_playlists_isHiddenFromLibrary",
+                on: PersistedPlaylist.databaseTableName,
+                columns: ["isHiddenFromLibrary"]
+            )
+        }
+
         return migrator
     }
 }

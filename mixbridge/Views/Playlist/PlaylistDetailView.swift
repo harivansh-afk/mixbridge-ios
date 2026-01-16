@@ -9,7 +9,7 @@ import SwiftUI
 import UIKit
 
 struct PlaylistDetailView: View {
-    let playlist: Playlist
+    private let initialPlaylist: Playlist
     @State private var viewModel: PlaylistDetailViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
@@ -29,11 +29,17 @@ struct PlaylistDetailView: View {
 
     private let artworkSize: CGFloat = 300
 
+    /// The current playlist, updated via database observation
+    private var playlist: Playlist {
+        viewModel.playlist ?? initialPlaylist
+    }
+
     init(playlist: Playlist) {
-        self.playlist = playlist
+        self.initialPlaylist = playlist
         self._viewModel = State(initialValue: PlaylistDetailViewModel(
             playlistId: playlist.id,
-            isUserCreated: playlist.isUserCreated
+            isUserCreated: playlist.isUserCreated,
+            initialPlaylist: playlist
         ))
     }
 
@@ -134,13 +140,17 @@ struct PlaylistDetailView: View {
                         .disabled(viewModel.trackItems.isEmpty)
                     }
 
-                    if playlist.isUserCreated {
+                    Button {
+                        editedPlaylistName = playlist.name
+                        showRenameAlert = true
+                    } label: {
+                        Label("Edit Title", systemImage: "pencil")
+                    }
 
-                        Button(role: .destructive) {
-                            showDeleteConfirmation = true
-                        } label: {
-                            Label("Delete Playlist", systemImage: "trash")
-                        }
+                    Button {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Label(playlist.isUserCreated ? "Delete Playlist" : "Remove from Library", systemImage: "trash")
                     }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -150,13 +160,23 @@ struct PlaylistDetailView: View {
                 }
             }
         }
-        .alert("Delete Playlist?", isPresented: $showDeleteConfirmation) {
+        .alert(playlist.isUserCreated ? "Delete Playlist?" : "Remove from Library?", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) {
-                deletePlaylist()
+            Button(playlist.isUserCreated ? "Delete" : "Remove", role: .destructive) {
+                deleteOrRemovePlaylist()
             }
         } message: {
-            Text("Are you sure you want to delete \"\(playlist.name)\"? This action cannot be undone.")
+            Text(playlist.isUserCreated
+                ? "Are you sure you want to delete \"\(playlist.name)\"? This action cannot be undone."
+                : "Remove \"\(playlist.name)\" from your library? You can re-add it from SoundCloud anytime.")
+        }
+        .alert("Edit Title", isPresented: $showRenameAlert) {
+            TextField("Playlist name", text: $editedPlaylistName)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") {
+                renamePlaylist()
+            }
+            .disabled(editedPlaylistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .sheet(isPresented: $showShareSheet) {
             if let shareURL {
@@ -166,19 +186,43 @@ struct PlaylistDetailView: View {
     }
     
     @State private var showDeleteConfirmation = false
+    @State private var showRenameAlert = false
+    @State private var editedPlaylistName = ""
     
-    private func deletePlaylist() {
+    private func deleteOrRemovePlaylist() {
         guard let userId = authManager.currentUserId else { return }
         HapticManager.medium()
         
         Task {
             do {
-                try await PlaylistSync.shared.deleteUserPlaylist(userId: userId, playlistId: playlist.id)
+                if playlist.isUserCreated {
+                    try await PlaylistSync.shared.deleteUserPlaylist(userId: userId, playlistId: playlist.id)
+                } else {
+                    try await PlaylistSync.shared.removeSoundCloudPlaylistFromLibrary(userId: userId, playlistId: playlist.id)
+                }
                 await MainActor.run {
                     dismiss()
                 }
             } catch {
-                logError(.sync, "Failed to delete playlist: \(error)")
+                logError(.sync, "Failed to delete/remove playlist: \(error)")
+            }
+        }
+    }
+
+    private func renamePlaylist() {
+        let newName = editedPlaylistName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !newName.isEmpty, let userId = authManager.currentUserId else { return }
+        HapticManager.light()
+        
+        Task {
+            do {
+                if playlist.isUserCreated {
+                    try await PlaylistSync.shared.renameUserPlaylist(userId: userId, playlistId: playlist.id, name: newName)
+                } else {
+                    try await PlaylistSync.shared.renameSoundCloudPlaylist(userId: userId, playlistId: playlist.id, name: newName)
+                }
+            } catch {
+                logError(.sync, "Failed to rename playlist: \(error)")
             }
         }
     }

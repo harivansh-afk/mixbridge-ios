@@ -71,7 +71,7 @@ extension PersistedPlaylist {
     func toPlaylist() -> Playlist {
         Playlist(
             id: id,
-            name: name,
+            name: displayName,
             creator: creator,
             artwork: artwork,
             tracks: [],
@@ -83,7 +83,7 @@ extension PersistedPlaylist {
     func toPlaylist(with tracks: [Track]) -> Playlist {
         Playlist(
             id: id,
-            name: name,
+            name: displayName,
             creator: creator,
             artwork: artwork,
             tracks: tracks,

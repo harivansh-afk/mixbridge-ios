@@ -43,6 +43,9 @@ final class PlaylistSync: Sendable {
                         // Preserve stable timestamps so Library ordering doesn't reshuffle every sync.
                         persisted.createdAt = existing.createdAt
                         persisted.lastUpdated = existing.lastUpdated
+                        // Preserve local modifications (custom name, hidden status)
+                        persisted.customName = existing.customName
+                        persisted.isHiddenFromLibrary = existing.isHiddenFromLibrary
                     }
 
                     return persisted
@@ -60,23 +63,29 @@ final class PlaylistSync: Sendable {
                     .filter(PersistedPlaylist.Columns.libraryOwnerUserId == nil)
                     .updateAll(db, PersistedPlaylist.Columns.libraryOwnerUserId.set(to: userId))
 
-                // Get current local SoundCloud playlist IDs (exclude user-created playlists)
+                // Get current local SoundCloud playlist IDs (exclude user-created and hidden playlists)
                 let soundCloudPlaylistIds = try PersistedPlaylist
                     .filter(PersistedPlaylist.Columns.libraryOwnerUserId == userId)
                     .filter(PersistedPlaylist.Columns.isUserCreated == false)
+                    .filter(PersistedPlaylist.Columns.isHiddenFromLibrary == false)
                     .fetchAll(db)
                     .map(\.id)
 
                 // Remove SoundCloud playlists no longer in backend (unfollowed/deleted)
                 // User-created playlists are preserved since they don't come from SoundCloud
+                // Hidden playlists are already excluded and won't be affected
                 for playlistId in soundCloudPlaylistIds where !prepared.newPlaylistIds.contains(playlistId) {
                     try PersistedPlaylist
                         .filter(PersistedPlaylist.Columns.id == playlistId)
                         .updateAll(db, PersistedPlaylist.Columns.libraryOwnerUserId.set(to: prepared.cachedOwner))
                 }
 
-                // Add/update playlists
+                // Add/update playlists (skip hidden ones to avoid re-adding them)
                 for persisted in prepared.persistedPlaylists {
+                    // Skip if hidden - don't re-add removed playlists
+                    if persisted.isHiddenFromLibrary {
+                        continue
+                    }
                     if let existing = existingById[persisted.id], existing == persisted {
                         continue
                     }
@@ -356,6 +365,59 @@ final class PlaylistSync: Sendable {
         }
 
         logInfo(.sync, "Deleted user playlist: \(playlistId)")
+    }
+
+    /// Rename a user-created playlist
+    func renameUserPlaylist(userId: String, playlistId: String, name: String) async throws {
+        try await db.writer.write { db in
+            try PersistedPlaylist
+                .filter(PersistedPlaylist.Columns.id == playlistId)
+                .updateAll(db,
+                    PersistedPlaylist.Columns.name.set(to: name),
+                    PersistedPlaylist.Columns.lastUpdated.set(to: Date())
+                )
+        }
+
+        Task {
+            try? await convex.renameCustomPlaylist(userId: userId, playlistId: playlistId, name: name)
+        }
+
+        logInfo(.sync, "Renamed user playlist \(playlistId) to: \(name)")
+    }
+
+    /// Rename a SoundCloud playlist (syncs to Convex for sharing)
+    /// Uses customName to preserve original name and survive syncs
+    func renameSoundCloudPlaylist(userId: String, playlistId: String, name: String) async throws {
+        try await db.writer.write { db in
+            try PersistedPlaylist
+                .filter(PersistedPlaylist.Columns.id == playlistId)
+                .updateAll(db,
+                    PersistedPlaylist.Columns.customName.set(to: name),
+                    PersistedPlaylist.Columns.lastUpdated.set(to: Date())
+                )
+        }
+
+        Task {
+            try? await convex.setSoundCloudPlaylistCustomName(userId: userId, playlistId: playlistId, customName: name)
+        }
+
+        logInfo(.sync, "Renamed SoundCloud playlist \(playlistId) to: \(name)")
+    }
+
+    /// Remove a SoundCloud playlist from the user's library (syncs to Convex)
+    /// Uses isHiddenFromLibrary flag to survive syncs
+    func removeSoundCloudPlaylistFromLibrary(userId: String, playlistId: String) async throws {
+        try await db.writer.write { db in
+            try PersistedPlaylist
+                .filter(PersistedPlaylist.Columns.id == playlistId)
+                .updateAll(db, PersistedPlaylist.Columns.isHiddenFromLibrary.set(to: true))
+        }
+
+        Task {
+            try? await convex.setSoundCloudPlaylistHidden(userId: userId, playlistId: playlistId, isHidden: true)
+        }
+
+        logInfo(.sync, "Removed SoundCloud playlist \(playlistId) from library")
     }
 
     /// Add a track to a user-created playlist
