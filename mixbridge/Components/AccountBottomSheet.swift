@@ -12,7 +12,6 @@ struct AccountBottomSheet: View {
     @Binding var isPresented: Bool
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
-    @AppStorage("themeMode") private var themeMode: AppearanceMode = .system
     @State private var showDeleteConfirmation = false
     private var profileManager = UserProfileManager.shared
     @State private var showFinalDeleteConfirmation = false
@@ -73,24 +72,6 @@ struct AccountBottomSheet: View {
                 }
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
-
-                // Theme Picker Section
-                Section {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Picker("Appearance", selection: $themeMode) {
-                            ForEach(AppearanceMode.allCases.filter { $0 != .system }) { mode in
-                                Text(mode.rawValue)
-                                    .font(.system(size: 16))
-                                    .tag(mode)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                    .onChange(of: themeMode) { _, _ in
-                        HapticManager.selection()
-                    }
-                    }
-                    .glassEffect(.regular)
-                }
 
                 // Settings Section
                 Section {
@@ -216,7 +197,7 @@ struct AccountBottomSheet: View {
                 Text("This will permanently delete all your data including playlists, play history, and preferences. This action cannot be undone.")
             }
         }
-        .preferredColorScheme(themeMode.colorScheme)
+        .preferredColorScheme(.dark)
         .presentationDragIndicator(.hidden)
     }
 

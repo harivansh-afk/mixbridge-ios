@@ -13,7 +13,6 @@ import SystemNotification
 
 @main
 struct mixbridgeApp: App {
-    @AppStorage("themeMode") private var themeMode: AppearanceMode = .system
     @Environment(\.scenePhase) private var scenePhase
     @State private var authManager = AuthManager.shared
     @State private var profileManager = UserProfileManager.shared
@@ -46,7 +45,7 @@ struct mixbridgeApp: App {
                     splashView
                 }
             }
-            .preferredColorScheme(themeMode.colorScheme)
+            .preferredColorScheme(.dark)
             .environment(authManager)
             .environment(profileManager)
             .environment(queueManager)
