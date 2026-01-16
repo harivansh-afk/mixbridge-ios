@@ -110,7 +110,7 @@ struct HomeView: View {
         ProfileAvatarButton(
             avatarUrl: profileManager.avatarUrl,
             displayName: profileManager.displayName,
-            size: 40
+            size: 35
         ) {
             showingAccount.toggle()
         }
