@@ -174,6 +174,17 @@ extension MixBridgeDB {
             }
         }
 
+        migrator.registerMigration("v6_playlist_source_link") { db in
+            try db.alter(table: PersistedPlaylist.databaseTableName) { t in
+                t.add(column: "sourcePlaylistId", .text)
+            }
+            try db.create(
+                index: "idx_playlists_sourcePlaylistId",
+                on: PersistedPlaylist.databaseTableName,
+                columns: ["sourcePlaylistId"],
+            )
+        }
+
         return migrator
     }
 }

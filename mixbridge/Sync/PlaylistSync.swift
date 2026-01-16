@@ -269,7 +269,8 @@ final class PlaylistSync: Sendable {
         userId: String,
         name: String,
         description: String? = nil,
-        tracks: [PersistedTrack]
+        tracks: [PersistedTrack],
+        sourcePlaylistId: String? = nil
     ) async throws -> String {
         guard !tracks.isEmpty else {
             throw PlaylistSyncError.emptyPlaylistNotAllowed
@@ -294,7 +295,8 @@ final class PlaylistSync: Sendable {
             createdAt: now,
             lastUpdated: now,
             libraryOwnerUserId: userId,
-            isUserCreated: true
+            isUserCreated: true,
+            sourcePlaylistId: sourcePlaylistId
         )
         
         try await db.writer.write { db in

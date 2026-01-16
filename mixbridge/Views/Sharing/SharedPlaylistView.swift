@@ -12,6 +12,8 @@ struct SharedPlaylistView: View {
     let shareId: String
     var isSoundCloudPlaylist: Bool = false
 
+    private let db = MixBridgeDB.shared
+
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
     @Environment(PlayerState.self) private var playerState
@@ -24,6 +26,7 @@ struct SharedPlaylistView: View {
     @State private var error: String?
     @State private var isAddingToLibrary = false
     @State private var showAddedConfirmation = false
+    @State private var isInLibrary = false
 
     private var playlistArtwork: String {
         if let artwork = playlist?.artwork?.upgradeArtworkQuality(), !artwork.isEmpty {
@@ -63,17 +66,24 @@ struct SharedPlaylistView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Button {
-                            addToLibrary()
-                        } label: {
-                            if isAddingToLibrary {
-                                Label("Adding...", systemImage: "ellipsis")
-                            } else {
-                                Label(showAddedConfirmation ? "Added" : "Add to Library",
-                                      systemImage: showAddedConfirmation ? "checkmark" : "plus")
+                        if isInLibrary {
+                            Button {} label: {
+                                Label("Already in Library", systemImage: "checkmark")
                             }
+                            .disabled(true)
+                        } else {
+                            Button {
+                                addToLibrary()
+                            } label: {
+                                if isAddingToLibrary {
+                                    Label("Adding...", systemImage: "ellipsis")
+                                } else {
+                                    Label(showAddedConfirmation ? "Added" : "Add to Library",
+                                          systemImage: showAddedConfirmation ? "checkmark" : "plus")
+                                }
+                            }
+                            .disabled(isAddingToLibrary || showAddedConfirmation || !authManager.isAuthenticated)
                         }
-                        .disabled(isAddingToLibrary || showAddedConfirmation || !authManager.isAuthenticated)
 
                         Button {
                             downloadAllTracks()
@@ -210,7 +220,8 @@ struct SharedPlaylistView: View {
                         trackCount: scPlaylist.trackCount,
                         tracks: scPlaylist.tracks,
                         createdAt: scPlaylist.createdAt,
-                        owner: scPlaylist.sharer
+                        owner: scPlaylist.sharer,
+                        sourcePlaylistId: scPlaylist.sourcePlaylistId
                     )
                 }
             } else {
@@ -222,6 +233,7 @@ struct SharedPlaylistView: View {
                 await MainActor.run {
                     trackItems = items
                 }
+                await updateLibraryStatus(for: playlist)
             } else {
                 error = "This playlist is no longer available"
             }
@@ -251,12 +263,14 @@ struct SharedPlaylistView: View {
                     userId: userId,
                     name: fullPlaylist.name,
                     description: fullPlaylist.description,
-                    tracks: persistedTracks
+                    tracks: persistedTracks,
+                    sourcePlaylistId: fullPlaylist.sourcePlaylistId ?? playlist?.sourcePlaylistId
                 )
 
                 await MainActor.run {
                     isAddingToLibrary = false
                     showAddedConfirmation = true
+                    isInLibrary = true
                     HapticManager.success()
                 }
 
@@ -318,6 +332,51 @@ struct SharedPlaylistView: View {
         guard !soundCloudTracks.isEmpty else { return }
         HapticManager.medium()
         downloadManager.downloadTracks(soundCloudTracks)
+    }
+
+    private func updateLibraryStatus(for playlist: SharedPlaylistResponse) async {
+        guard let userId = authManager.currentUserId else { return }
+
+        do {
+            let exists = try await db.reader.read { db in
+                if let sourceId = playlist.sourcePlaylistId {
+                    let request = PersistedPlaylist.filter(
+                        sql: "libraryOwnerUserId = ? AND (id = ? OR sourcePlaylistId = ?)",
+                        arguments: [userId, sourceId, sourceId]
+                    )
+                    if try request.fetchCount(db) > 0 {
+                        return true
+                    }
+                }
+
+                var request = PersistedPlaylist
+                    .filter(PersistedPlaylist.Columns.libraryOwnerUserId == userId)
+                    .filter(PersistedPlaylist.Columns.name == playlist.name)
+                    .filter(PersistedPlaylist.Columns.trackCount == playlist.trackCount)
+
+                if isSoundCloudPlaylist {
+                    request = request.filter(PersistedPlaylist.Columns.isUserCreated == false)
+                    if let owner = playlist.owner?.username {
+                        request = request.filter(PersistedPlaylist.Columns.creator == owner)
+                    }
+                } else {
+                    request = request.filter(PersistedPlaylist.Columns.isUserCreated == true)
+                    if let description = playlist.description {
+                        request = request.filter(PersistedPlaylist.Columns.description == description)
+                    } else {
+                        request = request.filter(PersistedPlaylist.Columns.description == nil)
+                    }
+                }
+
+                return try request.fetchCount(db) > 0
+            }
+
+            await MainActor.run {
+                isInLibrary = exists
+            }
+        } catch {
+            logError(.db, "Failed to check shared playlist library status: \(error)")
+        }
     }
 
     private func dismissSharedContent() {

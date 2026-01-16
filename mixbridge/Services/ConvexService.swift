@@ -849,6 +849,7 @@ struct SharedPlaylistResponse: Codable {
     let tracks: [SharedPlaylistTrack]
     let createdAt: Int
     let owner: SharedUserInfo?
+    let sourcePlaylistId: String?
 }
 
 struct FullSharedPlaylistResponse: Codable {
@@ -858,6 +859,7 @@ struct FullSharedPlaylistResponse: Codable {
     let trackIds: [String]
     let trackData: [SoundCloudTrack]?
     let ownerId: String
+    let sourcePlaylistId: String?
 }
 
 // MARK: - Track Sharing Response Types
@@ -910,6 +912,7 @@ struct SharedSoundCloudPlaylistResponse: Codable {
     let createdAt: Int
     let sharer: SharedUserInfo?
     let isFromSoundCloud: Bool?
+    let sourcePlaylistId: String?
 }
 
 // MARK: - Errors
