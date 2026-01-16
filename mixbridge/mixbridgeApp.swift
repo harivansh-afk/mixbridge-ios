@@ -73,7 +73,9 @@ struct mixbridgeApp: App {
                     .environment(queueManager)
                     .environment(playerState)
                     .environment(deepLinkRouter)
+                    .environment(featureFlags)
                     .environmentObject(DownloadManager.shared)
+                    .environmentObject(systemNotification)
             }
             .onAppear {
                 // Initialize Statsig feature flags
