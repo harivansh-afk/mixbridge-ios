@@ -23,6 +23,8 @@ struct PlaylistDetailView: View {
     @State private var shareURL: URL?
     @State private var isGeneratingShareLink = false
     @State private var showCopiedConfirmation = false
+    @State private var showShareSheet = false
+    @State private var pendingShareSheetPresentation = false
 
     private let artworkSize: CGFloat = 300
 
@@ -102,27 +104,23 @@ struct PlaylistDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     // Share option - works for all playlists
-                    if let shareURL {
-                        ShareLink(item: shareURL) {
+                    Button {
+                        handleShareTapped()
+                    } label: {
+                        if isGeneratingShareLink {
+                            Label("Generating...", systemImage: "ellipsis")
+                        } else {
                             Label("Share Playlist", systemImage: "square.and.arrow.up")
                         }
+                    }
+                    .disabled(isGeneratingShareLink)
 
+                    if shareURL != nil {
                         Button {
                             copyShareLink()
                         } label: {
                             Label(showCopiedConfirmation ? "Link Copied!" : "Copy Link", systemImage: showCopiedConfirmation ? "checkmark" : "doc.on.doc")
                         }
-                    } else {
-                        Button {
-                            generateShareLink()
-                        } label: {
-                            if isGeneratingShareLink {
-                                Label("Generating...", systemImage: "ellipsis")
-                            } else {
-                                Label("Share Playlist", systemImage: "square.and.arrow.up")
-                            }
-                        }
-                        .disabled(isGeneratingShareLink)
                     }
 
 
@@ -156,6 +154,11 @@ struct PlaylistDetailView: View {
             }
         } message: {
             Text("Are you sure you want to delete \"\(playlist.name)\"? This action cannot be undone.")
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let shareURL {
+                ShareSheet(items: [shareURL])
+            }
         }
     }
     
@@ -305,14 +308,29 @@ struct PlaylistDetailView: View {
                     shareURL = URL(string: response.shareUrl)
                     isGeneratingShareLink = false
                     HapticManager.success()
+                    if pendingShareSheetPresentation {
+                        pendingShareSheetPresentation = false
+                        showShareSheet = true
+                    }
                 }
             } catch {
                 await MainActor.run {
                     isGeneratingShareLink = false
+                    pendingShareSheetPresentation = false
                 }
                 logError(.network, "Failed to generate share link: \(error)")
             }
         }
+    }
+
+    private func handleShareTapped() {
+        if shareURL != nil {
+            showShareSheet = true
+            return
+        }
+
+        pendingShareSheetPresentation = true
+        generateShareLink()
     }
 
     private func copyShareLink() {
