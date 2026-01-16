@@ -55,7 +55,16 @@ struct mixbridgeApp: App {
             .environmentObject(systemNotification)
             .systemNotification(systemNotification)
             .onOpenURL { url in
-                deepLinkRouter.handle(url: url)
+                if isAppInitialized {
+                    deepLinkRouter.handle(url: url)
+                } else {
+                    Task { @MainActor in
+                        while !isAppInitialized {
+                            try? await Task.sleep(for: .milliseconds(50))
+                        }
+                        deepLinkRouter.handle(url: url)
+                    }
+                }
             }
             .sheet(isPresented: Bindable(deepLinkRouter).isShowingSharedContent) {
                 sharedContentView
