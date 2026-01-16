@@ -69,6 +69,7 @@ struct DevLogsView: View {
                     Button(role: .destructive, action: { showingClearConfirmation = true }) {
                         Label("Clear Logs", systemImage: "trash")
                     }
+                    .tint(.red)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
