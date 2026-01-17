@@ -1073,14 +1073,3 @@ enum ConvexError: LocalizedError {
     }
 }
 
-private extension KeyedDecodingContainer {
-    func decodeLossyIntIfPresent(forKey key: Key) throws -> Int? {
-        if let intValue = try decodeIfPresent(Int.self, forKey: key) {
-            return intValue
-        }
-        if let stringValue = try decodeIfPresent(String.self, forKey: key) {
-            return Int(stringValue)
-        }
-        return nil
-    }
-}

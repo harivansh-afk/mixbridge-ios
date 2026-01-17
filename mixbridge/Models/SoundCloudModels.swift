@@ -35,6 +35,38 @@ struct SoundCloudTrack: Codable, Sendable {
         case reposts_count
     }
 
+    init(
+        id: Int,
+        title: String,
+        user: SoundCloudUser,
+        duration: Int,
+        artwork_url: String?,
+        permalink_url: String?,
+        playback_count: Int?,
+        genre: String?,
+        description: String?,
+        created_at: String?,
+        waveform_url: String?,
+        likes_count: Int?,
+        comment_count: Int?,
+        reposts_count: Int?
+    ) {
+        self.id = id
+        self.title = title
+        self.user = user
+        self.duration = duration
+        self.artwork_url = artwork_url
+        self.permalink_url = permalink_url
+        self.playback_count = playback_count
+        self.genre = genre
+        self.description = description
+        self.created_at = created_at
+        self.waveform_url = waveform_url
+        self.likes_count = likes_count
+        self.comment_count = comment_count
+        self.reposts_count = reposts_count
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeLossyInt(forKey: .id)
@@ -114,7 +146,7 @@ struct SoundCloudProfile: Codable, Sendable {
     let country: String?
 }
 
-private extension KeyedDecodingContainer {
+extension KeyedDecodingContainer {
     func decodeLossyInt(forKey key: Key) throws -> Int {
         if let intValue = try decodeIfPresent(Int.self, forKey: key) {
             return intValue
@@ -128,6 +160,16 @@ private extension KeyedDecodingContainer {
             debugDescription: "Expected Int or String convertible to Int."
         )
         throw DecodingError.typeMismatch(Int.self, context)
+    }
+
+    func decodeLossyIntIfPresent(forKey key: Key) throws -> Int? {
+        if let intValue = try decodeIfPresent(Int.self, forKey: key) {
+            return intValue
+        }
+        if let stringValue = try decodeIfPresent(String.self, forKey: key) {
+            return Int(stringValue)
+        }
+        return nil
     }
 }
 
