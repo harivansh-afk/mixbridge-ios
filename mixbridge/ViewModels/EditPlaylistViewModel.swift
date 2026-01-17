@@ -119,18 +119,14 @@ final class EditPlaylistViewModel {
     
     func removeSelectedTracks() {
         HapticManager.medium()
-        print("🎵 [EditPlaylist] removeSelectedTracks called - selectedTrackIds: \(selectedTrackIds)")
         for trackId in selectedTrackIds {
             if tracksToAdd.contains(where: { $0.id == trackId }) {
                 tracksToAdd.removeAll { $0.id == trackId }
-                print("🎵 [EditPlaylist] Removed from tracksToAdd: \(trackId)")
             } else {
                 trackIdsToRemove.insert(trackId)
-                print("🎵 [EditPlaylist] Added to trackIdsToRemove: \(trackId)")
             }
         }
         selectedTrackIds.removeAll()
-        print("🎵 [EditPlaylist] After removal - trackIdsToRemove: \(trackIdsToRemove)")
     }
     
     func toggleTrackSelection(_ trackId: String) {
@@ -282,11 +278,7 @@ final class EditPlaylistViewModel {
     // MARK: - Save Changes
     
     func saveChanges(userId: String) async -> Bool {
-        print("🎵 [EditPlaylist] saveChanges called - canSave: \(canSave), trackIdsToRemove: \(trackIdsToRemove), tracksToAdd: \(tracksToAdd.count)")
-        guard canSave else {
-            print("🎵 [EditPlaylist] canSave is false, returning early")
-            return false
-        }
+        guard canSave else { return false }
         
         isSaving = true
         HapticManager.medium()
@@ -296,7 +288,6 @@ final class EditPlaylistViewModel {
             
             // 1. Update name if changed
             if trimmedName != originalName {
-                print("🎵 [EditPlaylist] Renaming playlist from '\(originalName)' to '\(trimmedName)'")
                 if isUserCreated {
                     try await playlistSync.renameUserPlaylist(userId: userId, playlistId: playlistId, name: trimmedName)
                 } else {
@@ -305,9 +296,7 @@ final class EditPlaylistViewModel {
             }
             
             // 2. Remove tracks
-            print("🎵 [EditPlaylist] Removing \(trackIdsToRemove.count) tracks: \(trackIdsToRemove)")
             for trackId in trackIdsToRemove {
-                print("🎵 [EditPlaylist] Removing track: \(trackId), isUserCreated: \(isUserCreated)")
                 if isUserCreated {
                     try await playlistSync.removeTrackFromUserPlaylist(userId: userId, playlistId: playlistId, trackId: trackId)
                 } else {
