@@ -17,6 +17,7 @@ struct ProfileStatsView: View {
             Image("background")
                 .resizable()
                 .scaledToFill()
+                .grayscale(1.0)
                 .ignoresSafeArea()
                 .blur(radius: 5, opaque: true)
              

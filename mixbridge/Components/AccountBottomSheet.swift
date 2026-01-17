@@ -212,7 +212,6 @@ struct AccountBottomSheet: View {
                     image
                         .resizable()
                         .scaledToFill()
-                        .grayscale(1.0)
                 } placeholder: {
                     Color.clear
                 }
