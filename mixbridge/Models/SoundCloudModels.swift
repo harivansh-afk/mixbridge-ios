@@ -22,6 +22,7 @@ struct SoundCloudTrack: Codable, Sendable {
         case id
         case title
         case user
+        case artist
         case duration
         case artwork_url
         case permalink_url
@@ -71,8 +72,25 @@ struct SoundCloudTrack: Codable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeLossyInt(forKey: .id)
         title = try container.decode(String.self, forKey: .title)
-        user = try container.decode(SoundCloudUser.self, forKey: .user)
-        duration = try container.decode(Int.self, forKey: .duration)
+        if let decodedUser = try? container.decode(SoundCloudUser.self, forKey: .user) {
+            user = decodedUser
+        } else if let artist = try? container.decode(String.self, forKey: .artist) {
+            user = SoundCloudUser(
+                id: 0,
+                username: artist,
+                avatar_url: nil,
+                permalink_url: nil,
+                followers_count: nil,
+                followings_count: nil
+            )
+        } else {
+            let context = DecodingError.Context(
+                codingPath: decoder.codingPath + [CodingKeys.user],
+                debugDescription: "Expected user object or artist string."
+            )
+            throw DecodingError.keyNotFound(CodingKeys.user, context)
+        }
+        duration = try container.decodeLossyDurationMs(forKey: .duration)
         artwork_url = try container.decodeIfPresent(String.self, forKey: .artwork_url)
         permalink_url = try container.decodeIfPresent(String.self, forKey: .permalink_url)
         playback_count = try container.decodeIfPresent(Int.self, forKey: .playback_count)
@@ -148,10 +166,10 @@ struct SoundCloudProfile: Codable, Sendable {
 
 extension KeyedDecodingContainer {
     func decodeLossyInt(forKey key: Key) throws -> Int {
-        if let intValue = try decodeIfPresent(Int.self, forKey: key) {
+        if let intValue = try? decode(Int.self, forKey: key) {
             return intValue
         }
-        if let stringValue = try decodeIfPresent(String.self, forKey: key),
+        if let stringValue = try? decode(String.self, forKey: key),
            let intValue = Int(stringValue) {
             return intValue
         }
@@ -163,14 +181,54 @@ extension KeyedDecodingContainer {
     }
 
     func decodeLossyIntIfPresent(forKey key: Key) throws -> Int? {
-        if let intValue = try decodeIfPresent(Int.self, forKey: key) {
+        if let intValue = try? decodeIfPresent(Int.self, forKey: key) {
             return intValue
         }
-        if let stringValue = try decodeIfPresent(String.self, forKey: key) {
+        if let stringValue = try? decodeIfPresent(String.self, forKey: key) {
             return Int(stringValue)
         }
         return nil
     }
+
+    func decodeLossyDurationMs(forKey key: Key) throws -> Int {
+        if let intValue = try? decode(Int.self, forKey: key) {
+            return normalizeDurationMs(Double(intValue))
+        }
+        if let doubleValue = try? decode(Double.self, forKey: key) {
+            return normalizeDurationMs(doubleValue)
+        }
+        if let stringValue = try? decode(String.self, forKey: key),
+           let doubleValue = Double(stringValue) {
+            return normalizeDurationMs(doubleValue)
+        }
+        let context = DecodingError.Context(
+            codingPath: codingPath + [key],
+            debugDescription: "Expected numeric duration in ms or seconds."
+        )
+        throw DecodingError.typeMismatch(Int.self, context)
+    }
+
+    func decodeLossyDurationMsIfPresent(forKey key: Key) throws -> Int? {
+        if let intValue = try? decodeIfPresent(Int.self, forKey: key) {
+            return normalizeDurationMs(Double(intValue))
+        }
+        if let doubleValue = try? decodeIfPresent(Double.self, forKey: key) {
+            return normalizeDurationMs(doubleValue)
+        }
+        if let stringValue = try? decodeIfPresent(String.self, forKey: key),
+           let doubleValue = Double(stringValue) {
+            return normalizeDurationMs(doubleValue)
+        }
+        return nil
+    }
+}
+
+private func normalizeDurationMs(_ value: Double) -> Int {
+    guard value > 0 else { return 0 }
+    if value < 1000 {
+        return Int((value * 1000).rounded())
+    }
+    return Int(value.rounded())
 }
 
 // MARK: - Track Conversion

@@ -878,6 +878,7 @@ struct SharedUserInfo: Codable {
 struct SharedPlaylistTrack: Codable {
     let id: Int?
     let title: String?
+    let artist: String?
     let artwork_url: String?
     let duration: Int?
     let user: SoundCloudUser?
@@ -885,6 +886,7 @@ struct SharedPlaylistTrack: Codable {
     enum CodingKeys: String, CodingKey {
         case id
         case title
+        case artist
         case artwork_url
         case duration
         case user
@@ -894,8 +896,9 @@ struct SharedPlaylistTrack: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeLossyIntIfPresent(forKey: .id)
         title = try container.decodeIfPresent(String.self, forKey: .title)
+        artist = try container.decodeIfPresent(String.self, forKey: .artist)
         artwork_url = try container.decodeIfPresent(String.self, forKey: .artwork_url)
-        duration = try container.decodeIfPresent(Int.self, forKey: .duration)
+        duration = try container.decodeLossyDurationMsIfPresent(forKey: .duration)
         user = try container.decodeIfPresent(SoundCloudUser.self, forKey: .user)
     }
 
@@ -903,6 +906,7 @@ struct SharedPlaylistTrack: Codable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(id, forKey: .id)
         try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(artist, forKey: .artist)
         try container.encodeIfPresent(artwork_url, forKey: .artwork_url)
         try container.encodeIfPresent(duration, forKey: .duration)
         try container.encodeIfPresent(user, forKey: .user)
@@ -910,11 +914,21 @@ struct SharedPlaylistTrack: Codable {
 
     /// Convert to SoundCloudTrack if all required fields are present
     func toSoundCloudTrack() -> SoundCloudTrack? {
-        guard let id, let title, let user else { return nil }
+        let resolvedUser = user ?? artist.map {
+            SoundCloudUser(
+                id: 0,
+                username: $0,
+                avatar_url: nil,
+                permalink_url: nil,
+                followers_count: nil,
+                followings_count: nil
+            )
+        }
+        guard let id, let title, let resolvedUser else { return nil }
         return SoundCloudTrack(
             id: id,
             title: title,
-            user: user,
+            user: resolvedUser,
             duration: duration ?? 0,
             artwork_url: artwork_url,
             permalink_url: nil,
@@ -977,7 +991,7 @@ struct SharedTrackData: Codable {
         id = try container.decodeLossyIntIfPresent(forKey: .id)
         title = try container.decodeIfPresent(String.self, forKey: .title)
         artwork_url = try container.decodeIfPresent(String.self, forKey: .artwork_url)
-        duration = try container.decodeIfPresent(Int.self, forKey: .duration)
+        duration = try container.decodeLossyDurationMsIfPresent(forKey: .duration)
         genre = try container.decodeIfPresent(String.self, forKey: .genre)
         description = try container.decodeIfPresent(String.self, forKey: .description)
         user = try container.decodeIfPresent(SoundCloudUser.self, forKey: .user)
@@ -1072,4 +1086,3 @@ enum ConvexError: LocalizedError {
         }
     }
 }
-
