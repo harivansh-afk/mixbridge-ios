@@ -378,8 +378,10 @@ final class PlaylistSync: Sendable {
                 )
         }
 
-        Task {
-            try? await convex.renameCustomPlaylist(userId: userId, playlistId: playlistId, name: name)
+        do {
+            try await convex.renameCustomPlaylist(userId: userId, playlistId: playlistId, name: name)
+        } catch {
+            logError(.sync, "Failed to sync playlist rename to Convex: \(error)")
         }
 
         logInfo(.sync, "Renamed user playlist \(playlistId) to: \(name)")
@@ -397,8 +399,10 @@ final class PlaylistSync: Sendable {
                 )
         }
 
-        Task {
-            try? await convex.setSoundCloudPlaylistCustomName(userId: userId, playlistId: playlistId, customName: name)
+        do {
+            try await convex.setSoundCloudPlaylistCustomName(userId: userId, playlistId: playlistId, customName: name)
+        } catch {
+            logError(.sync, "Failed to sync SoundCloud playlist rename to Convex: \(error)")
         }
 
         logInfo(.sync, "Renamed SoundCloud playlist \(playlistId) to: \(name)")

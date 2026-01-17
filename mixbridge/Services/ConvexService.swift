@@ -607,7 +607,7 @@ final class ConvexService {
 
     /// Rename a custom playlist
     func renameCustomPlaylist(userId: String, playlistId: String, name: String) async throws {
-        try await mutation("customPlaylists:rename", args: [
+        try await mutationVoid("customPlaylists:update", args: [
             "userId": userId,
             "playlistId": playlistId,
             "name": name
@@ -618,7 +618,7 @@ final class ConvexService {
 
     /// Set custom name for a SoundCloud playlist
     func setSoundCloudPlaylistCustomName(userId: String, playlistId: String, customName: String) async throws {
-        try await mutation("playlistCustomizations:setCustomName", args: [
+        try await mutationVoid("playlistCustomizations:setCustomName", args: [
             "userId": userId,
             "playlistId": playlistId,
             "customName": customName
@@ -627,7 +627,7 @@ final class ConvexService {
 
     /// Set hidden status for a SoundCloud playlist
     func setSoundCloudPlaylistHidden(userId: String, playlistId: String, isHidden: Bool) async throws {
-        try await mutation("playlistCustomizations:setHiddenFromLibrary", args: [
+        try await mutationVoid("playlistCustomizations:setHiddenFromLibrary", args: [
             "userId": userId,
             "playlistId": playlistId,
             "isHiddenFromLibrary": isHidden
