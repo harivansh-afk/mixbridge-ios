@@ -440,6 +440,13 @@ struct TrackRow: View {
                     shareURL = URL(string: response.shareUrl)
                     isGeneratingShareLink = false
                     HapticManager.success()
+                    Analytics.shared.track(
+                        "content_shared",
+                        properties: [
+                            "content_type": "track",
+                            "content_id": track.id
+                        ]
+                    )
                     if pendingShareSheetPresentation {
                         pendingShareSheetPresentation = false
                         showShareSheet = true

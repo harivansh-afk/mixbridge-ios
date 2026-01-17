@@ -26,12 +26,23 @@ struct PlaylistDetailView: View {
     @State private var showCopiedConfirmation = false
     @State private var showShareSheet = false
     @State private var pendingShareSheetPresentation = false
+    @State private var hasTrackedOpen = false
 
     private let artworkSize: CGFloat = 300
 
     /// The current playlist, updated via database observation
     private var playlist: Playlist {
         viewModel.playlist ?? initialPlaylist
+    }
+
+    private var playlistTrackCount: Int {
+        if !viewModel.trackItems.isEmpty {
+            return viewModel.trackItems.count
+        }
+        if !playlist.tracks.isEmpty {
+            return playlist.tracks.count
+        }
+        return 0
     }
 
     init(playlist: Playlist) {
@@ -179,6 +190,18 @@ struct PlaylistDetailView: View {
                 ShareSheet(items: [shareURL])
             }
         }
+        .onAppear {
+            guard !hasTrackedOpen else { return }
+            hasTrackedOpen = true
+            Analytics.shared.track(
+                "playlist_opened",
+                properties: [
+                    "playlist_id": playlist.id,
+                    "track_count": playlist.trackCount,
+                    "is_user_created": playlist.isUserCreated
+                ]
+            )
+        }
     }
     
     @State private var showDeleteConfirmation = false
@@ -240,10 +263,26 @@ struct PlaylistDetailView: View {
         PlaylistActionButtons(
             onPlay: {
                 guard !viewModel.trackItems.isEmpty else { return }
+                Analytics.shared.track(
+                    "playlist_played",
+                    properties: [
+                        "playlist_id": playlist.id,
+                        "track_count": playlistTrackCount,
+                        "shuffle": false
+                    ]
+                )
                 playerState.playFromList(items: viewModel.trackItems, startIndex: 0)
             },
             onShuffle: {
                 guard !viewModel.trackItems.isEmpty else { return }
+                Analytics.shared.track(
+                    "playlist_played",
+                    properties: [
+                        "playlist_id": playlist.id,
+                        "track_count": playlistTrackCount,
+                        "shuffle": true
+                    ]
+                )
                 playerState.playFromList(items: viewModel.trackItems, startIndex: 0, shuffle: true)
             }
         )
@@ -332,6 +371,13 @@ struct PlaylistDetailView: View {
                     shareURL = URL(string: response.shareUrl)
                     isGeneratingShareLink = false
                     HapticManager.success()
+                    Analytics.shared.track(
+                        "content_shared",
+                        properties: [
+                            "content_type": "playlist",
+                            "content_id": playlist.id
+                        ]
+                    )
                     if pendingShareSheetPresentation {
                         pendingShareSheetPresentation = false
                         showShareSheet = true
