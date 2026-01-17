@@ -85,6 +85,40 @@ final class ConvexService {
     private func mutation(_ path: String, args: [String: Any] = [:]) async throws -> String? {
         try await mutationGeneric(path, args: args)
     }
+    
+    /// Mutation that ignores the return value (for mutations returning bool/null)
+    private func mutationVoid(_ path: String, args: [String: Any] = [:]) async throws {
+        let url = URL(string: "\(deploymentUrl)/api/mutation")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "path": path,
+            "args": args,
+            "format": "json"
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw ConvexError.requestFailed
+        }
+
+        // Just check for success status, ignore the value
+        struct VoidResponse: Codable {
+            let status: String
+            let errorMessage: String?
+        }
+        let convexResponse = try JSONDecoder().decode(VoidResponse.self, from: data)
+
+        guard convexResponse.status == "success" else {
+            throw ConvexError.mutationFailed(convexResponse.errorMessage ?? "Unknown error")
+        }
+    }
 
     /// Generic mutation that can decode any Codable return type
     @discardableResult
@@ -609,7 +643,7 @@ final class ConvexService {
             "artwork_url": track.artwork,
             "duration": track.duration
         ]
-        try await mutation("customPlaylists:addTrack", args: [
+        try await mutationVoid("customPlaylists:addTrack", args: [
             "userId": userId,
             "playlistId": playlistId,
             "trackId": track.id,
@@ -619,7 +653,7 @@ final class ConvexService {
 
     /// Remove a track from a custom playlist
     func removeTrackFromCustomPlaylist(userId: String, playlistId: String, trackId: String) async throws {
-        try await mutation("customPlaylists:removeTrack", args: [
+        try await mutationVoid("customPlaylists:removeTrack", args: [
             "userId": userId,
             "playlistId": playlistId,
             "trackId": trackId
@@ -633,7 +667,7 @@ final class ConvexService {
         let trackData = try JSONEncoder().encode(track)
         let trackDict = try JSONSerialization.jsonObject(with: trackData) as? [String: Any] ?? [:]
 
-        try await mutation("playlistUserTracks:addTrack", args: [
+        try await mutationVoid("playlistUserTracks:addTrack", args: [
             "userId": userId,
             "playlistId": playlistId,
             "trackId": String(track.id),
@@ -643,7 +677,7 @@ final class ConvexService {
 
     /// Remove a user-added track from a SoundCloud playlist
     func removeTrackFromSoundCloudPlaylist(userId: String, playlistId: String, trackId: String) async throws {
-        try await mutation("playlistUserTracks:removeTrack", args: [
+        try await mutationVoid("playlistUserTracks:removeTrack", args: [
             "userId": userId,
             "playlistId": playlistId,
             "trackId": trackId

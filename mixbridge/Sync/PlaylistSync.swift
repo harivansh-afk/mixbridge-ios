@@ -453,12 +453,14 @@ final class PlaylistSync: Sendable {
             }
         }
 
-        Task {
-            try? await convex.addTrackToCustomPlaylist(
+        do {
+            try await convex.addTrackToCustomPlaylist(
                 userId: userId,
                 playlistId: playlistId,
                 track: track
             )
+        } catch {
+            logError(.sync, "Failed to sync track addition to Convex: \(error)")
         }
 
         logInfo(.sync, "Added track \(track.id) to playlist \(playlistId)")
@@ -545,12 +547,14 @@ final class PlaylistSync: Sendable {
                 )
         }
 
-        Task {
-            try? await convex.removeTrackFromCustomPlaylist(
+        do {
+            try await convex.removeTrackFromCustomPlaylist(
                 userId: userId,
                 playlistId: playlistId,
                 trackId: trackId
             )
+        } catch {
+            logError(.sync, "Failed to sync track removal to Convex: \(error)")
         }
 
         logInfo(.sync, "Removed track \(trackId) from playlist \(playlistId)")
@@ -583,12 +587,14 @@ final class PlaylistSync: Sendable {
                 )
         }
 
-        Task {
-            try? await convex.removeTrackFromSoundCloudPlaylist(
+        do {
+            try await convex.removeTrackFromSoundCloudPlaylist(
                 userId: userId,
                 playlistId: playlistId,
                 trackId: trackId
             )
+        } catch {
+            logError(.sync, "Failed to sync SoundCloud track removal to Convex: \(error)")
         }
 
         logInfo(.sync, "Removed track \(trackId) from SoundCloud playlist \(playlistId)")
