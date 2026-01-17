@@ -17,6 +17,59 @@ struct SoundCloudTrack: Codable, Sendable {
     let likes_count: Int?
     let comment_count: Int?
     let reposts_count: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case user
+        case duration
+        case artwork_url
+        case permalink_url
+        case playback_count
+        case genre
+        case description
+        case created_at
+        case waveform_url
+        case likes_count
+        case comment_count
+        case reposts_count
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeLossyInt(forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        user = try container.decode(SoundCloudUser.self, forKey: .user)
+        duration = try container.decode(Int.self, forKey: .duration)
+        artwork_url = try container.decodeIfPresent(String.self, forKey: .artwork_url)
+        permalink_url = try container.decodeIfPresent(String.self, forKey: .permalink_url)
+        playback_count = try container.decodeIfPresent(Int.self, forKey: .playback_count)
+        genre = try container.decodeIfPresent(String.self, forKey: .genre)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        created_at = try container.decodeIfPresent(String.self, forKey: .created_at)
+        waveform_url = try container.decodeIfPresent(String.self, forKey: .waveform_url)
+        likes_count = try container.decodeIfPresent(Int.self, forKey: .likes_count)
+        comment_count = try container.decodeIfPresent(Int.self, forKey: .comment_count)
+        reposts_count = try container.decodeIfPresent(Int.self, forKey: .reposts_count)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encode(user, forKey: .user)
+        try container.encode(duration, forKey: .duration)
+        try container.encodeIfPresent(artwork_url, forKey: .artwork_url)
+        try container.encodeIfPresent(permalink_url, forKey: .permalink_url)
+        try container.encodeIfPresent(playback_count, forKey: .playback_count)
+        try container.encodeIfPresent(genre, forKey: .genre)
+        try container.encodeIfPresent(description, forKey: .description)
+        try container.encodeIfPresent(created_at, forKey: .created_at)
+        try container.encodeIfPresent(waveform_url, forKey: .waveform_url)
+        try container.encodeIfPresent(likes_count, forKey: .likes_count)
+        try container.encodeIfPresent(comment_count, forKey: .comment_count)
+        try container.encodeIfPresent(reposts_count, forKey: .reposts_count)
+    }
 }
 
 struct SoundCloudUser: Codable, Sendable {
@@ -59,6 +112,23 @@ struct SoundCloudProfile: Codable, Sendable {
     let description: String?
     let city: String?
     let country: String?
+}
+
+private extension KeyedDecodingContainer {
+    func decodeLossyInt(forKey key: Key) throws -> Int {
+        if let intValue = try decodeIfPresent(Int.self, forKey: key) {
+            return intValue
+        }
+        if let stringValue = try decodeIfPresent(String.self, forKey: key),
+           let intValue = Int(stringValue) {
+            return intValue
+        }
+        let context = DecodingError.Context(
+            codingPath: codingPath + [key],
+            debugDescription: "Expected Int or String convertible to Int."
+        )
+        throw DecodingError.typeMismatch(Int.self, context)
+    }
 }
 
 // MARK: - Track Conversion
