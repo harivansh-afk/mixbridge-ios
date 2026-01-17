@@ -388,6 +388,15 @@ final class PlaybackCoordinator: NSObject {
     /// so we don't need to remove here.
     private func handleTrackStartedPlaying(context: PlaybackContext) {
         currentContext = context
+        Analytics.shared.track(
+            "track_played",
+            properties: [
+                "track_id": context.track.id,
+                "track_title": context.track.title,
+                "artist_name": context.track.artist,
+                "duration_seconds": context.track.duration
+            ]
+        )
     }
 
     private func startPlayback(with context: PlaybackContext, requestId: UUID, startTime: Double? = nil, forceRefreshURL: Bool = false) async {
@@ -856,6 +865,13 @@ final class PlaybackCoordinator: NSObject {
 
         // End position tracking for finished track
         positionTracker.endSession()
+        Analytics.shared.track(
+            "track_completed",
+            properties: [
+                "track_id": finishedContext.track.id,
+                "duration_seconds": finishedContext.track.duration
+            ]
+        )
 
         itemContextMap.removeValue(forKey: finishedItem)
 

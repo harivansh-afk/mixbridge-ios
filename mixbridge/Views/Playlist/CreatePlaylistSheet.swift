@@ -26,13 +26,16 @@ struct CreatePlaylistSheet: View {
             case .nameEntry:
                 nameEntryView
             case .trackSelection:
-                PlaylistTrackPickerView(viewModel: viewModel)
+                PlaylistTrackPickerView(viewModel: viewModel) { playlistId, trackCount in
+                    Analytics.shared.track(
+                        "playlist_created",
+                        properties: [
+                            "playlist_id": playlistId,
+                            "initial_track_count": trackCount
+                        ]
+                    )
+                }
                     .environment(authManager)
-            }
-        }
-        .onChange(of: viewModel.isCreating) { _, isCreating in
-            if !isCreating && viewModel.error == nil && viewModel.selectedTracks.isEmpty == false {
-                // Playlist was created successfully
             }
         }
     }

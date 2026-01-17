@@ -109,6 +109,11 @@ class AuthManager {
 
             isAuthenticated = true
             isLoading = false
+
+            if let userId = currentUserId,
+               let username = keychain.getUsername() {
+                Analytics.shared.identify(userId: userId, properties: ["username": username])
+            }
         } catch {
             errorMessage = "Failed to save session token: \(error.localizedDescription)"
             isLoading = false
@@ -121,5 +126,6 @@ class AuthManager {
         keychain.clearAllTokens()
         isAuthenticated = false
         currentUserId = nil
+        Analytics.shared.reset()
     }
 }

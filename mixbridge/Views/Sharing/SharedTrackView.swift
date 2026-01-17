@@ -24,6 +24,7 @@ struct SharedTrackView: View {
     @State private var isAddingToLibrary = false
     @State private var showAddedConfirmation = false
     @State private var isLiked = false
+    @State private var hasTrackedView = false
 
     private let artworkSize: CGFloat = 300
 
@@ -77,6 +78,9 @@ struct SharedTrackView: View {
         }
         .task {
             await loadTrack()
+        }
+        .onAppear {
+            trackSharedViewIfNeeded()
         }
     }
 
@@ -195,6 +199,7 @@ struct SharedTrackView: View {
                 await MainActor.run {
                     trackData = response
                     trackItem = soundCloudTrack.map { TrackItem(soundCloudTrack: $0) }
+                    trackSharedViewIfNeeded()
                 }
                 if let soundCloudTrack, authManager.isAuthenticated {
                     let liked = await LikedSync.shared.isTrackLiked(trackId: String(soundCloudTrack.id))
@@ -231,6 +236,18 @@ struct SharedTrackView: View {
         let minutes = seconds / 60
         let remainingSeconds = seconds % 60
         return String(format: "%d:%02d", minutes, remainingSeconds)
+    }
+
+    private func trackSharedViewIfNeeded() {
+        guard !hasTrackedView else { return }
+        hasTrackedView = true
+        Analytics.shared.track(
+            "shared_content_viewed",
+            properties: [
+                "content_type": "track",
+                "content_id": shareId
+            ]
+        )
     }
 
     private var actionButtons: some View {

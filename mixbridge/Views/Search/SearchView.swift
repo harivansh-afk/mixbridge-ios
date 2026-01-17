@@ -701,6 +701,7 @@ struct SearchView: View {
         guard !query.isEmpty else { return }
         guard forceRefresh || query != lastSearchedQuery else { return }
         guard let userId = authManager.currentUserId else { return }
+        var resultCount = 0
 
         // Try local cache first for instant UI.
         do {
@@ -728,6 +729,7 @@ struct SearchView: View {
                 forceRefresh: forceRefresh
             )
 
+            resultCount = results.tracks.count + results.playlists.count + results.users.count
             if query == searchText {
                 self.searchResult = results
                 self.lastSearchedQuery = query
@@ -740,6 +742,14 @@ struct SearchView: View {
         }
 
         isSearching = false
+
+        Analytics.shared.track(
+            "search_performed",
+            properties: [
+                "query_length": query.count,
+                "result_count": resultCount
+            ]
+        )
     }
 }
 

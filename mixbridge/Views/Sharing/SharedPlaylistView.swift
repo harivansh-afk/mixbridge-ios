@@ -30,6 +30,7 @@ struct SharedPlaylistView: View {
     @State private var isAddingToLibrary = false
     @State private var showAddedConfirmation = false
     @State private var isInLibrary = false
+    @State private var hasTrackedView = false
 
     private var playlistArtwork: String {
         if let artwork = playlist?.artwork?.upgradeArtworkQuality(), !artwork.isEmpty {
@@ -106,6 +107,9 @@ struct SharedPlaylistView: View {
         }
         .task {
             await loadPlaylist()
+        }
+        .onAppear {
+            trackSharedViewIfNeeded()
         }
     }
 
@@ -237,6 +241,7 @@ struct SharedPlaylistView: View {
                 let items = playlist.tracks.compactMap { $0.toSoundCloudTrack() }.map { TrackItem(soundCloudTrack: $0) }
                 await MainActor.run {
                     trackItems = items
+                    trackSharedViewIfNeeded()
                 }
                 await updateLibraryStatus(for: playlist)
             } else {
@@ -405,6 +410,18 @@ struct SharedPlaylistView: View {
         } catch {
             logError(.db, "Failed to check shared playlist library status: \(error)")
         }
+    }
+
+    private func trackSharedViewIfNeeded() {
+        guard !hasTrackedView else { return }
+        hasTrackedView = true
+        Analytics.shared.track(
+            "shared_content_viewed",
+            properties: [
+                "content_type": "playlist",
+                "content_id": shareId
+            ]
+        )
     }
 
     private func dismissSharedContent() {

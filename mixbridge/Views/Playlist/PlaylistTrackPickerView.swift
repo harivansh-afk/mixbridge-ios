@@ -12,6 +12,7 @@ struct PlaylistTrackPickerView: View {
     @Bindable var viewModel: CreatePlaylistViewModel
     @Environment(AuthManager.self) private var authManager
     @Environment(\.dismiss) private var dismiss
+    var onCreated: ((String, Int) -> Void)?
 
     private var navigationTitle: String {
         let count = viewModel.selectedCount
@@ -201,7 +202,8 @@ struct PlaylistTrackPickerView: View {
     private func createPlaylist() {
         Task {
             if let userId = authManager.currentUserId {
-                if let _ = await viewModel.createPlaylist(userId: userId) {
+                if let playlistId = await viewModel.createPlaylist(userId: userId) {
+                    onCreated?(playlistId, viewModel.selectedTracks.count)
                     dismiss()
                 }
             }
