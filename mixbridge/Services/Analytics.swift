@@ -16,9 +16,11 @@ final class Analytics {
 
     private init() {}
 
+    private let apiKey = "phc_KvGty3yn7NC19s6jGHQ57DsBU2s83fH5VSX41VKi9SE"
+    private let host = "https://us.i.posthog.com"
+
     func configure() {
-        let apiKey = ProcessInfo.processInfo.environment["POSTHOG_API_KEY"] ?? "phc_YOUR_KEY_HERE"
-        let config = PostHogConfig(apiKey: apiKey)
+        let config = PostHogConfig(apiKey: apiKey, host: host)
         config.captureApplicationLifecycleEvents = true
         config.captureScreenViews = false
         config.sessionReplay = true
