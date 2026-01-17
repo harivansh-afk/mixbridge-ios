@@ -294,8 +294,14 @@ final class EditPlaylistViewModel {
                     try await playlistSync.renameSoundCloudPlaylist(userId: userId, playlistId: playlistId, name: trimmedName)
                 }
             }
-            
-            // 2. Remove tracks
+
+            // 2. Update custom artwork if changed (user-created playlists only)
+            if let image = customArtworkImage, isUserCreated {
+                let artworkData = image.jpegData(compressionQuality: 0.8)
+                try await playlistSync.updateUserPlaylistArtwork(playlistId: playlistId, customArtworkData: artworkData)
+            }
+
+            // 3. Remove tracks
             for trackId in trackIdsToRemove {
                 if isUserCreated {
                     try await playlistSync.removeTrackFromUserPlaylist(userId: userId, playlistId: playlistId, trackId: trackId)
@@ -303,8 +309,8 @@ final class EditPlaylistViewModel {
                     try await playlistSync.removeTrackFromSoundCloudPlaylist(userId: userId, playlistId: playlistId, trackId: trackId)
                 }
             }
-            
-            // 3. Add tracks
+
+            // 4. Add tracks
             for item in tracksToAdd {
                 let persistedTrack = PersistedTrack(from: item.soundCloudTrack)
                 if isUserCreated {

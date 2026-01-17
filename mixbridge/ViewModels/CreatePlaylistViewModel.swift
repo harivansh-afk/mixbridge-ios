@@ -22,10 +22,11 @@ final class CreatePlaylistViewModel {
     var currentStep: Step = .nameEntry
     
     // MARK: - Name Entry State
-    
+
     var playlistName: String = ""
     var playlistDescription: String = ""
-    
+    var customArtworkData: Data?
+
     var canProceedToTrackSelection: Bool {
         !playlistName.trimmingCharacters(in: .whitespaces).isEmpty
     }
@@ -256,7 +257,8 @@ final class CreatePlaylistViewModel {
                 userId: userId,
                 name: trimmedName,
                 description: trimmedDescription.isEmpty ? nil : trimmedDescription,
-                tracks: persistedTracks
+                tracks: persistedTracks,
+                customArtworkData: customArtworkData
             )
             
             logInfo(.sync, "Created playlist '\(trimmedName)' with \(selectedTracks.count) tracks")

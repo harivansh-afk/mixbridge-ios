@@ -229,15 +229,25 @@ struct PlaylistDetailView: View {
 
     @ViewBuilder
     private var artwork: some View {
-        ArtworkView(
-            artwork: playlist.artwork,
-            size: artworkSize,
-            cornerRadius: 20,
-            placeholderIcon: "playlist",
-            placeholderIconSize: 60,
-            showsProgressWhileLoading: true,
-            shadow: (color: .black.opacity(0.3), radius: 20, y: 10)
-        )
+        if let customData = playlist.customArtworkData,
+           let uiImage = UIImage(data: customData) {
+            Image(uiImage: uiImage)
+                .resizable()
+                .scaledToFill()
+                .frame(width: artworkSize, height: artworkSize)
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
+        } else {
+            ArtworkView(
+                artwork: playlist.artwork,
+                size: artworkSize,
+                cornerRadius: 20,
+                placeholderIcon: "playlist",
+                placeholderIconSize: 60,
+                showsProgressWhileLoading: true,
+                shadow: (color: .black.opacity(0.3), radius: 20, y: 10)
+            )
+        }
     }
 
     private var playlistInfo: some View {

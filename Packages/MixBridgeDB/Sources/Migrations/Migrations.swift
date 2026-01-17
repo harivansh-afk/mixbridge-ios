@@ -197,6 +197,12 @@ extension MixBridgeDB {
             )
         }
 
+        migrator.registerMigration("v8_playlist_custom_artwork") { db in
+            try db.alter(table: PersistedPlaylist.databaseTableName) { t in
+                t.add(column: "customArtworkData", .blob)
+            }
+        }
+
         return migrator
     }
 }

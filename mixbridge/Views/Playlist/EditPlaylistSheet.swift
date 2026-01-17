@@ -145,14 +145,20 @@ struct EditPlaylistSheet: View {
     private var artworkPicker: some View {
         let customImage = viewModel.customArtworkImage
         let firstTrackArtwork = viewModel.displayTracks.first?.track.artwork
-        
+
         return PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
             ZStack {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color(.secondarySystemBackground))
-                
+
                 if let customImage {
                     Image(uiImage: customImage)
+                        .resizable()
+                        .scaledToFill()
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                } else if let existingCustomData = playlist.customArtworkData,
+                          let existingImage = UIImage(data: existingCustomData) {
+                    Image(uiImage: existingImage)
                         .resizable()
                         .scaledToFill()
                         .clipShape(RoundedRectangle(cornerRadius: 12))

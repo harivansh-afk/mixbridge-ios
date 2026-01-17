@@ -15,6 +15,7 @@ struct Playlist: Identifiable, Codable, Equatable, Hashable {
     let tracks: [Track]
     let lastUpdated: Date
     let isUserCreated: Bool
+    let customArtworkData: Data?
 
     init(
         id: String = UUID().uuidString,
@@ -23,7 +24,8 @@ struct Playlist: Identifiable, Codable, Equatable, Hashable {
         artwork: String = "",
         tracks: [Track] = [],
         lastUpdated: Date = Date(),
-        isUserCreated: Bool = false
+        isUserCreated: Bool = false,
+        customArtworkData: Data? = nil
     ) {
         self.id = id
         self.name = name
@@ -32,6 +34,7 @@ struct Playlist: Identifiable, Codable, Equatable, Hashable {
         self.tracks = tracks
         self.lastUpdated = lastUpdated
         self.isUserCreated = isUserCreated
+        self.customArtworkData = customArtworkData
     }
 }
 

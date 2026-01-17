@@ -36,6 +36,7 @@ extension PersistedPlaylist: @retroactive FetchableRecord, @retroactive Persista
 		public static let sourcePlaylistId = Column(CodingKeys.sourcePlaylistId)
 		public static let customName = Column(CodingKeys.customName)
 		public static let isHiddenFromLibrary = Column(CodingKeys.isHiddenFromLibrary)
+		public static let customArtworkData = Column(CodingKeys.customArtworkData)
 	}
 }
 
