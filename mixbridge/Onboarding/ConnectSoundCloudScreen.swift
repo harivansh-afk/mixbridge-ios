@@ -16,6 +16,7 @@ struct ConnectSoundCloudScreen: View {
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .clipped()
                     .ignoresSafeArea()
+                    .grayscale(1.0)
                     .blur(radius: 5, opaque: true)
 
                 VStack(spacing: -11) {
