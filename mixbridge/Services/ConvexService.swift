@@ -882,6 +882,32 @@ struct SharedPlaylistTrack: Codable {
     let duration: Int?
     let user: SoundCloudUser?
 
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case artwork_url
+        case duration
+        case user
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeLossyIntIfPresent(forKey: .id)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        artwork_url = try container.decodeIfPresent(String.self, forKey: .artwork_url)
+        duration = try container.decodeIfPresent(Int.self, forKey: .duration)
+        user = try container.decodeIfPresent(SoundCloudUser.self, forKey: .user)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(id, forKey: .id)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(artwork_url, forKey: .artwork_url)
+        try container.encodeIfPresent(duration, forKey: .duration)
+        try container.encodeIfPresent(user, forKey: .user)
+    }
+
     /// Convert to SoundCloudTrack if all required fields are present
     func toSoundCloudTrack() -> SoundCloudTrack? {
         guard let id, let title, let user else { return nil }
@@ -935,6 +961,38 @@ struct SharedTrackData: Codable {
     let genre: String?
     let description: String?
     let user: SoundCloudUser?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case artwork_url
+        case duration
+        case genre
+        case description
+        case user
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeLossyIntIfPresent(forKey: .id)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        artwork_url = try container.decodeIfPresent(String.self, forKey: .artwork_url)
+        duration = try container.decodeIfPresent(Int.self, forKey: .duration)
+        genre = try container.decodeIfPresent(String.self, forKey: .genre)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        user = try container.decodeIfPresent(SoundCloudUser.self, forKey: .user)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(id, forKey: .id)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(artwork_url, forKey: .artwork_url)
+        try container.encodeIfPresent(duration, forKey: .duration)
+        try container.encodeIfPresent(genre, forKey: .genre)
+        try container.encodeIfPresent(description, forKey: .description)
+        try container.encodeIfPresent(user, forKey: .user)
+    }
 
     /// Convert to SoundCloudTrack if all required fields are present
     func toSoundCloudTrack() -> SoundCloudTrack? {
@@ -1012,5 +1070,17 @@ enum ConvexError: LocalizedError {
         case .notFound:
             return "Item not found"
         }
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeLossyIntIfPresent(forKey key: Key) throws -> Int? {
+        if let intValue = try decodeIfPresent(Int.self, forKey: key) {
+            return intValue
+        }
+        if let stringValue = try decodeIfPresent(String.self, forKey: key) {
+            return Int(stringValue)
+        }
+        return nil
     }
 }
