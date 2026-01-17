@@ -1,0 +1,48 @@
+name: posthog-onboarding
+description: Add onboarding and auth analytics events
+
+skill: null
+
+building_spec:
+  requirements:
+    - In ConnectSoundCloudScreen.swift:
+      - Add onboarding_viewed event on .onAppear
+      - Add soundcloud_login_tapped event when login button is tapped
+      - Add soundcloud_login_result event on auth callback with result (success/fail/cancel) and latency_ms
+    - In AuthManager.swift:
+      - Call Analytics.shared.identify() on successful login with userId and username
+      - Call Analytics.shared.reset() on logout
+  constraints:
+    - Import Analytics service where needed
+    - Track latency by storing start time when login tapped
+    - Do not modify any other files
+
+verification_spec:
+  - type: command
+    run: "cd /home/rathiharivansh/hari/mixbridge-ios && xcodebuild -scheme mixbridge -destination 'platform=iOS Simulator,name=iPhone 16' build 2>&1 | tail -30"
+    expect: no_error_pattern "error:"
+
+  - type: file-contains
+    path: mixbridge/Onboarding/ConnectSoundCloudScreen.swift
+    pattern: "onboarding_viewed"
+
+  - type: file-contains
+    path: mixbridge/Onboarding/ConnectSoundCloudScreen.swift
+    pattern: "soundcloud_login_tapped"
+
+  - type: file-contains
+    path: mixbridge/Onboarding/ConnectSoundCloudScreen.swift
+    pattern: "soundcloud_login_result"
+
+  - type: file-contains
+    path: mixbridge/Auth/AuthManager.swift
+    pattern: "Analytics.shared.identify"
+
+  - type: file-contains
+    path: mixbridge/Auth/AuthManager.swift
+    pattern: "Analytics.shared.reset"
+
+pr:
+  branch: feat/posthog-onboarding
+  base: feat/posthog-foundation
+  title: "feat(analytics): add onboarding and auth events"

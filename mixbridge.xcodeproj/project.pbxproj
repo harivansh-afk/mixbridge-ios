@@ -10,6 +10,7 @@
 		5EA1F94A2F1AF9680081D331 /* SystemNotification in Frameworks */ = {isa = PBXBuildFile; productRef = 5E8C2C702F9B8A2200A3D4E5 /* SystemNotification */; };
 		5EF67A772ECA7D4C00D6673D /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 5EF67A782ECA7D4C00D6673D /* Lottie */; };
 		5EF67A7A2ECA7D4D00D6673D /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 5EF67A7B2ECA7D4D00D6673D /* GRDB */; };
+		5E9A1C3B2F12345600ABCDEF /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = 5E9A1C3B2F12345600ABCDE1 /* PostHog */; };
 		5EFB14BB2F0A8A33007C9E1A /* MixBridgeDB in Frameworks */ = {isa = PBXBuildFile; productRef = 5EFB14BA2F0A8A33007C9E1A /* MixBridgeDB */; };
 		5ESTATSG2F1A0000001A0001 /* Statsig in Frameworks */ = {isa = PBXBuildFile; productRef = 5ESTATSG2F1A0000001A0002 /* Statsig */; };
 /* End PBXBuildFile section */
@@ -61,6 +62,7 @@
 				5EF67A772ECA7D4C00D6673D /* Lottie in Frameworks */,
 				5EFB14BB2F0A8A33007C9E1A /* MixBridgeDB in Frameworks */,
 				5EF67A7A2ECA7D4D00D6673D /* GRDB in Frameworks */,
+				5E9A1C3B2F12345600ABCDEF /* PostHog in Frameworks */,
 				5ESTATSG2F1A0000001A0001 /* Statsig in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -108,6 +110,7 @@
 				5EF67A782ECA7D4C00D6673D /* Lottie */,
 				5EF67A7B2ECA7D4D00D6673D /* GRDB */,
 				5E8C2C702F9B8A2200A3D4E5 /* SystemNotification */,
+				5E9A1C3B2F12345600ABCDE1 /* PostHog */,
 				5EFB14BA2F0A8A33007C9E1A /* MixBridgeDB */,
 				5ESTATSG2F1A0000001A0002 /* Statsig */,
 			);
@@ -143,6 +146,7 @@
 				5EF67A792ECA7D4C00D6673D /* XCRemoteSwiftPackageReference "lottie-spm" */,
 				5EF67A7C2ECA7D4D00D6673D /* XCRemoteSwiftPackageReference "GRDB" */,
 				5E8C2C6F2F9B8A2100A3D4E5 /* XCRemoteSwiftPackageReference "SystemNotification" */,
+				5E9A1C3B2F12345600ABCDE0 /* XCRemoteSwiftPackageReference "posthog-ios" */,
 				5EFB14B92F0A8A33007C9E1A /* XCLocalSwiftPackageReference "Packages/MixBridgeDB" */,
 				5ESTATSG2F1A0000001A0003 /* XCRemoteSwiftPackageReference "statsig-kit" */,
 			);
@@ -411,6 +415,14 @@
 				minimumVersion = 1.4.0;
 			};
 		};
+		5E9A1C3B2F12345600ABCDE0 /* XCRemoteSwiftPackageReference "posthog-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/PostHog/posthog-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.0.0;
+			};
+		};
 		5EF67A792ECA7D4C00D6673D /* XCRemoteSwiftPackageReference "lottie-spm" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/airbnb/lottie-spm";
@@ -442,6 +454,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5E8C2C6F2F9B8A2100A3D4E5 /* XCRemoteSwiftPackageReference "SystemNotification" */;
 			productName = SystemNotification;
+		};
+		5E9A1C3B2F12345600ABCDE1 /* PostHog */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5E9A1C3B2F12345600ABCDE0 /* XCRemoteSwiftPackageReference "posthog-ios" */;
+			productName = PostHog;
 		};
 		5EF67A782ECA7D4C00D6673D /* Lottie */ = {
 			isa = XCSwiftPackageProductDependency;

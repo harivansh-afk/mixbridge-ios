@@ -1,0 +1,47 @@
+name: posthog-foundation
+description: Add PostHog SDK and create Analytics wrapper
+
+skill: null
+
+building_spec:
+  requirements:
+    - Add PostHog iOS SDK via Swift Package Manager (posthog/posthog-ios)
+    - Create mixbridge/Services/Analytics.swift with:
+      - Singleton Analytics class (@Observable)
+      - configure() method with PostHog setup (captureApplicationLifecycleEvents=true, captureScreenViews=false, sessionReplay=true, personProfiles=.identifiedOnly)
+      - track(_ event: String, properties: [String: Any]?) method
+      - screen(_ name: String) method  
+      - identify(userId: String, properties: [String: Any]) method
+      - reset() method for logout
+    - Call Analytics.shared.configure() in mixbridgeApp.swift init
+    - Use environment variable or config for PostHog API key (placeholder "phc_YOUR_KEY_HERE")
+  constraints:
+    - Do not add any event tracking yet (just the wrapper)
+    - Keep the wrapper minimal and clean
+    - Use @MainActor for thread safety
+
+verification_spec:
+  - type: command
+    run: "cd /home/rathiharivansh/hari/mixbridge-ios && swift build 2>&1 | head -50 || xcodebuild -scheme mixbridge -destination 'platform=iOS Simulator,name=iPhone 16' build 2>&1 | tail -30"
+    expect: no_error_pattern "error:"
+
+  - type: file-contains
+    path: mixbridge/Services/Analytics.swift
+    pattern: "PostHogSDK"
+
+  - type: file-contains
+    path: mixbridge/Services/Analytics.swift
+    pattern: "func track"
+
+  - type: file-contains
+    path: mixbridge/Services/Analytics.swift
+    pattern: "func identify"
+
+  - type: file-contains
+    path: mixbridge/mixbridgeApp.swift
+    pattern: "Analytics"
+
+pr:
+  branch: feat/posthog-foundation
+  base: main
+  title: "feat(analytics): add PostHog SDK and Analytics wrapper"

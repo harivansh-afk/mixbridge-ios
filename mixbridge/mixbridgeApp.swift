@@ -32,6 +32,10 @@ struct mixbridgeApp: App {
         !(isAppInitialized && finishedSplash)
     }
 
+    init() {
+        Analytics.shared.configure()
+    }
+
     var body: some Scene {
         WindowGroup {
             ZStack {
