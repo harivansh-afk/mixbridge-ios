@@ -1,10 +1,12 @@
 import SwiftUI
 import AuthenticationServices
+import Foundation
 
 struct ConnectSoundCloudScreen: View {
     @Environment(AuthManager.self) private var authManager
     @State private var authSession: ASWebAuthenticationSession?
     @State private var contextProvider = PresentationContextProvider()
+    @State private var loginStartTime: Date?
 
     var body: some View {
         GeometryReader { geometry in
@@ -42,6 +44,8 @@ struct ConnectSoundCloudScreen: View {
                         // Connect Button
                         Button {
                             HapticManager.heavy()
+                            loginStartTime = Date()
+                            Analytics.shared.track("soundcloud_login_tapped")
                             startAuthentication()
                         } label: {
                             HStack(spacing: 12) {
@@ -62,6 +66,9 @@ struct ConnectSoundCloudScreen: View {
             }
         }
         .ignoresSafeArea()
+        .onAppear {
+            Analytics.shared.track("onboarding_viewed")
+        }
     }
 
     private func startAuthentication() {
@@ -74,21 +81,39 @@ struct ConnectSoundCloudScreen: View {
             url: authURL,
             callbackURLScheme: "mixbridge"
         ) { callbackURL, error in
+            let startTime = loginStartTime ?? Date()
+            let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
+            func trackLoginResult(_ result: String) {
+                Analytics.shared.track(
+                    "soundcloud_login_result",
+                    properties: ["result": result, "latency_ms": latencyMs]
+                )
+            }
+
             if let error = error {
                 if case ASWebAuthenticationSessionError.canceledLogin = error {
                     authManager.isLoading = false
+                    trackLoginResult("cancel")
                     return
                 }
 
                 authManager.errorMessage = error.localizedDescription
                 authManager.isLoading = false
+                trackLoginResult("fail")
                 return
             }
 
             guard let callbackURL = callbackURL else {
                 authManager.errorMessage = "No callback URL received"
                 authManager.isLoading = false
+                trackLoginResult("fail")
                 return
+            }
+
+            if callbackURL.host == "auth-success" {
+                trackLoginResult("success")
+            } else {
+                trackLoginResult("fail")
             }
 
             Task {
