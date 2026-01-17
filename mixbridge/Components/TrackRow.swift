@@ -195,13 +195,14 @@ struct TrackRow: View {
                 Label("Cancel Download", systemImage: "xmark.circle")
             }
         case .downloaded:
-            Button {
+            Button(role: .destructive) {
                 Task {
                     await downloadManager.deleteDownload(trackId: track.id)
                 }
             } label: {
                 Label("Remove Download", systemImage: "trash")
             }
+            .tint(.red)
         }
 
     }

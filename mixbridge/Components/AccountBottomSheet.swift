@@ -114,7 +114,7 @@ struct AccountBottomSheet: View {
                     }
 
                 // Delete Account Section
-                    Button(action: {
+                    Button(role: .destructive, action: {
                         showDeleteConfirmation = true
                     }) {
                         HStack(spacing: 12) {

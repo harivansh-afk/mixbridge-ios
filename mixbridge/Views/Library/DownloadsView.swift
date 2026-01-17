@@ -40,11 +40,12 @@ struct DownloadsView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     if !downloadManager.downloadedTracks.isEmpty || !downloadManager.downloadedPlaylists.isEmpty {
                         Menu {
-                            Button {
+                            Button(role: .destructive) {
                                 showingDeleteAllAlert = true
                             } label: {
                                 Label("Delete All", systemImage: "trash")
                             }
+                            .tint(.red)
                         } label: {
                             Image(systemName: "ellipsis")
                         }

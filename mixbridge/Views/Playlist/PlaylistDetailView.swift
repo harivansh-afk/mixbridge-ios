@@ -146,11 +146,12 @@ struct PlaylistDetailView: View {
                         Label("Edit Playlist", systemImage: "pencil")
                     }
 
-                    Button {
+                    Button(role: .destructive) {
                         showDeleteConfirmation = true
                     } label: {
                         Label(playlist.isUserCreated ? "Delete Playlist" : "Remove from Library", systemImage: "trash")
                     }
+                    .tint(.red)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.body)
