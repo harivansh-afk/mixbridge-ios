@@ -37,7 +37,7 @@ final class Analytics {
     }
 
     func identify(userId: String, properties: [String: Any]) {
-        PostHogSDK.shared.identify(userId, properties: properties)
+        PostHogSDK.shared.identify(userId, userProperties: properties)
     }
 
     func reset() {

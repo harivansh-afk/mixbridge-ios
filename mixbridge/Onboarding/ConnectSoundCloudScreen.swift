@@ -84,10 +84,12 @@ struct ConnectSoundCloudScreen: View {
             let startTime = loginStartTime ?? Date()
             let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
             func trackLoginResult(_ result: String) {
-                Analytics.shared.track(
-                    "soundcloud_login_result",
-                    properties: ["result": result, "latency_ms": latencyMs]
-                )
+                Task { @MainActor in
+                    Analytics.shared.track(
+                        "soundcloud_login_result",
+                        properties: ["result": result, "latency_ms": latencyMs]
+                    )
+                }
             }
 
             if let error = error {

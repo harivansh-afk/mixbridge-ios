@@ -197,7 +197,7 @@ struct PlaylistDetailView: View {
                 "playlist_opened",
                 properties: [
                     "playlist_id": playlist.id,
-                    "track_count": playlist.trackCount,
+                    "track_count": playlist.tracks.count,
                     "is_user_created": playlist.isUserCreated
                 ]
             )
