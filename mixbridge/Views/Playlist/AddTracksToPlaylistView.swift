@@ -1,28 +1,29 @@
 //
-//  PlaylistTrackPickerView.swift
+//  AddTracksToPlaylistView.swift
 //  mixbridge
 //
-//  Apple Music-style track picker for playlist creation.
-//  Uses native SwiftUI List with insetGrouped sections.
+//  Track picker for adding tracks to an existing playlist.
+//  Reuses the same UI patterns as CreatePlaylistSheet track picker.
 //
 
 import SwiftUI
 
-struct PlaylistTrackPickerView: View {
-    @Bindable var viewModel: CreatePlaylistViewModel
+struct AddTracksToPlaylistView: View {
+    @Bindable var viewModel: EditPlaylistViewModel
     @Environment(AuthManager.self) private var authManager
     @Environment(\.dismiss) private var dismiss
-
+    
+    @State private var addedCount = 0
+    
     private var navigationTitle: String {
-        let count = viewModel.selectedCount
-        if count == 0 {
-            return "Add to \"\(viewModel.playlistName)\""
+        if addedCount == 0 {
+            return "Add Tracks"
         } else {
-            let songText = count == 1 ? "song" : "songs"
-            return "\(count) \(songText) added to \"\(viewModel.playlistName)\""
+            let songText = addedCount == 1 ? "song" : "songs"
+            return "\(addedCount) \(songText) added"
         }
     }
-
+    
     var body: some View {
         NavigationStack {
             List {
@@ -42,20 +43,20 @@ struct PlaylistTrackPickerView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
-                        viewModel.goBackToNameEntry()
+                        dismiss()
                     } label: {
-                        Image(systemName: "chevron.left")
+                        Image(systemName: "xmark")
+                            .fontWeight(.medium)
                     }
                 }
-
+                
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        createPlaylist()
+                        dismiss()
                     } label: {
                         Image(systemName: "checkmark")
                             .fontWeight(.semibold)
                     }
-                    .disabled(!viewModel.canCreatePlaylist || viewModel.isCreating)
                 }
             }
             .task {
@@ -74,17 +75,18 @@ struct PlaylistTrackPickerView: View {
             }
         }
     }
-
+    
     // MARK: - Library Section
-
+    
     @ViewBuilder
     private var librarySection: some View {
         Section {
             NavigationLink {
-                TrackSelectionListView(
+                AddTrackSelectionListView(
                     title: "Liked Tracks",
                     tracks: viewModel.likedTracks,
-                    viewModel: viewModel
+                    viewModel: viewModel,
+                    onAdd: { addedCount += 1 }
                 )
             } label: {
                 Label {
@@ -92,15 +94,18 @@ struct PlaylistTrackPickerView: View {
                 } icon: {
                     Image("heart")
                         .resizable()
+                        .renderingMode(.template)
+                        .foregroundStyle(.primary)
                         .frame(width: 25, height: 25)
                 }
             }
-
+            
             NavigationLink {
-                TrackSelectionListView(
+                AddTrackSelectionListView(
                     title: "Recently Played",
                     tracks: viewModel.recentlyPlayed,
-                    viewModel: viewModel
+                    viewModel: viewModel,
+                    onAdd: { addedCount += 1 }
                 )
             } label: {
                 Label {
@@ -108,14 +113,17 @@ struct PlaylistTrackPickerView: View {
                 } icon: {
                     Image("clock")
                         .resizable()
+                        .renderingMode(.template)
+                        .foregroundStyle(.primary)
                         .frame(width: 25, height: 25)
                 }
             }
-
+            
             NavigationLink {
-                PlaylistSelectionListView(
+                AddPlaylistSelectionListView(
                     playlists: viewModel.libraryPlaylists,
-                    viewModel: viewModel
+                    viewModel: viewModel,
+                    onAdd: { addedCount += 1 }
                 )
             } label: {
                 Label {
@@ -123,6 +131,8 @@ struct PlaylistTrackPickerView: View {
                 } icon: {
                     Image("playlist")
                         .resizable()
+                        .renderingMode(.template)
+                        .foregroundStyle(.primary)
                         .frame(width: 25, height: 25)
                 }
             }
@@ -130,9 +140,9 @@ struct PlaylistTrackPickerView: View {
             Text("Library")
         }
     }
-
+    
     // MARK: - Suggestions Section
-
+    
     @ViewBuilder
     private var suggestionsSection: some View {
         if !viewModel.filteredRecentlyPlayed.isEmpty {
@@ -140,27 +150,24 @@ struct PlaylistTrackPickerView: View {
             Section {
                 let rows = items.indexedRows()
                 ForEach(rows) { row in
-                    SelectableTrackRow(
+                    AddableTrackRow(
                         track: row.item.track,
-                        isSelected: viewModel.isSelected(row.item)
+                        isInPlaylist: viewModel.isTrackInPlaylist(row.item.id)
                     ) {
-                        viewModel.toggleTrackSelection(row.item)
+                        viewModel.addTrack(row.item)
+                        addedCount += 1
                     }
-                    .listRowInsets(EdgeInsets(
-                        top: row.index == 0 ? 16 : 6,
-                        leading: 16,
-                        bottom: row.index == rows.count - 1 ? 16 : 6,
-                        trailing: 16
-                    ))
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    .listRowBackground(Color.clear)
                 }
             } header: {
                 Text("Suggestions")
             }
         }
     }
-
+    
     // MARK: - Search Results
-
+    
     @ViewBuilder
     private var searchResultsSection: some View {
         if viewModel.isSearching {
@@ -181,11 +188,12 @@ struct PlaylistTrackPickerView: View {
         } else {
             Section {
                 ForEach(viewModel.searchResults) { item in
-                    SelectableTrackRow(
+                    AddableTrackRow(
                         track: item.track,
-                        isSelected: viewModel.isSelected(item)
+                        isInPlaylist: viewModel.isTrackInPlaylist(item.id)
                     ) {
-                        viewModel.toggleTrackSelection(item)
+                        viewModel.addTrack(item)
+                        addedCount += 1
                     }
                     .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     .listRowBackground(Color(.systemGroupedBackground))
@@ -195,27 +203,16 @@ struct PlaylistTrackPickerView: View {
             }
         }
     }
-
-    // MARK: - Helpers
-
-    private func createPlaylist() {
-        Task {
-            if let userId = authManager.currentUserId {
-                if let _ = await viewModel.createPlaylist(userId: userId) {
-                    dismiss()
-                }
-            }
-        }
-    }
 }
 
-// MARK: - Track Selection List View (Pushed View)
+// MARK: - Track Selection List View
 
-private struct TrackSelectionListView: View {
+private struct AddTrackSelectionListView: View {
     let title: String
     let tracks: [TrackItem]
-    @Bindable var viewModel: CreatePlaylistViewModel
-
+    @Bindable var viewModel: EditPlaylistViewModel
+    let onAdd: () -> Void
+    
     var body: some View {
         Group {
             if tracks.isEmpty {
@@ -228,11 +225,12 @@ private struct TrackSelectionListView: View {
                 List {
                     Section {
                         ForEach(tracks) { item in
-                            SelectableTrackRow(
+                            AddableTrackRow(
                                 track: item.track,
-                                isSelected: viewModel.isSelected(item)
+                                isInPlaylist: viewModel.isTrackInPlaylist(item.id)
                             ) {
-                                viewModel.toggleTrackSelection(item)
+                                viewModel.addTrack(item)
+                                onAdd()
                             }
                             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                             .listRowBackground(Color(.systemGroupedBackground))
@@ -248,13 +246,14 @@ private struct TrackSelectionListView: View {
     }
 }
 
-// MARK: - Playlist Selection List View (Pushed View)
+// MARK: - Playlist Selection List View
 
-private struct PlaylistSelectionListView: View {
+private struct AddPlaylistSelectionListView: View {
     let playlists: [Playlist]
-    @Bindable var viewModel: CreatePlaylistViewModel
+    @Bindable var viewModel: EditPlaylistViewModel
     @Environment(AuthManager.self) private var authManager
-
+    let onAdd: () -> Void
+    
     var body: some View {
         Group {
             if playlists.isEmpty {
@@ -268,12 +267,13 @@ private struct PlaylistSelectionListView: View {
                     Section {
                         ForEach(playlists) { playlist in
                             NavigationLink {
-                                PlaylistTracksSelectionView(
+                                AddPlaylistTracksView(
                                     playlist: playlist,
-                                    viewModel: viewModel
+                                    viewModel: viewModel,
+                                    onAdd: onAdd
                                 )
                             } label: {
-                                PlaylistRowView(playlist: playlist)
+                                AddPlaylistRowView(playlist: playlist)
                             }
                             .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                             .listRowBackground(Color(.systemGroupedBackground))
@@ -291,7 +291,7 @@ private struct PlaylistSelectionListView: View {
 
 // MARK: - Playlist Row View
 
-private struct PlaylistRowView: View {
+private struct AddPlaylistRowView: View {
     let playlist: Playlist
     
     var body: some View {
@@ -299,9 +299,7 @@ private struct PlaylistRowView: View {
             CachedAsyncImagePhase(url: URL(string: playlist.artwork)) { phase in
                 switch phase {
                 case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
+                    image.resizable().scaledToFill()
                 default:
                     Color(.tertiarySystemFill)
                 }
@@ -327,16 +325,17 @@ private struct PlaylistRowView: View {
     }
 }
 
-// MARK: - Playlist Tracks Selection View (Drill-in from Playlist)
+// MARK: - Playlist Tracks View
 
-private struct PlaylistTracksSelectionView: View {
+private struct AddPlaylistTracksView: View {
     let playlist: Playlist
-    @Bindable var viewModel: CreatePlaylistViewModel
+    @Bindable var viewModel: EditPlaylistViewModel
     @Environment(AuthManager.self) private var authManager
-
+    let onAdd: () -> Void
+    
     @State private var tracks: [TrackItem] = []
     @State private var isLoading = true
-
+    
     var body: some View {
         Group {
             if isLoading {
@@ -353,8 +352,7 @@ private struct PlaylistTracksSelectionView: View {
                     // Add All button
                     Section {
                         Button {
-                            viewModel.addTracksFromPlaylist(tracks)
-                            HapticManager.medium()
+                            addAllTracks()
                         } label: {
                             Label {
                                 Text("Add All (\(tracks.count) songs)")
@@ -364,15 +362,16 @@ private struct PlaylistTracksSelectionView: View {
                             .foregroundStyle(Color.accentColor)
                         }
                     }
-
+                    
                     // Tracks
                     Section {
                         ForEach(tracks) { item in
-                            SelectableTrackRow(
+                            AddableTrackRow(
                                 track: item.track,
-                                isSelected: viewModel.isSelected(item)
+                                isInPlaylist: viewModel.isTrackInPlaylist(item.id)
                             ) {
-                                viewModel.toggleTrackSelection(item)
+                                viewModel.addTrack(item)
+                                onAdd()
                             }
                             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                             .listRowBackground(Color(.systemGroupedBackground))
@@ -392,56 +391,75 @@ private struct PlaylistTracksSelectionView: View {
             isLoading = false
         }
     }
+    
+    private func addAllTracks() {
+        HapticManager.medium()
+        for track in tracks where !viewModel.isTrackInPlaylist(track.id) {
+            viewModel.addTrack(track)
+            onAdd()
+        }
+    }
 }
 
-// MARK: - Selectable Track Row
+// MARK: - Addable Track Row
 
-private struct SelectableTrackRow: View {
+private struct AddableTrackRow: View {
     let track: Track
-    let isSelected: Bool
-    let onTap: () -> Void
+    let isInPlaylist: Bool
+    let onAdd: () -> Void
     
     var body: some View {
-        Button(action: onTap) {
+        Button(action: {
+            if !isInPlaylist {
+                onAdd()
+            }
+        }) {
             HStack(spacing: 12) {
                 CachedAsyncImagePhase(url: URL(string: track.artwork)) { phase in
                     switch phase {
                     case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
+                        image.resizable().scaledToFill()
                     default:
                         Color(.tertiarySystemFill)
                     }
                 }
                 .frame(width: 44, height: 44)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
-
+                
                 VStack(alignment: .leading, spacing: 2) {
                     Text(track.title)
                         .font(.body)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-
+                    
                     Text(track.artist)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-
+                
                 Spacer()
-
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "plus.circle")
+                
+                Image(systemName: isInPlaylist ? "checkmark.circle.fill" : "plus.circle")
                     .font(.title2)
-                    .foregroundStyle(isSelected ? .white : .secondary)
+                    .foregroundStyle(isInPlaylist ? .white : .secondary)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(isInPlaylist)
     }
 }
 
 #Preview {
-    PlaylistTrackPickerView(viewModel: CreatePlaylistViewModel())
-        .environment(AuthManager.shared)
+    AddTracksToPlaylistView(viewModel: EditPlaylistViewModel(playlist: Playlist(
+        id: "test",
+        name: "Test",
+        creator: "You",
+        artwork: "",
+        tracks: [],
+        lastUpdated: Date(),
+        isUserCreated: true
+    )))
+    .environment(AuthManager.shared)
 }

@@ -369,7 +369,7 @@ final class PlaylistSync: Sendable {
 
     /// Rename a user-created playlist
     func renameUserPlaylist(userId: String, playlistId: String, name: String) async throws {
-        try await db.writer.write { db in
+        _ = try await db.writer.write { db in
             try PersistedPlaylist
                 .filter(PersistedPlaylist.Columns.id == playlistId)
                 .updateAll(db,
@@ -388,7 +388,7 @@ final class PlaylistSync: Sendable {
     /// Rename a SoundCloud playlist (syncs to Convex for sharing)
     /// Uses customName to preserve original name and survive syncs
     func renameSoundCloudPlaylist(userId: String, playlistId: String, name: String) async throws {
-        try await db.writer.write { db in
+        _ = try await db.writer.write { db in
             try PersistedPlaylist
                 .filter(PersistedPlaylist.Columns.id == playlistId)
                 .updateAll(db,
@@ -407,7 +407,7 @@ final class PlaylistSync: Sendable {
     /// Remove a SoundCloud playlist from the user's library (syncs to Convex)
     /// Uses isHiddenFromLibrary flag to survive syncs
     func removeSoundCloudPlaylistFromLibrary(userId: String, playlistId: String) async throws {
-        try await db.writer.write { db in
+        _ = try await db.writer.write { db in
             try PersistedPlaylist
                 .filter(PersistedPlaylist.Columns.id == playlistId)
                 .updateAll(db, PersistedPlaylist.Columns.isHiddenFromLibrary.set(to: true))
@@ -554,6 +554,44 @@ final class PlaylistSync: Sendable {
         }
 
         logInfo(.sync, "Removed track \(trackId) from playlist \(playlistId)")
+    }
+
+    /// Remove a user-added track from a SoundCloud playlist
+    func removeTrackFromSoundCloudPlaylist(userId: String, playlistId: String, trackId: String) async throws {
+        try await db.writer.write { db in
+            try PlaylistTrack
+                .filter(PlaylistTrack.Columns.playlistId == playlistId)
+                .filter(PlaylistTrack.Columns.trackId == trackId)
+                .deleteAll(db)
+
+            let remainingTracks = try PlaylistTrack
+                .filter(PlaylistTrack.Columns.playlistId == playlistId)
+                .order(PlaylistTrack.Columns.position)
+                .fetchAll(db)
+
+            for (index, var track) in remainingTracks.enumerated() {
+                track.position = index
+                try track.update(db)
+            }
+
+            let newCount = remainingTracks.count
+            try PersistedPlaylist
+                .filter(PersistedPlaylist.Columns.id == playlistId)
+                .updateAll(db,
+                    PersistedPlaylist.Columns.trackCount.set(to: newCount),
+                    PersistedPlaylist.Columns.lastUpdated.set(to: Date())
+                )
+        }
+
+        Task {
+            try? await convex.removeTrackFromSoundCloudPlaylist(
+                userId: userId,
+                playlistId: playlistId,
+                trackId: trackId
+            )
+        }
+
+        logInfo(.sync, "Removed track \(trackId) from SoundCloud playlist \(playlistId)")
     }
 
     /// Sync user-created playlists from Convex

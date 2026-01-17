@@ -77,7 +77,6 @@ struct CreatePlaylistSheet: View {
                     } label: {
                         Image(systemName: "checkmark")
                             .fontWeight(.semibold)
-                            .foregroundStyle(viewModel.canProceedToTrackSelection ? Color.accentColor : .secondary)
                     }
                     .disabled(!viewModel.canProceedToTrackSelection)
                 }

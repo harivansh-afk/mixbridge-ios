@@ -141,10 +141,9 @@ struct PlaylistDetailView: View {
                     }
 
                     Button {
-                        editedPlaylistName = playlist.name
-                        showRenameAlert = true
+                        showEditSheet = true
                     } label: {
-                        Label("Edit Title", systemImage: "pencil")
+                        Label("Edit Playlist", systemImage: "pencil")
                     }
 
                     Button {
@@ -170,13 +169,9 @@ struct PlaylistDetailView: View {
                 ? "Are you sure you want to delete \"\(playlist.name)\"? This action cannot be undone."
                 : "Remove \"\(playlist.name)\" from your library? You can re-add it from SoundCloud anytime.")
         }
-        .alert("Edit Title", isPresented: $showRenameAlert) {
-            TextField("Playlist name", text: $editedPlaylistName)
-            Button("Cancel", role: .cancel) {}
-            Button("Save") {
-                renamePlaylist()
-            }
-            .disabled(editedPlaylistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .sheet(isPresented: $showEditSheet) {
+            EditPlaylistSheet(playlist: playlist)
+                .environment(authManager)
         }
         .sheet(isPresented: $showShareSheet) {
             if let shareURL {
@@ -186,8 +181,7 @@ struct PlaylistDetailView: View {
     }
     
     @State private var showDeleteConfirmation = false
-    @State private var showRenameAlert = false
-    @State private var editedPlaylistName = ""
+    @State private var showEditSheet = false
     
     private func deleteOrRemovePlaylist() {
         guard let userId = authManager.currentUserId else { return }
@@ -205,24 +199,6 @@ struct PlaylistDetailView: View {
                 }
             } catch {
                 logError(.sync, "Failed to delete/remove playlist: \(error)")
-            }
-        }
-    }
-
-    private func renamePlaylist() {
-        let newName = editedPlaylistName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !newName.isEmpty, let userId = authManager.currentUserId else { return }
-        HapticManager.light()
-        
-        Task {
-            do {
-                if playlist.isUserCreated {
-                    try await PlaylistSync.shared.renameUserPlaylist(userId: userId, playlistId: playlist.id, name: newName)
-                } else {
-                    try await PlaylistSync.shared.renameSoundCloudPlaylist(userId: userId, playlistId: playlist.id, name: newName)
-                }
-            } catch {
-                logError(.sync, "Failed to rename playlist: \(error)")
             }
         }
     }
