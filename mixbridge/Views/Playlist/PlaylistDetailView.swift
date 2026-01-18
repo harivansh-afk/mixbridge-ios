@@ -45,6 +45,12 @@ struct PlaylistDetailView: View {
         return 0
     }
 
+    /// Check if this playlist is in the current user's library
+    private var isPlaylistInLibrary: Bool {
+        guard let userId = authManager.currentUserId else { return false }
+        return playlist.libraryOwnerUserId == userId
+    }
+
     init(playlist: Playlist) {
         self.initialPlaylist = playlist
         self._viewModel = State(initialValue: PlaylistDetailViewModel(
@@ -157,12 +163,20 @@ struct PlaylistDetailView: View {
                         Label("Edit Playlist", systemImage: "pencil")
                     }
 
-                    Button(role: .destructive) {
-                        showDeleteConfirmation = true
-                    } label: {
-                        Label(playlist.isUserCreated ? "Delete Playlist" : "Remove from Library", systemImage: "trash")
+                    if isPlaylistInLibrary {
+                        Button(role: .destructive) {
+                            showDeleteConfirmation = true
+                        } label: {
+                            Label(playlist.isUserCreated ? "Delete Playlist" : "Remove from Library", systemImage: "trash")
+                        }
+                        .tint(.red)
+                    } else {
+                        Button {
+                            addToLibrary()
+                        } label: {
+                            Label("Add to Library", systemImage: "plus")
+                        }
                     }
-                    .tint(.red)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.body)
@@ -171,7 +185,7 @@ struct PlaylistDetailView: View {
                 }
             }
         }
-        .alert(playlist.isUserCreated ? "Delete Playlist?" : "Remove from Library?", isPresented: $showDeleteConfirmation) {
+        .alert(isPlaylistInLibrary ? (playlist.isUserCreated ? "Delete Playlist?" : "Remove from Library?") : "Add to Library?", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button(playlist.isUserCreated ? "Delete" : "Remove", role: .destructive) {
                 deleteOrRemovePlaylist()
@@ -223,6 +237,19 @@ struct PlaylistDetailView: View {
                 }
             } catch {
                 logError(.sync, "Failed to delete/remove playlist: \(error)")
+            }
+        }
+    }
+
+    private func addToLibrary() {
+        guard let userId = authManager.currentUserId else { return }
+        HapticManager.medium()
+        
+        Task {
+            do {
+                try await PlaylistSync.shared.addSoundCloudPlaylistToLibrary(userId: userId, playlistId: playlist.id)
+            } catch {
+                logError(.sync, "Failed to add playlist to library: \(error)")
             }
         }
     }
