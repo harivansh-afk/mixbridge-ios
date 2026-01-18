@@ -16,6 +16,8 @@ struct Playlist: Identifiable, Codable, Equatable, Hashable {
     let lastUpdated: Date
     let isUserCreated: Bool
     let customArtworkData: Data?
+    /// If set, this playlist belongs in the signed-in user's Library UI.
+    let libraryOwnerUserId: String?
 
     init(
         id: String = UUID().uuidString,
@@ -25,7 +27,8 @@ struct Playlist: Identifiable, Codable, Equatable, Hashable {
         tracks: [Track] = [],
         lastUpdated: Date = Date(),
         isUserCreated: Bool = false,
-        customArtworkData: Data? = nil
+        customArtworkData: Data? = nil,
+        libraryOwnerUserId: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -35,6 +38,7 @@ struct Playlist: Identifiable, Codable, Equatable, Hashable {
         self.lastUpdated = lastUpdated
         self.isUserCreated = isUserCreated
         self.customArtworkData = customArtworkData
+        self.libraryOwnerUserId = libraryOwnerUserId
     }
 }
 

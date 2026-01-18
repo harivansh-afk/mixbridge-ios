@@ -499,6 +499,25 @@ final class PlaylistSync: Sendable {
         logInfo(.sync, "Removed SoundCloud playlist \(playlistId) from library")
     }
 
+    /// Add a SoundCloud playlist to the user's library
+    /// Sets libraryOwnerUserId and clears isHiddenFromLibrary flag
+    func addSoundCloudPlaylistToLibrary(userId: String, playlistId: String) async throws {
+        _ = try await db.writer.write { db in
+            try PersistedPlaylist
+                .filter(PersistedPlaylist.Columns.id == playlistId)
+                .updateAll(db,
+                    PersistedPlaylist.Columns.libraryOwnerUserId.set(to: userId),
+                    PersistedPlaylist.Columns.isHiddenFromLibrary.set(to: false)
+                )
+        }
+
+        Task {
+            try? await convex.setSoundCloudPlaylistHidden(userId: userId, playlistId: playlistId, isHidden: false)
+        }
+
+        logInfo(.sync, "Added SoundCloud playlist \(playlistId) to library")
+    }
+
     /// Add a track to a user-created playlist
     func addTrackToUserPlaylist(userId: String, playlistId: String, track: PersistedTrack) async throws {
         let now = Date()

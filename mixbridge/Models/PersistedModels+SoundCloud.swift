@@ -77,7 +77,8 @@ extension PersistedPlaylist {
             tracks: [],
             lastUpdated: lastUpdated,
             isUserCreated: isUserCreated,
-            customArtworkData: customArtworkData
+            customArtworkData: customArtworkData,
+            libraryOwnerUserId: libraryOwnerUserId
         )
     }
 
@@ -90,7 +91,8 @@ extension PersistedPlaylist {
             tracks: tracks,
             lastUpdated: lastUpdated,
             isUserCreated: isUserCreated,
-            customArtworkData: customArtworkData
+            customArtworkData: customArtworkData,
+            libraryOwnerUserId: libraryOwnerUserId
         )
     }
 
