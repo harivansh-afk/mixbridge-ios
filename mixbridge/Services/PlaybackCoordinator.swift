@@ -257,6 +257,12 @@ final class PlaybackCoordinator: NSObject {
         let effectiveQueueIndex = queueIndex ?? queueManager.indexOfTrack(withId: track.id)
         let context = PlaybackContext(track: track, soundCloudTrack: soundCloudTrack, queueIndex: effectiveQueueIndex)
 
+        // Remove track from queue if it's there (invariant: current track is never in queue)
+        if let idx = effectiveQueueIndex {
+            _ = queueManager.removeAtLocal(index: idx, silent: true)
+            logInfo(.playback, "Removed track from queue at index \(idx) before playing: \(track.title)")
+        }
+
         // Immediate UI: publish selected track + loading state synchronously.
         currentContext = context
         status = .loading

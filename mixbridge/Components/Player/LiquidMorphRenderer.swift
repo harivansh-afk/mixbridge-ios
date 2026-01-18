@@ -214,8 +214,6 @@ final class LiquidMorphRenderer: NSObject, MTKViewDelegate {
     }
 
     func draw(in view: MTKView) {
-        logDebug(.rendering, "[LiquidMorph] draw called, texturesReady: \(texturesReady), hasPresentedTexturedFrame: \(hasPresentedTexturedFrame)")
-
         guard let drawable = view.currentDrawable,
               let renderPassDescriptor = view.currentRenderPassDescriptor else {
             logDebug(.rendering, "[LiquidMorph] No drawable or render pass descriptor")

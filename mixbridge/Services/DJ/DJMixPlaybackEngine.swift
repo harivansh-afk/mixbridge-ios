@@ -147,10 +147,34 @@ final class DJMixPlaybackEngine {
 
     func seek(to time: Double) {
         guard let engine else { return }
-        abortMixTransition(reason: "seek_cancelled", shouldFallbackToNext: false)
+
+        // Only abort transition if seeking before prewarm time or during active crossfade.
+        // This allows scrubbing within the track without cancelling a scheduled mix.
+        let shouldAbort: Bool = {
+            switch state {
+            case .crossfading:
+                // Always abort if actively crossfading - can't seek during mix
+                return true
+            case .prewarmingNext, .scheduledTransition:
+                // Only abort if seeking before prewarm start
+                if let schedule, time < schedule.prewarmStartTime {
+                    return true
+                }
+                return false
+            case .singlePlaying, .idle, .stopped:
+                return false
+            }
+        }()
+
+        if shouldAbort {
+            abortMixTransition(reason: "seek_cancelled", shouldFallbackToNext: false)
+        }
+
         do {
             try engine.play(deck: activeDeck, fromSeconds: time)
-            state = .singlePlaying
+            if shouldAbort {
+                state = .singlePlaying
+            }
             schedule = computeSchedule(durationSeconds: currentDurationSeconds)
         } catch {
             logWarning(.dj, "DJMixPlaybackEngine: seek failed: \(error)")
@@ -254,6 +278,9 @@ final class DJMixPlaybackEngine {
 
             if progress >= 1.0 {
                 completeTransition()
+                // Return early - don't run track-end check with stale `t` value from old deck.
+                // Next tick will use the correct time from the new active deck.
+                return
             }
         }
 
@@ -364,9 +391,13 @@ final class DJMixPlaybackEngine {
             settings: settings
         )
 
+        logInfo(.dj, "DJMixPlaybackEngine: scheduling transition - fadeStart=\(schedule.fadeStartTime)s, duration=\(schedule.effectiveCrossfade)s, currentTime=\(currentTime)s")
+        logInfo(.dj, "DJMixPlaybackEngine: outgoing BPM=\(currentAnalysis.bpm), incoming BPM=\(nextAnalysis.bpm), tempoMatch=\(plan.tempoMatch.enabled ? String(format: "%.2f", plan.tempoMatch.targetBPM) : "disabled")")
+
         do {
             try engine.executeTransition(plan: plan)
             state = .scheduledTransition
+            logInfo(.dj, "DJMixPlaybackEngine: transition scheduled successfully, activeDeck=\(activeDeck), nextDeck=\(String(describing: nextDeck))")
             delegate?.djEngine(self, didEmit: .fadeScheduled(
                 trackId: currentCtx.track.id,
                 nextTrackId: nextCtx.track.id,
@@ -406,6 +437,8 @@ final class DJMixPlaybackEngine {
     private func completeTransition() {
         guard let nextCtx = nextContext else { return }
 
+        logInfo(.dj, "DJMixPlaybackEngine: completing transition to \(nextCtx.track.title)")
+
         // Promote next to current.
         currentContext = nextCtx
         currentAnalysis = nextAnalysis
@@ -419,6 +452,8 @@ final class DJMixPlaybackEngine {
         nextDurationSeconds = 0
         lastProgress = 0
 
+        // Reset state to single playing so next transition can be scheduled.
+        state = .singlePlaying
         schedule = computeSchedule(durationSeconds: currentDurationSeconds)
 
         delegate?.djEngine(self, didCompleteTransitionTo: nextCtx.track, context: nextCtx)

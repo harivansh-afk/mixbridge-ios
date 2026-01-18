@@ -97,7 +97,12 @@ public final class DJMixerEngine {
     private var currentPlan: DJTransitionPlan?
     private var transitionStartSeconds: Double = 0
     private var transitionDurationSeconds: Double = 0
-    
+
+    /// Cached playback time for each deck, updated on pause so we can report accurate time when paused.
+    /// AVAudioPlayerNode's playerTime(forNodeTime:) returns nil when paused, so we cache before pausing.
+    private var cachedTimeA: Double?
+    private var cachedTimeB: Double?
+
     /// Track timeline offset for each deck, in seconds.
     /// AVAudioPlayerNode's `playerTime` resets to 0 for each scheduled segment, so we keep
     /// an explicit base offset to report absolute "seconds into file" times for seeking,
@@ -237,6 +242,19 @@ public final class DJMixerEngine {
         }
     }
 
+    private func cachedTime(for deck: DJDeck) -> Double? {
+        deck == .a ? cachedTimeA : cachedTimeB
+    }
+
+    private func setCachedTime(_ time: Double?, for deck: DJDeck) {
+        switch deck {
+        case .a:
+            cachedTimeA = time
+        case .b:
+            cachedTimeB = time
+        }
+    }
+
     private func otherDeck(than deck: DJDeck) -> DJDeck {
         deck == .a ? .b : .a
     }
@@ -287,12 +305,19 @@ public final class DJMixerEngine {
 
     /// Pauses playback on both decks (engine keeps its graph).
     public func pause() {
+        // Cache current time before pausing - AVAudioPlayerNode's playerTime returns nil when paused.
+        cachedTimeA = currentTimeFromNode(for: .a)
+        cachedTimeB = currentTimeFromNode(for: .b)
         playerNodeA.pause()
         playerNodeB.pause()
     }
 
     /// Resumes playback for the currently active deck (and the other deck if transitioning).
     public func resume() {
+        // Clear cached time so we use live time from the player node.
+        cachedTimeA = nil
+        cachedTimeB = nil
+
         switch state {
         case .transitioning:
             playerNodeA.play()
@@ -362,10 +387,20 @@ public final class DJMixerEngine {
 
     /// Gets the current playback time of the specified deck in seconds.
     public func currentTime(for deck: DJDeck) -> Double {
+        // Try to get live time from the player node first.
+        if let liveTime = currentTimeFromNode(for: deck) {
+            return liveTime
+        }
+        // Fall back to cached time (set when paused) to avoid returning 0.
+        return cachedTime(for: deck) ?? 0
+    }
+
+    /// Gets the current time directly from AVAudioPlayerNode. Returns nil if not available (e.g., when paused).
+    private func currentTimeFromNode(for deck: DJDeck) -> Double? {
         let node = playerNode(for: deck)
         guard let nodeTime = node.lastRenderTime,
               let playerTime = node.playerTime(forNodeTime: nodeTime) else {
-            return 0
+            return nil
         }
         let segmentSeconds = Double(playerTime.sampleTime) / playerTime.sampleRate
         return deckStartOffsetSeconds(for: deck) + segmentSeconds
@@ -429,29 +464,39 @@ public final class DJMixerEngine {
         }
         setDeckStartOffsetSeconds(Double(incomingStartOffsetFrames) / audioFileIncoming.processingFormat.sampleRate, for: incomingDeck)
 
-        // Schedule the incoming deck to start at the computed time (in outgoing track seconds).
-        let outgoingNode = playerNode(for: outgoingDeck)
+        // Schedule the incoming deck to start at the computed time.
+        // Use host time for reliable future scheduling (sample time doesn't work reliably).
         let incomingNode = playerNode(for: incomingDeck)
 
         let startTime: AVAudioTime?
-        if let nodeTime = outgoingNode.lastRenderTime,
-           let outgoingPlayerTime = outgoingNode.playerTime(forNodeTime: nodeTime) {
-            // Map outgoing track timeline to engine timeline:
-            // engineNowSeconds - outgoingAbsoluteNowSeconds = engineStartOffsetSeconds
-            let engineNowSeconds = Double(nodeTime.sampleTime) / nodeTime.sampleRate
-            let outgoingSegmentSeconds = Double(outgoingPlayerTime.sampleTime) / outgoingPlayerTime.sampleRate
-            let outgoingAbsoluteNowSeconds = deckStartOffsetSeconds(for: outgoingDeck) + outgoingSegmentSeconds
-            let engineStartOffsetSeconds = engineNowSeconds - outgoingAbsoluteNowSeconds
+        let currentOutgoingTime = currentTime(for: outgoingDeck)
+        let delaySeconds = max(0, incomingStartTime - currentOutgoingTime)
 
-            let targetEngineSeconds = engineStartOffsetSeconds + incomingStartTime
-            let targetEngineSampleTime = AVAudioFramePosition(targetEngineSeconds * config.sampleRate)
-            startTime = AVAudioTime(sampleTime: targetEngineSampleTime, atRate: config.sampleRate)
+        if delaySeconds > 0.1 {
+            // Convert delay to host time (nanoseconds via mach_absolute_time)
+            var timebaseInfo = mach_timebase_info_data_t()
+            mach_timebase_info(&timebaseInfo)
+            let hostTicksPerSecond = Double(timebaseInfo.denom) / Double(timebaseInfo.numer) * 1_000_000_000
+            let delayHostTicks = UInt64(delaySeconds * hostTicksPerSecond)
+            let targetHostTime = mach_absolute_time() + delayHostTicks
+            startTime = AVAudioTime(hostTime: targetHostTime)
         } else {
+            // Start immediately if we're already at or past the transition point
             startTime = nil
         }
 
         // Schedule incoming deck with offset to align downbeat (offset in file frames).
         let remainingFrames = max(0, audioFileIncoming.length - incomingStartOffsetFrames)
+
+        print("[DJMixerEngine] executeTransition: scheduling incoming deck \(incomingDeck)")
+        print("[DJMixerEngine]   - incomingStartOffsetFrames: \(incomingStartOffsetFrames)")
+        print("[DJMixerEngine]   - remainingFrames: \(remainingFrames)")
+        print("[DJMixerEngine]   - delaySeconds: \(delaySeconds)")
+        print("[DJMixerEngine]   - startTime: \(startTime != nil ? "host-time based" : "immediate")")
+        print("[DJMixerEngine]   - transitionStartSeconds: \(incomingStartTime)")
+        print("[DJMixerEngine]   - transitionDurationSeconds: \(validatedPlan.fadeDurationSeconds)")
+        print("[DJMixerEngine]   - current outgoing time: \(currentOutgoingTime)")
+
         incomingNode.scheduleSegment(
             audioFileIncoming,
             startingFrame: incomingStartOffsetFrames,
@@ -459,6 +504,8 @@ public final class DJMixerEngine {
             at: startTime
         )
         incomingNode.play()
+
+        print("[DJMixerEngine]   - incomingNode.isPlaying: \(incomingNode.isPlaying)")
 
         // Record transition timing for progress calculation (seconds on outgoing track timeline).
         transitionStartSeconds = incomingStartTime
@@ -572,6 +619,13 @@ public final class DJMixerEngine {
         let (outgoingGain, incomingGain) = plan.crossfadeGains(at: progress)
         mixerNode(for: outgoingDeck).outputVolume = Float(outgoingGain)
         mixerNode(for: incomingDeck).outputVolume = Float(incomingGain)
+
+        // Log every 10% progress
+        let progressPct = Int(progress * 100)
+        if progressPct % 10 == 0 && progressPct > 0 {
+            let incomingTime = currentTime(for: incomingDeck)
+            print("[DJMixerEngine] tick progress=\(progressPct)%: outVol=\(String(format: "%.2f", outgoingGain)), inVol=\(String(format: "%.2f", incomingGain)), incomingTime=\(String(format: "%.1f", incomingTime))s, incomingPlaying=\(playerNode(for: incomingDeck).isPlaying)")
+        }
 
         // Apply EQ curves
         eqController(for: outgoingDeck).applyEQCurves(plan.outgoingEQCurves, at: progress)
