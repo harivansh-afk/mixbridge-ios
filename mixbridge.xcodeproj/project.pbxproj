@@ -7,10 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5EABC0012F5E800000123456 /* MixBridgeDJ in Frameworks */ = {isa = PBXBuildFile; productRef = 5EABC0002F5E800000123456 /* MixBridgeDJ */; };
 		5EF67A772ECA7D4C00D6673D /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 5EF67A782ECA7D4C00D6673D /* Lottie */; };
 		5EF67A7A2ECA7D4D00D6673D /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 5EF67A7B2ECA7D4D00D6673D /* GRDB */; };
 		5EFB14BB2F0A8A33007C9E1A /* MixBridgeDB in Frameworks */ = {isa = PBXBuildFile; productRef = 5EFB14BA2F0A8A33007C9E1A /* MixBridgeDB */; };
-		5EABC0012F5E800000123456 /* MixBridgeDJ in Frameworks */ = {isa = PBXBuildFile; productRef = 5EABC0002F5E800000123456 /* MixBridgeDJ */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -392,13 +392,13 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		5EFB14B92F0A8A33007C9E1A /* XCLocalSwiftPackageReference "Packages/MixBridgeDB" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/MixBridgeDB;
-		};
 		5EABC0022F5E800000123456 /* XCLocalSwiftPackageReference "Packages/MixBridgeDJ" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/MixBridgeDJ;
+		};
+		5EFB14B92F0A8A33007C9E1A /* XCLocalSwiftPackageReference "Packages/MixBridgeDB" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/MixBridgeDB;
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -422,6 +422,10 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		5EABC0002F5E800000123456 /* MixBridgeDJ */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MixBridgeDJ;
+		};
 		5EF67A782ECA7D4C00D6673D /* Lottie */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 5EF67A792ECA7D4C00D6673D /* XCRemoteSwiftPackageReference "lottie-spm" */;
@@ -435,10 +439,6 @@
 		5EFB14BA2F0A8A33007C9E1A /* MixBridgeDB */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = MixBridgeDB;
-		};
-		5EABC0002F5E800000123456 /* MixBridgeDJ */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = MixBridgeDJ;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

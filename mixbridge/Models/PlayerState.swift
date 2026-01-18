@@ -95,8 +95,8 @@ final class PlayerState: NSObject {
 
     // MARK: - Mix Mode Settings
 
-    /// Enable automatic crossfade between tracks (default: false)
-    var mixEnabled: Bool = false {
+    /// Enable automatic crossfade between tracks (default: true)
+    var mixEnabled: Bool = true {
         didSet {
             UserDefaults.standard.set(mixEnabled, forKey: kMixEnabled)
             playbackCoordinator.mixEnabled = mixEnabled
@@ -105,8 +105,8 @@ final class PlayerState: NSObject {
 
     // MARK: - DJ Mode Settings
 
-    /// Enable DJ mode for beat-aware transitions (default: false)
-    var djEnabled: Bool = false {
+    /// Enable DJ mode for beat-aware transitions (default: true)
+    var djEnabled: Bool = true {
         didSet {
             UserDefaults.standard.set(djEnabled, forKey: kDJEnabled)
         }
