@@ -43,9 +43,10 @@ final class PlaylistSync: Sendable {
                         // Preserve stable timestamps so Library ordering doesn't reshuffle every sync.
                         persisted.createdAt = existing.createdAt
                         persisted.lastUpdated = existing.lastUpdated
-                        // Preserve local modifications (custom name, hidden status)
+                        // Preserve local modifications (custom name, hidden status, manually added status)
                         persisted.customName = existing.customName
                         persisted.isHiddenFromLibrary = existing.isHiddenFromLibrary
+                        persisted.isAddedToLibrary = existing.isAddedToLibrary
                     }
 
                     return persisted
@@ -63,17 +64,19 @@ final class PlaylistSync: Sendable {
                     .filter(PersistedPlaylist.Columns.libraryOwnerUserId == nil)
                     .updateAll(db, PersistedPlaylist.Columns.libraryOwnerUserId.set(to: userId))
 
-                // Get current local SoundCloud playlist IDs (exclude user-created and hidden playlists)
+                // Get current local SoundCloud playlist IDs (exclude user-created, hidden, and manually added playlists)
                 let soundCloudPlaylistIds = try PersistedPlaylist
                     .filter(PersistedPlaylist.Columns.libraryOwnerUserId == userId)
                     .filter(PersistedPlaylist.Columns.isUserCreated == false)
                     .filter(PersistedPlaylist.Columns.isHiddenFromLibrary == false)
+                    .filter(PersistedPlaylist.Columns.isAddedToLibrary == false)
                     .fetchAll(db)
                     .map(\.id)
 
                 // Remove SoundCloud playlists no longer in backend (unfollowed/deleted)
                 // User-created playlists are preserved since they don't come from SoundCloud
                 // Hidden playlists are already excluded and won't be affected
+                // Manually added playlists (via "Add to Library") are preserved
                 for playlistId in soundCloudPlaylistIds where !prepared.newPlaylistIds.contains(playlistId) {
                     try PersistedPlaylist
                         .filter(PersistedPlaylist.Columns.id == playlistId)
@@ -144,6 +147,7 @@ final class PlaylistSync: Sendable {
                     let existing = try PersistedPlaylist.fetchOne(db, key: playlistId)
                     var persisted = prepared.playlist
                     persisted.libraryOwnerUserId = existing?.libraryOwnerUserId ?? cachedOwner
+                    persisted.isAddedToLibrary = existing?.isAddedToLibrary ?? false
                     // Avoid reordering the Library UI during background/preload syncs:
                     // keep the existing playlist timestamps stable when updating tracks.
                     if let existing {
@@ -157,6 +161,7 @@ final class PlaylistSync: Sendable {
                     if try PersistedPlaylist.fetchOne(db, key: playlistId) == nil {
                         var persisted = prepared.playlist
                         persisted.libraryOwnerUserId = cachedOwner
+                        persisted.isAddedToLibrary = false
                         try persisted.insert(db)
                     }
                 }
@@ -484,12 +489,15 @@ final class PlaylistSync: Sendable {
     }
 
     /// Remove a SoundCloud playlist from the user's library (syncs to Convex)
-    /// Uses isHiddenFromLibrary flag to survive syncs
+    /// Uses isHiddenFromLibrary flag to survive syncs, clears isAddedToLibrary flag
     func removeSoundCloudPlaylistFromLibrary(userId: String, playlistId: String) async throws {
         _ = try await db.writer.write { db in
             try PersistedPlaylist
                 .filter(PersistedPlaylist.Columns.id == playlistId)
-                .updateAll(db, PersistedPlaylist.Columns.isHiddenFromLibrary.set(to: true))
+                .updateAll(db,
+                    PersistedPlaylist.Columns.isHiddenFromLibrary.set(to: true),
+                    PersistedPlaylist.Columns.isAddedToLibrary.set(to: false)
+                )
         }
 
         Task {
@@ -500,14 +508,15 @@ final class PlaylistSync: Sendable {
     }
 
     /// Add a SoundCloud playlist to the user's library
-    /// Sets libraryOwnerUserId and clears isHiddenFromLibrary flag
+    /// Sets libraryOwnerUserId, clears isHiddenFromLibrary flag, and marks as manually added
     func addSoundCloudPlaylistToLibrary(userId: String, playlistId: String) async throws {
         _ = try await db.writer.write { db in
             try PersistedPlaylist
                 .filter(PersistedPlaylist.Columns.id == playlistId)
                 .updateAll(db,
                     PersistedPlaylist.Columns.libraryOwnerUserId.set(to: userId),
-                    PersistedPlaylist.Columns.isHiddenFromLibrary.set(to: false)
+                    PersistedPlaylist.Columns.isHiddenFromLibrary.set(to: false),
+                    PersistedPlaylist.Columns.isAddedToLibrary.set(to: true)
                 )
         }
 
