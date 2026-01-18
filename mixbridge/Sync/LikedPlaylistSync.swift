@@ -58,9 +58,11 @@ final class LikedPlaylistSync: Sendable {
                 // Add/update liked playlists
                 for (playlist, likedPlaylist) in zip(prepared.persistedPlaylists, prepared.likedPlaylists) {
                     // Only upsert playlist if it doesn't exist or is a cache playlist
-                    // Don't overwrite library playlists
+                    // Don't overwrite library playlists or manually added playlists
                     let existing = try PersistedPlaylist.fetchOne(db, key: playlist.id)
-                    if existing == nil || existing?.libraryOwnerUserId == cachedOwner {
+                    let isLibraryOrAdded = existing?.libraryOwnerUserId != nil && existing?.libraryOwnerUserId != cachedOwner
+                    let isManuallyAdded = existing?.isAddedToLibrary ?? false
+                    if existing == nil || (!isLibraryOrAdded && !isManuallyAdded) {
                         try playlist.upsert(db)
                     }
                     try likedPlaylist.upsert(db)

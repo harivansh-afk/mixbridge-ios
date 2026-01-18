@@ -209,6 +209,19 @@ extension MixBridgeDB {
             }
         }
 
+        migrator.registerMigration("v10_playlist_added_to_library") { db in
+            // Track playlists manually added to library via "Add to Library" action.
+            // These playlists should not be removed during sync even if not in user's SoundCloud collection.
+            try db.alter(table: PersistedPlaylist.databaseTableName) { t in
+                t.add(column: "isAddedToLibrary", .boolean).notNull().defaults(to: false)
+            }
+            try db.create(
+                index: "idx_playlists_isAddedToLibrary",
+                on: PersistedPlaylist.databaseTableName,
+                columns: ["isAddedToLibrary"]
+            )
+        }
+
         return migrator
     }
 }
