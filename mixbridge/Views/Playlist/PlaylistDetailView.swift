@@ -185,7 +185,7 @@ struct PlaylistDetailView: View {
                 }
             }
         }
-        .alert(isPlaylistInLibrary ? (playlist.isUserCreated ? "Delete Playlist?" : "Remove from Library?") : "Add to Library?", isPresented: $showDeleteConfirmation) {
+        .alert(playlist.isUserCreated ? "Delete Playlist?" : "Remove from Library?", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button(playlist.isUserCreated ? "Delete" : "Remove", role: .destructive) {
                 deleteOrRemovePlaylist()
