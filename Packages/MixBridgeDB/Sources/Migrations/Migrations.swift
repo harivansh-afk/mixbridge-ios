@@ -222,6 +222,30 @@ extension MixBridgeDB {
             )
         }
 
+        migrator.registerMigration("v11_music_source") { db in
+            // Add source column to tracks table for multi-platform support
+            // Defaults to 'soundcloud' for backward compatibility
+            try db.alter(table: PersistedTrack.databaseTableName) { t in
+                t.add(column: "source", .text).notNull().defaults(to: "soundcloud")
+            }
+            try db.create(
+                index: "idx_tracks_source",
+                on: PersistedTrack.databaseTableName,
+                columns: ["source"]
+            )
+            
+            // Add source column to playlists table for multi-platform support
+            // Defaults to 'soundcloud' for backward compatibility
+            try db.alter(table: PersistedPlaylist.databaseTableName) { t in
+                t.add(column: "source", .text).notNull().defaults(to: "soundcloud")
+            }
+            try db.create(
+                index: "idx_playlists_source",
+                on: PersistedPlaylist.databaseTableName,
+                columns: ["source"]
+            )
+        }
+
         return migrator
     }
 }

@@ -13,6 +13,11 @@ final class KeychainManager {
         static let tokenExpiry = "com.mixbridge.soundcloud.tokenExpiry"
         static let userId = "com.mixbridge.soundcloud.userId"
         static let username = "com.mixbridge.soundcloud.username"
+        
+        // Spotify keys
+        static let spotifyAccessToken = "com.mixbridge.spotify.accessToken"
+        static let spotifyRefreshToken = "com.mixbridge.spotify.refreshToken"
+        static let spotifyTokenExpiry = "com.mixbridge.spotify.tokenExpiry"
     }
 
     // MARK: - Save
@@ -64,6 +69,47 @@ final class KeychainManager {
         return getString(forKey: Keys.username)
     }
 
+    // MARK: - Spotify Save
+    
+    func saveSpotifyAccessToken(_ token: String) throws {
+        try saveString(token, forKey: Keys.spotifyAccessToken)
+    }
+    
+    func saveSpotifyRefreshToken(_ token: String) throws {
+        try saveString(token, forKey: Keys.spotifyRefreshToken)
+    }
+    
+    func saveSpotifyTokenExpiry(_ date: Date) throws {
+        let timestamp = date.timeIntervalSince1970
+        try saveString(String(timestamp), forKey: Keys.spotifyTokenExpiry)
+    }
+    
+    // MARK: - Spotify Retrieve
+    
+    func getSpotifyAccessToken() -> String? {
+        return getString(forKey: Keys.spotifyAccessToken)
+    }
+    
+    func getSpotifyRefreshToken() -> String? {
+        return getString(forKey: Keys.spotifyRefreshToken)
+    }
+    
+    func getSpotifyTokenExpiry() -> Date? {
+        guard let timestampString = getString(forKey: Keys.spotifyTokenExpiry),
+              let timestamp = Double(timestampString) else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: timestamp)
+    }
+    
+    // MARK: - Spotify Delete
+    
+    func clearSpotifyTokens() {
+        deleteItem(forKey: Keys.spotifyAccessToken)
+        deleteItem(forKey: Keys.spotifyRefreshToken)
+        deleteItem(forKey: Keys.spotifyTokenExpiry)
+    }
+
     // MARK: - Delete
 
     func clearAllTokens() {
@@ -72,6 +118,7 @@ final class KeychainManager {
         deleteItem(forKey: Keys.tokenExpiry)
         deleteItem(forKey: Keys.userId)
         deleteItem(forKey: Keys.username)
+        clearSpotifyTokens()
     }
 
     // MARK: - Private Helpers

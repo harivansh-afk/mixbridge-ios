@@ -13,7 +13,7 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
 		case description, genre, createdAt, lastUpdated, soundCloudData
 		case libraryOwnerUserId, isUserCreated, sourcePlaylistId
 		case customName, isHiddenFromLibrary, customArtworkData, customArtworkUrl
-		case isAddedToLibrary
+		case isAddedToLibrary, source
 	}
 
     public var id: String
@@ -54,6 +54,10 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
 	/// If true, this playlist was manually added to the local library (via "Add to Library")
 	/// and should not be removed during sync even if not in the user's SoundCloud collection
 	public var isAddedToLibrary: Bool
+    
+    /// The source platform for this playlist (soundcloud, spotify)
+    /// Defaults to soundcloud for backward compatibility
+    public var source: String
 
 	/// Returns the display name (custom name if set, otherwise original name)
 	public var displayName: String {
@@ -80,7 +84,8 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
 		isHiddenFromLibrary: Bool = false,
 		customArtworkData: Data? = nil,
 		customArtworkUrl: String? = nil,
-		isAddedToLibrary: Bool = false
+		isAddedToLibrary: Bool = false,
+        source: String = "soundcloud"
 	) {
         self.id = id
         self.name = name
@@ -102,5 +107,6 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
 		self.customArtworkData = customArtworkData
 		self.customArtworkUrl = customArtworkUrl
 		self.isAddedToLibrary = isAddedToLibrary
+        self.source = source
 	}
 }
