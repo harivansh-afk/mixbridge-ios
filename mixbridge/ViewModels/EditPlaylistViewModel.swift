@@ -299,6 +299,11 @@ final class EditPlaylistViewModel {
             if let image = customArtworkImage, isUserCreated {
                 let artworkData = image.jpegData(compressionQuality: 0.8)
                 try await playlistSync.updateUserPlaylistArtwork(userId: userId, playlistId: playlistId, customArtworkData: artworkData)
+                
+                // Clear cached artwork so new image displays immediately
+                if let artworkURL = URL(string: originalArtwork) {
+                    await ImageCacheManager.shared.removeImage(for: artworkURL)
+                }
             }
 
             // 3. Remove tracks

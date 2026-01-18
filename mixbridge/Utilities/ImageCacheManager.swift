@@ -27,6 +27,10 @@ class MemoryImageCache {
         cache.setObject(image, forKey: key as NSString)
     }
 
+    func remove(_ key: String) {
+        cache.removeObject(forKey: key as NSString)
+    }
+
     func removeAll() {
         cache.removeAllObjects()
     }
@@ -75,6 +79,14 @@ actor ImageCacheManager {
 
     func clearMemoryCache() async {
         MemoryImageCache.shared.removeAll()
+    }
+
+    func removeImage(for url: URL) async {
+        let key = url.absoluteString
+        MemoryImageCache.shared.remove(key)
+        
+        let fileURL = cacheDirectory.appendingPathComponent(diskFilename(for: url))
+        try? FileManager.default.removeItem(at: fileURL)
     }
 
     // MARK: - Private Methods

@@ -18,8 +18,6 @@ struct EditPlaylistSheet: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var showAddTracks = false
     @State private var showRemoveAllWarning = false
-    @State private var showRemoveArtworkConfirmation = false
-    @State private var customArtworkRemoved = false
     
     init(playlist: Playlist) {
         self.playlist = playlist
@@ -125,14 +123,6 @@ struct EditPlaylistSheet: View {
             } message: {
                 Text("This will remove all tracks from the playlist.")
             }
-            .confirmationDialog("Remove Custom Artwork?", isPresented: $showRemoveArtworkConfirmation, titleVisibility: .visible) {
-                Button("Remove Custom Artwork", role: .destructive) {
-                    removeCustomArtwork()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("The playlist will use the first track's artwork instead.")
-            }
         }
     }
     
@@ -142,16 +132,6 @@ struct EditPlaylistSheet: View {
         VStack(spacing: 16) {
             artworkPicker
 
-            // Show remove button when custom artwork exists
-            if hasCustomArtwork {
-                Button(role: .destructive) {
-                    showRemoveArtworkConfirmation = true
-                } label: {
-                    Label("Remove Custom Artwork", systemImage: "trash")
-                        .font(.subheadline)
-                }
-            }
-
             TextField("Playlist Name", text: $viewModel.playlistName)
                 .font(.title2)
                 .fontWeight(.semibold)
@@ -160,10 +140,6 @@ struct EditPlaylistSheet: View {
                 .padding(.horizontal, 32)
         }
         .padding(.top, 24)
-    }
-
-    private var hasCustomArtwork: Bool {
-        viewModel.customArtworkImage != nil || (playlist.customArtworkData != nil && !customArtworkRemoved)
     }
     
     private var artworkPicker: some View {
@@ -180,8 +156,7 @@ struct EditPlaylistSheet: View {
                         .resizable()
                         .scaledToFill()
                         .clipShape(RoundedRectangle(cornerRadius: 12))
-                } else if !customArtworkRemoved,
-                          let existingCustomData = playlist.customArtworkData,
+                } else if let existingCustomData = playlist.customArtworkData,
                           let existingImage = UIImage(data: existingCustomData) {
                     Image(uiImage: existingImage)
                         .resizable()
@@ -275,25 +250,6 @@ struct EditPlaylistSheet: View {
             if let userId = authManager.currentUserId {
                 if await viewModel.saveChanges(userId: userId) {
                     dismiss()
-                }
-            }
-        }
-    }
-
-    private func removeCustomArtwork() {
-        Task {
-            if let userId = authManager.currentUserId {
-                do {
-                    try await PlaylistSync.shared.updateUserPlaylistArtwork(
-                        userId: userId,
-                        playlistId: playlist.id,
-                        customArtworkData: nil
-                    )
-                    // Clear any pending custom image selection and mark as removed
-                    viewModel.customArtworkImage = nil
-                    customArtworkRemoved = true
-                } catch {
-                    logError(.sync, "Failed to remove custom artwork: \(error)")
                 }
             }
         }
