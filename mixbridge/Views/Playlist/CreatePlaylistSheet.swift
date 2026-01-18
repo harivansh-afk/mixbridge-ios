@@ -127,6 +127,8 @@ struct CreatePlaylistSheet: View {
                 if let data = try? await newItem?.loadTransferable(type: Data.self),
                    let uiImage = UIImage(data: data) {
                     customArtworkImage = Image(uiImage: uiImage)
+                    // Compress and store the image data for persistence
+                    viewModel.customArtworkData = uiImage.jpegData(compressionQuality: 0.8)
                 }
             }
         }

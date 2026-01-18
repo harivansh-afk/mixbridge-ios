@@ -273,25 +273,26 @@ final class PlaylistSync: Sendable {
     }
 
     /// Create a new user playlist with tracks atomically (Apple Music-style flow)
-    /// Ensures no empty playlists are created - artwork inherits from first track
+    /// Ensures no empty playlists are created - artwork inherits from first track unless custom artwork is provided
     func createUserPlaylistWithTracks(
         userId: String,
         name: String,
         description: String? = nil,
         tracks: [PersistedTrack],
-        sourcePlaylistId: String? = nil
+        sourcePlaylistId: String? = nil,
+        customArtworkData: Data? = nil
     ) async throws -> String {
         guard !tracks.isEmpty else {
             throw PlaylistSyncError.emptyPlaylistNotAllowed
         }
-        
+
         let playlistId = UUID().uuidString
         let now = Date()
         let firstTrackArtwork = tracks.first?.artwork ?? ""
         let totalDuration = tracks.reduce(0) { $0 + Int($1.duration * 1000) }
-        
+
         logInfo(.sync, "Creating playlist '\(name)' with \(tracks.count) tracks")
-        
+
         let playlist = PersistedPlaylist(
             id: playlistId,
             name: name,
@@ -305,7 +306,8 @@ final class PlaylistSync: Sendable {
             lastUpdated: now,
             libraryOwnerUserId: userId,
             isUserCreated: true,
-            sourcePlaylistId: sourcePlaylistId
+            sourcePlaylistId: sourcePlaylistId,
+            customArtworkData: customArtworkData
         )
         
         try await db.writer.write { db in
@@ -332,7 +334,7 @@ final class PlaylistSync: Sendable {
                     name: name,
                     description: description
                 )
-                
+
                 for track in tracks {
                     try await convex.addTrackToCustomPlaylist(
                         userId: userId,
@@ -340,12 +342,34 @@ final class PlaylistSync: Sendable {
                         track: track
                     )
                 }
+
+                // Upload custom artwork to Convex if provided
+                if let artworkData = customArtworkData {
+                    do {
+                        let artworkUrl = try await convex.uploadPlaylistArtwork(imageData: artworkData)
+                        try await convex.setCustomPlaylistArtwork(
+                            userId: userId,
+                            playlistId: playlistId,
+                            artworkUrl: artworkUrl
+                        )
+                        // Store the URL locally
+                        try await db.writer.write { db in
+                            try PersistedPlaylist
+                                .filter(PersistedPlaylist.Columns.id == playlistId)
+                                .updateAll(db, PersistedPlaylist.Columns.customArtworkUrl.set(to: artworkUrl))
+                        }
+                        logInfo(.sync, "Uploaded custom artwork to Convex for playlist '\(name)'")
+                    } catch {
+                        logError(.sync, "Failed to upload custom artwork to Convex: \(error)")
+                    }
+                }
+
                 logInfo(.sync, "Synced playlist '\(name)' with \(tracks.count) tracks to Convex")
             } catch {
                 logError(.sync, "Failed to sync playlist to Convex: \(error)")
             }
         }
-        
+
         return playlistId
     }
     
@@ -385,6 +409,57 @@ final class PlaylistSync: Sendable {
         }
 
         logInfo(.sync, "Renamed user playlist \(playlistId) to: \(name)")
+    }
+
+    /// Update custom artwork for a user-created playlist
+    func updateUserPlaylistArtwork(userId: String, playlistId: String, customArtworkData: Data?) async throws {
+        _ = try await db.writer.write { db in
+            try PersistedPlaylist
+                .filter(PersistedPlaylist.Columns.id == playlistId)
+                .updateAll(db,
+                    PersistedPlaylist.Columns.customArtworkData.set(to: customArtworkData),
+                    PersistedPlaylist.Columns.lastUpdated.set(to: Date())
+                )
+        }
+
+        // Upload to Convex if we have artwork data
+        if let artworkData = customArtworkData {
+            do {
+                let artworkUrl = try await convex.uploadPlaylistArtwork(imageData: artworkData)
+                try await convex.setCustomPlaylistArtwork(
+                    userId: userId,
+                    playlistId: playlistId,
+                    artworkUrl: artworkUrl
+                )
+                // Store the URL locally
+                try await db.writer.write { db in
+                    try PersistedPlaylist
+                        .filter(PersistedPlaylist.Columns.id == playlistId)
+                        .updateAll(db, PersistedPlaylist.Columns.customArtworkUrl.set(to: artworkUrl))
+                }
+                logInfo(.sync, "Uploaded custom artwork to Convex for playlist \(playlistId)")
+            } catch {
+                logError(.sync, "Failed to upload custom artwork to Convex: \(error)")
+            }
+        } else {
+            // Clear the artwork URL if data is nil
+            do {
+                try await convex.setCustomPlaylistArtwork(
+                    userId: userId,
+                    playlistId: playlistId,
+                    artworkUrl: nil
+                )
+                try await db.writer.write { db in
+                    try PersistedPlaylist
+                        .filter(PersistedPlaylist.Columns.id == playlistId)
+                        .updateAll(db, PersistedPlaylist.Columns.customArtworkUrl.set(to: nil as String?))
+                }
+            } catch {
+                logError(.sync, "Failed to clear custom artwork in Convex: \(error)")
+            }
+        }
+
+        logInfo(.sync, "Updated custom artwork for playlist \(playlistId)")
     }
 
     /// Rename a SoundCloud playlist (syncs to Convex for sharing)

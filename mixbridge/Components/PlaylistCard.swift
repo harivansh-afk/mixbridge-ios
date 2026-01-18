@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct PlaylistCard: View {
     let playlist: Playlist
@@ -36,7 +37,14 @@ struct PlaylistCard: View {
     @ViewBuilder
     private var artwork: some View {
         Group {
-            if playlist.artwork.starts(with: "http") {
+            if let customData = playlist.customArtworkData,
+               let uiImage = UIImage(data: customData) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: artworkSize, height: artworkSize)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            } else if playlist.artwork.starts(with: "http") {
                 CachedAsyncImagePhase(url: URL(string: playlist.artwork)) { phase in
                     switch phase {
                     case .empty:
@@ -54,8 +62,7 @@ struct PlaylistCard: View {
                     }
                 }
             } else {
-                Color.clear
-                    .frame(width: artworkSize, height: artworkSize)
+                artworkPlaceholder
             }
         }
     }

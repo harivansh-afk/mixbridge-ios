@@ -614,6 +614,62 @@ final class ConvexService {
         ])
     }
 
+    /// Set custom artwork URL for a playlist
+    func setCustomPlaylistArtwork(userId: String, playlistId: String, artworkUrl: String?) async throws {
+        var args: [String: Any] = [
+            "userId": userId,
+            "playlistId": playlistId
+        ]
+        if let artworkUrl = artworkUrl {
+            args["artworkUrl"] = artworkUrl
+        }
+        try await mutationVoid("customPlaylists:setArtwork", args: args)
+    }
+
+    // MARK: - Playlist Artwork Upload
+
+    /// Generate upload URL for playlist artwork
+    func generatePlaylistArtworkUploadUrl() async throws -> String {
+        return try await action("uploadPlaylistArtwork:generateUploadUrl", args: [:])
+    }
+
+    /// Get URL for uploaded storage item
+    func getStorageUrl(storageId: String) async throws -> String {
+        return try await action("uploadPlaylistArtwork:getUrl", args: ["storageId": storageId])
+    }
+
+    /// Upload playlist artwork and return the public URL
+    func uploadPlaylistArtwork(imageData: Data) async throws -> String {
+        // 1. Get upload URL
+        let uploadUrl = try await generatePlaylistArtworkUploadUrl()
+
+        guard let url = URL(string: uploadUrl) else {
+            throw ConvexError.actionFailed("Invalid upload URL")
+        }
+
+        // 2. Upload image data
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.httpBody = imageData
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw ConvexError.uploadFailed
+        }
+
+        // Parse the response to get storageId
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let storageId = json["storageId"] as? String else {
+            throw ConvexError.uploadFailed
+        }
+
+        // 3. Get public URL
+        return try await getStorageUrl(storageId: storageId)
+    }
+
     // MARK: - Playlist Customizations (SoundCloud playlist overrides)
 
     /// Set custom name for a SoundCloud playlist
@@ -1062,6 +1118,7 @@ enum ConvexError: LocalizedError {
     case unauthorized
     case notAuthenticated
     case notFound
+    case uploadFailed
 
     var errorDescription: String? {
         switch self {
@@ -1083,6 +1140,8 @@ enum ConvexError: LocalizedError {
             return "Please sign in to play music"
         case .notFound:
             return "Item not found"
+        case .uploadFailed:
+            return "Failed to upload file"
         }
     }
 }

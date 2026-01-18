@@ -12,7 +12,7 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
 		case id, name, creator, creatorId, artwork, trackCount, duration
 		case description, genre, createdAt, lastUpdated, soundCloudData
 		case libraryOwnerUserId, isUserCreated, sourcePlaylistId
-		case customName, isHiddenFromLibrary
+		case customName, isHiddenFromLibrary, customArtworkData, customArtworkUrl
 	}
 
     public var id: String
@@ -44,6 +44,12 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
 	/// If true, this SoundCloud playlist is hidden from the user's library
 	public var isHiddenFromLibrary: Bool
 
+	/// Custom artwork image data (JPEG compressed) for user-created playlists
+	public var customArtworkData: Data?
+
+	/// URL of custom artwork synced to Convex storage
+	public var customArtworkUrl: String?
+
 	/// Returns the display name (custom name if set, otherwise original name)
 	public var displayName: String {
 		customName ?? name
@@ -66,7 +72,9 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
 		isUserCreated: Bool = false,
 		sourcePlaylistId: String? = nil,
 		customName: String? = nil,
-		isHiddenFromLibrary: Bool = false
+		isHiddenFromLibrary: Bool = false,
+		customArtworkData: Data? = nil,
+		customArtworkUrl: String? = nil
 	) {
         self.id = id
         self.name = name
@@ -85,5 +93,7 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
 		self.sourcePlaylistId = sourcePlaylistId
 		self.customName = customName
 		self.isHiddenFromLibrary = isHiddenFromLibrary
+		self.customArtworkData = customArtworkData
+		self.customArtworkUrl = customArtworkUrl
 	}
 }
