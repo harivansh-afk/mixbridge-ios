@@ -1307,3 +1307,37 @@ while !downloadManager.isDownloaded(trackId: trackId) {
 }
 ```
 - **Session**: DJ Prep Service implementation (2026-01-14)
+
+---
+
+## UI Cleanup and Feature Removal
+
+### Remove Unused Debug Pages When Features Move to Production
+- **Context**: DJ Lab debug page in AccountBottomSheet after settings moved to AutomixSettingsView
+- **Learning**: When debug/development features graduate to production UI (like DJ settings moving to AutomixSettingsView), remove the debug entry points entirely. Don't leave orphaned debug pages that duplicate functionality. In this session: removed DJLabView.swift entirely and its NavigationLink from AccountBottomSheet, since AutomixSettingsView already contains DJ Mode, Force DJ Backend, and Auto-download settings.
+- **Session**: Account bottom sheet cleanup (2026-01-18)
+
+### Delete Files When Removing Features, Not Just References
+- **Context**: User asked to remove DJ Lab page from account sheet
+- **Learning**: When removing a feature from UI, also delete the underlying view file if it's no longer needed elsewhere. Simply removing the NavigationLink leaves orphaned code. Check if the view is referenced anywhere else before deleting. In this session: deleted `DJLabView.swift` (351 lines) after removing its NavigationLink.
+- **Session**: Account bottom sheet cleanup (2026-01-18)
+
+### SwiftUI Toggle Styling Consistency
+- **Context**: Toggle controls on AutomixSettingsView needed visual consistency
+- **Learning**: For toggle settings, use consistent styling: `.tint(.blue)` for all toggles in the same section, remove verbose descriptions when the toggle label is self-explanatory, and ensure all toggles in a group have matching visual treatment.
+- **Example**:
+```swift
+// Before - inconsistent styling
+Toggle("DJ Mode", isOn: $playerState.djEnabled)
+    .tint(.purple)
+
+// After - consistent blue tint across all toggles
+Toggle("DJ Mode", isOn: $playerState.djEnabled)
+    .tint(.blue)
+```
+- **Session**: Account bottom sheet cleanup (2026-01-18)
+
+### Default Values for User-Facing Features Should Be Considered Carefully
+- **Context**: Changing defaults for `mixEnabled` and `djEnabled` from `false` to `true`
+- **Learning**: When changing default values in PlayerState (or any persisted state), remember that existing users with saved UserDefaults will retain their previous settings - new defaults only apply to fresh installs. If you need existing users to also have new defaults, implement a migration that clears those specific UserDefaults keys or adds a version check.
+- **Session**: Account bottom sheet cleanup (2026-01-18)
