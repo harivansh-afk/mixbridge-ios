@@ -32,6 +32,7 @@ extension PersistedTrack: @retroactive FetchableRecord, @retroactive Persistable
         public static let createdAt = Column(CodingKeys.createdAt)
         public static let updatedAt = Column(CodingKeys.updatedAt)
         public static let soundCloudData = Column(CodingKeys.soundCloudData)
+        public static let source = Column(CodingKeys.source)
     }
 }
 

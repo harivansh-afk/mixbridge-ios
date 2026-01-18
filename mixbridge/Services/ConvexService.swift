@@ -853,6 +853,49 @@ final class ConvexService {
             "shareId": shareId
         ])
     }
+    
+    // MARK: - Spotify Integration
+    
+    /// Store Spotify tokens after OAuth code exchange
+    /// - Parameters:
+    ///   - code: The authorization code from Spotify OAuth
+    ///   - codeVerifier: The PKCE code verifier used in the auth request
+    func spotifyStoreTokens(code: String, codeVerifier: String) async throws {
+        guard let userId = KeychainManager.shared.getUserId() else {
+            throw ConvexError.unauthorized
+        }
+        
+        try await mutationVoid("spotify:storeTokens", args: [
+            "userId": userId,
+            "code": code,
+            "codeVerifier": codeVerifier
+        ])
+    }
+    
+    /// Get a valid Spotify access token, refreshing if necessary
+    /// - Returns: Token response with access token and expiry
+    func spotifyGetAccessToken() async throws -> SpotifyTokenResponse {
+        guard let userId = KeychainManager.shared.getUserId() else {
+            throw ConvexError.unauthorized
+        }
+        
+        return try await action("actions/spotify:getAccessToken", args: [
+            "userId": userId
+        ])
+    }
+    
+    /// Get user's Spotify playlists
+    /// - Returns: Array of Spotify playlists
+    func spotifyGetPlaylists() async throws -> [SpotifyPlaylist] {
+        guard let userId = KeychainManager.shared.getUserId() else {
+            throw ConvexError.unauthorized
+        }
+        
+        let response: SpotifyPlaylistsResponse = try await action("actions/spotify:getPlaylists", args: [
+            "userId": userId
+        ])
+        return response.playlists
+    }
 
 }
 
@@ -1104,6 +1147,41 @@ struct SharedSoundCloudPlaylistResponse: Codable {
     let sharer: SharedUserInfo?
     let isFromSoundCloud: Bool?
     let sourcePlaylistId: String?
+}
+
+// MARK: - Spotify Response Types
+
+struct SpotifyTokenResponse: Codable {
+    let accessToken: String
+    let expiresIn: Int
+}
+
+struct SpotifyPlaylist: Codable, Sendable {
+    let id: String
+    let name: String
+    let description: String?
+    let images: [SpotifyImage]?
+    let tracks: SpotifyPlaylistTracks?
+    let owner: SpotifyUser?
+}
+
+struct SpotifyImage: Codable, Sendable {
+    let url: String
+    let width: Int?
+    let height: Int?
+}
+
+struct SpotifyUser: Codable, Sendable {
+    let id: String
+    let display_name: String?
+}
+
+struct SpotifyPlaylistTracks: Codable, Sendable {
+    let total: Int
+}
+
+struct SpotifyPlaylistsResponse: Codable {
+    let playlists: [SpotifyPlaylist]
 }
 
 // MARK: - Errors

@@ -11,6 +11,7 @@ public struct PersistedTrack: Codable, Equatable, Identifiable, Hashable, Sendab
     public enum CodingKeys: String, CodingKey {
         case id, title, artist, artistId, album, artwork, duration
         case playbackCount, likesCount, genre, createdAt, updatedAt, soundCloudData
+        case source
     }
 
     public var id: String
@@ -26,6 +27,10 @@ public struct PersistedTrack: Codable, Equatable, Identifiable, Hashable, Sendab
     public var createdAt: Date
     public var updatedAt: Date
     public var soundCloudData: Data?
+    
+    /// The source platform for this track (soundcloud, spotify)
+    /// Defaults to soundcloud for backward compatibility
+    public var source: String
 
     public init(
         id: String,
@@ -40,7 +45,8 @@ public struct PersistedTrack: Codable, Equatable, Identifiable, Hashable, Sendab
         genre: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
-        soundCloudData: Data? = nil
+        soundCloudData: Data? = nil,
+        source: String = "soundcloud"
     ) {
         self.id = id
         self.title = title
@@ -55,5 +61,6 @@ public struct PersistedTrack: Codable, Equatable, Identifiable, Hashable, Sendab
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.soundCloudData = soundCloudData
+        self.source = source
     }
 }
