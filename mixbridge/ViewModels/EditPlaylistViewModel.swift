@@ -298,7 +298,7 @@ final class EditPlaylistViewModel {
             // 2. Update custom artwork if changed (user-created playlists only)
             if let image = customArtworkImage, isUserCreated {
                 let artworkData = image.jpegData(compressionQuality: 0.8)
-                try await playlistSync.updateUserPlaylistArtwork(playlistId: playlistId, customArtworkData: artworkData)
+                try await playlistSync.updateUserPlaylistArtwork(userId: userId, playlistId: playlistId, customArtworkData: artworkData)
             }
 
             // 3. Remove tracks

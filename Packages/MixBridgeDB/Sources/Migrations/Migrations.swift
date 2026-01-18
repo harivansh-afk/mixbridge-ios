@@ -203,6 +203,12 @@ extension MixBridgeDB {
             }
         }
 
+        migrator.registerMigration("v9_playlist_custom_artwork_url") { db in
+            try db.alter(table: PersistedPlaylist.databaseTableName) { t in
+                t.add(column: "customArtworkUrl", .text)
+            }
+        }
+
         return migrator
     }
 }
