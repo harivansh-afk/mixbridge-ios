@@ -80,6 +80,40 @@ final class ConvexService {
 
         return value
     }
+    
+    /// Action that ignores the return value (for actions returning void/null)
+    private func actionVoid(_ path: String, args: [String: Any] = [:]) async throws {
+        let url = URL(string: "\(deploymentUrl)/api/action")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "path": path,
+            "args": args,
+            "format": "json"
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw ConvexError.requestFailed
+        }
+
+        struct VoidResponse: Codable {
+            let status: String
+            let errorMessage: String?
+        }
+
+        let convexResponse = try JSONDecoder().decode(VoidResponse.self, from: data)
+
+        guard convexResponse.status == "success" else {
+            throw ConvexError.actionFailed(convexResponse.errorMessage ?? "Unknown error")
+        }
+    }
 
     @discardableResult
     private func mutation(_ path: String, args: [String: Any] = [:]) async throws -> String? {
@@ -856,16 +890,28 @@ final class ConvexService {
     
     // MARK: - Spotify Integration
     
-    /// Store Spotify tokens after OAuth code exchange
+    /// Complete Spotify OAuth - handles both signup and login
     /// - Parameters:
     ///   - code: The authorization code from Spotify OAuth
     ///   - codeVerifier: The PKCE code verifier used in the auth request
-    func spotifyStoreTokens(code: String, codeVerifier: String) async throws {
+    /// - Returns: Auth result with user info for session creation
+    func spotifyCompleteAuth(code: String, codeVerifier: String) async throws -> SpotifyAuthResult {
+        return try await action("actions/spotify/mobileAuth:completeAuth", args: [
+            "code": code,
+            "codeVerifier": codeVerifier
+        ])
+    }
+    
+    /// Link Spotify to existing user account
+    /// - Parameters:
+    ///   - code: The authorization code from Spotify OAuth
+    ///   - codeVerifier: The PKCE code verifier used in the auth request
+    func spotifyLinkAccount(code: String, codeVerifier: String) async throws {
         guard let userId = KeychainManager.shared.getUserId() else {
             throw ConvexError.unauthorized
         }
         
-        try await mutationVoid("spotify:storeTokens", args: [
+        try await actionVoid("actions/spotify/storeTokens:linkAccount", args: [
             "userId": userId,
             "code": code,
             "codeVerifier": codeVerifier
@@ -1154,6 +1200,13 @@ struct SharedSoundCloudPlaylistResponse: Codable {
 struct SpotifyTokenResponse: Codable {
     let accessToken: String
     let expiresIn: Int
+}
+
+struct SpotifyAuthResult: Codable {
+    let userId: String
+    let username: String
+    let avatarUrl: String?
+    let isNewUser: Bool
 }
 
 struct SpotifyPlaylist: Codable, Sendable {

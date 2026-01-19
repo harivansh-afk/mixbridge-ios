@@ -172,21 +172,55 @@ final class SpotifyAuthManager: NSObject {
             return
         }
         
-        // Exchange code for tokens via backend
-        do {
-            try await exchangeCodeForTokens(code: code, codeVerifier: verifier)
-            isConnected = true
-            isLoading = false
-            codeVerifier = nil
-        } catch {
-            errorMessage = "Failed to exchange code: \(error.localizedDescription)"
-            isLoading = false
+        // Check if user is already logged in (linking Spotify to existing account)
+        let isLinking = keychain.getUserId() != nil
+        
+        if isLinking {
+            // User already has an account - link Spotify to existing account
+            do {
+                try await ConvexService.shared.spotifyLinkAccount(code: code, codeVerifier: verifier)
+                isConnected = true
+                isLoading = false
+                codeVerifier = nil
+            } catch {
+                errorMessage = "Failed to link Spotify: \(error.localizedDescription)"
+                isLoading = false
+            }
+        } else {
+            // New user or not logged in - complete full auth flow (signup/login)
+            do {
+                let authResult = try await ConvexService.shared.spotifyCompleteAuth(
+                    code: code,
+                    codeVerifier: verifier
+                )
+                
+                // Save user session (same as SoundCloud auth)
+                try keychain.saveUserId(authResult.userId)
+                try keychain.saveUsername(authResult.username)
+                
+                // Set long expiry for session (30 days)
+                let expiry = Date().addingTimeInterval(30 * 24 * 60 * 60)
+                try keychain.saveTokenExpiry(expiry)
+                
+                // Notify AuthManager that we're now authenticated
+                AuthManager.shared.isAuthenticated = true
+                AuthManager.shared.currentUserId = authResult.userId
+                
+                isConnected = true
+                isLoading = false
+                codeVerifier = nil
+                
+                // Track analytics
+                Analytics.shared.identify(userId: authResult.userId, properties: [
+                    "username": authResult.username,
+                    "signup_platform": "spotify",
+                    "is_new_user": authResult.isNewUser
+                ])
+            } catch {
+                errorMessage = "Failed to complete Spotify login: \(error.localizedDescription)"
+                isLoading = false
+            }
         }
-    }
-    
-    /// Exchange authorization code for access tokens via Convex backend
-    private func exchangeCodeForTokens(code: String, codeVerifier: String) async throws {
-        try await ConvexService.shared.spotifyStoreTokens(code: code, codeVerifier: codeVerifier)
     }
     
     /// Get the current Spotify access token, refreshing if needed
