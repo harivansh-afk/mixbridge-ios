@@ -10,7 +10,6 @@ import SwiftUI
 struct SpotifyConnectionView: View {
     @State private var spotifyAuthManager = SpotifyAuthManager.shared
     @State private var showDisconnectAlert = false
-    @State private var showConnectSheet = false
     
     var body: some View {
         VStack(spacing: 16) {
@@ -54,7 +53,7 @@ struct SpotifyConnectionView: View {
                     if spotifyAuthManager.isConnected {
                         showDisconnectAlert = true
                     } else {
-                        showConnectSheet = true
+                        spotifyAuthManager.startOAuthFlow()
                     }
                 } label: {
                     HStack {
@@ -99,9 +98,6 @@ struct SpotifyConnectionView: View {
             }
         } message: {
             Text("Your Spotify playlists will no longer be accessible in the app. You can reconnect anytime.")
-        }
-        .sheet(isPresented: $showConnectSheet) {
-            ConnectSpotifyScreen()
         }
         .navigationTitle("Spotify")
         .navigationBarTitleDisplayMode(.inline)

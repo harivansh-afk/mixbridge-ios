@@ -4,6 +4,7 @@ import Foundation
 
 struct ConnectSoundCloudScreen: View {
     @Environment(AuthManager.self) private var authManager
+    @State private var spotifyAuthManager = SpotifyAuthManager.shared
     @State private var authSession: ASWebAuthenticationSession?
     @State private var contextProvider = PresentationContextProvider()
     @State private var loginStartTime: Date?
@@ -32,7 +33,7 @@ struct ConnectSoundCloudScreen: View {
                     Spacer()
 
                     VStack(spacing: 16) {
-                        // Error message
+                        // Error messages
                         if let error = authManager.errorMessage {
                             Text(error)
                                 .font(.caption)
@@ -41,22 +42,51 @@ struct ConnectSoundCloudScreen: View {
                                 .padding(.horizontal, 24)
                         }
 
-                        // Connect Button
+                        if let error = spotifyAuthManager.errorMessage {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                        }
+
+                        // Spotify Login Button
+                        Button {
+                            HapticManager.heavy()
+                            Analytics.shared.track("spotify_login_tapped")
+                            spotifyAuthManager.startOAuthFlow()
+                        } label: {
+                            if spotifyAuthManager.isLoading {
+                                ProgressView()
+                                    .tint(.primary)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 50)
+                                    .glassEffect(.regular, in: .capsule)
+                            } else {
+                                Text("Login with Spotify")
+                                    .font(.callout)
+                                    .foregroundStyle(.primary)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 50)
+                                    .glassEffect(.regular, in: .capsule)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(spotifyAuthManager.isLoading)
+
+                        // SoundCloud Login Button
                         Button {
                             HapticManager.heavy()
                             loginStartTime = Date()
                             Analytics.shared.track("soundcloud_login_tapped")
                             startAuthentication()
                         } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "cloud.fill")
-                                Text("Login with SoundCloud")
-                                    .font(.callout)
-                            }
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .glassEffect(.regular, in: .capsule)
+                            Text("Login with SoundCloud")
+                                .font(.callout)
+                                .foregroundStyle(.primary)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 50)
+                                .glassEffect(.regular, in: .capsule)
                         }
                         .buttonStyle(.plain)
                     }
