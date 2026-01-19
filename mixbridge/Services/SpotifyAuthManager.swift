@@ -30,7 +30,10 @@ final class SpotifyAuthManager: NSObject {
         "user-read-email",
         "playlist-read-private",
         "playlist-read-collaborative",
-        "user-library-read"
+        "user-library-read",
+        "user-read-recently-played",
+        "user-top-read",
+        "user-follow-read"
     ]
     
     // PKCE state
