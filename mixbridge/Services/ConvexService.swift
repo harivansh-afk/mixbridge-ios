@@ -1318,9 +1318,17 @@ struct SpotifyTokenResponse: Codable {
 
 struct SpotifyAuthResult: Codable {
     let userId: String
-    let username: String
+    let displayName: String
     let avatarUrl: String?
     let isNewUser: Bool
+
+    // Backend sends 'username' field containing display_name value
+    enum CodingKeys: String, CodingKey {
+        case userId
+        case displayName = "username"
+        case avatarUrl
+        case isNewUser
+    }
 }
 
 // MARK: - Errors
