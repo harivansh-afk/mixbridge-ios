@@ -7,27 +7,28 @@ struct ConnectSoundCloudScreen: View {
     @State private var authSession: ASWebAuthenticationSession?
     @State private var contextProvider = PresentationContextProvider()
     @State private var loginStartTime: Date?
+    @State private var peelProgress: Double = 0
+    @State private var contentOpacity: Double = 0
+
+    private let staticHoldProgress: Double = 0.67
+    private let fadeInDuration: Double = 0.45
+    private let screenBufferDelay: Double = 0.3
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Background Image
-                Image("background")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .clipped()
-                    .ignoresSafeArea()
+                backgroundLayer(size: geometry.size)
                     .grayscale(1.0)
                     .blur(radius: 5, opaque: true)
 
                 VStack(spacing: -11) {
                     Spacer()
-                GlassEffectText(
+                    GlassEffectText(
                         text: "Mixbridge",
                         font: UIFont(name: "InstrumentSerif-Italic", size: 46) ?? .systemFont(ofSize: 46)
                     )
                     .frame(height: 60)
+                    .opacity(contentOpacity)
 
                     Spacer()
 
@@ -62,6 +63,17 @@ struct ConnectSoundCloudScreen: View {
                     }
                     .padding(.horizontal, 24)
                     .padding(.bottom, max(geometry.safeAreaInsets.bottom, 20) + 20)
+                    .opacity(contentOpacity)
+                }
+            }
+            .onAppear {
+                peelProgress = 0
+                contentOpacity = 0
+                DispatchQueue.main.asyncAfter(deadline: .now() + screenBufferDelay) {
+                    peelProgress = staticHoldProgress
+                    withAnimation(.easeOut(duration: fadeInDuration)) {
+                        contentOpacity = 1
+                    }
                 }
             }
         }
@@ -132,6 +144,36 @@ struct ConnectSoundCloudScreen: View {
             authManager.errorMessage = "Authentication session failed to start"
         }
     }
+
+    @ViewBuilder
+    private func backgroundLayer(size: CGSize) -> some View {
+        if PeelMetalView.isMetalAvailable {
+            ZStack {
+                Color.black
+                    .ignoresSafeArea()
+
+                PeelMetalView(
+                    bottomImageName: "background",
+                    topImageName: nil,
+                    progress: peelProgress,
+                    size: size,
+                    amplitude: 0.06,
+                    frequency: 2.2
+                )
+                .frame(width: size.width, height: size.height)
+                .clipped()
+                .ignoresSafeArea()
+            }
+        } else {
+            Image("background")
+                .resizable()
+                .scaledToFill()
+                .frame(width: size.width, height: size.height)
+                .clipped()
+                .ignoresSafeArea()
+        }
+    }
+
 }
 
 // MARK: - Presentation Context Provider
