@@ -200,7 +200,7 @@ final class SpotifyAuthManager: NSObject {
                 
                 // Save user session (same as SoundCloud auth)
                 try keychain.saveUserId(authResult.userId)
-                try keychain.saveUsername(authResult.username)
+                try keychain.saveUsername(authResult.displayName)
                 try keychain.saveUserPlatform(.spotify)
 
                 // Set long expiry for session (30 days)
@@ -217,7 +217,7 @@ final class SpotifyAuthManager: NSObject {
                 
                 // Track analytics
                 Analytics.shared.identify(userId: authResult.userId, properties: [
-                    "username": authResult.username,
+                    "username": authResult.displayName,
                     "signup_platform": "spotify",
                     "is_new_user": authResult.isNewUser
                 ])
