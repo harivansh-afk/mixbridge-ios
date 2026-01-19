@@ -37,7 +37,7 @@ private struct SoundCloudPlaylistRow: Identifiable, Equatable {
     let playlist: SoundCloudPlaylist
     let index: Int
 
-    var id: Int { playlist.id }
+    var id: String { playlist.id }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.id == rhs.id
@@ -48,7 +48,7 @@ private struct SoundCloudUserRow: Identifiable, Equatable {
     let user: SoundCloudUser
     let index: Int
 
-    var id: Int { user.id }
+    var id: String { user.id }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.id == rhs.id

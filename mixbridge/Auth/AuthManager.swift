@@ -103,6 +103,9 @@ class AuthManager {
                 try keychain.saveUsername(username)
             }
 
+            // Save platform as SoundCloud
+            try keychain.saveUserPlatform(.soundcloud)
+
             // Set long expiry for session token (30 days)
             let expiry = Date().addingTimeInterval(30 * 24 * 60 * 60)
             try keychain.saveTokenExpiry(expiry)

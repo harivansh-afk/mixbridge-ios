@@ -3,7 +3,7 @@ import Foundation
 // MARK: - SoundCloud Track Models
 
 struct SoundCloudTrack: Codable, Sendable {
-    let id: Int
+    let id: String  // Can be numeric (SoundCloud) or "spotify:xxx" (Spotify)
     let title: String
     let user: SoundCloudUser
     let duration: Int
@@ -17,12 +17,24 @@ struct SoundCloudTrack: Codable, Sendable {
     let likes_count: Int?
     let comment_count: Int?
     let reposts_count: Int?
+    let _source: String?  // "spotify" or "soundcloud"
+
+    /// Returns the music source platform
+    var source: MusicSource {
+        if let sourceStr = _source, sourceStr == "spotify" {
+            return .spotify
+        }
+        if id.hasPrefix("spotify:") {
+            return .spotify
+        }
+        return .soundcloud
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
         case title
         case user
-        case artist
+        case artist  // Fallback if user object missing
         case duration
         case artwork_url
         case permalink_url
@@ -34,10 +46,11 @@ struct SoundCloudTrack: Codable, Sendable {
         case likes_count
         case comment_count
         case reposts_count
+        case _source
     }
 
     init(
-        id: Int,
+        id: String,
         title: String,
         user: SoundCloudUser,
         duration: Int,
@@ -50,7 +63,8 @@ struct SoundCloudTrack: Codable, Sendable {
         waveform_url: String?,
         likes_count: Int?,
         comment_count: Int?,
-        reposts_count: Int?
+        reposts_count: Int?,
+        _source: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -66,17 +80,27 @@ struct SoundCloudTrack: Codable, Sendable {
         self.likes_count = likes_count
         self.comment_count = comment_count
         self.reposts_count = reposts_count
+        self._source = _source
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decodeLossyInt(forKey: .id)
+
+        // Handle id as either Int or String
+        if let intId = try? container.decode(Int.self, forKey: .id) {
+            id = String(intId)
+        } else {
+            id = try container.decode(String.self, forKey: .id)
+        }
+
         title = try container.decode(String.self, forKey: .title)
+
+        // Handle artist: prefer user object, fallback to artist string
         if let decodedUser = try? container.decode(SoundCloudUser.self, forKey: .user) {
             user = decodedUser
         } else if let artist = try? container.decode(String.self, forKey: .artist) {
             user = SoundCloudUser(
-                id: 0,
+                id: "0",
                 username: artist,
                 avatar_url: nil,
                 permalink_url: nil,
@@ -90,6 +114,7 @@ struct SoundCloudTrack: Codable, Sendable {
             )
             throw DecodingError.keyNotFound(CodingKeys.user, context)
         }
+
         duration = try container.decodeLossyDurationMs(forKey: .duration)
         artwork_url = try container.decodeIfPresent(String.self, forKey: .artwork_url)
         permalink_url = try container.decodeIfPresent(String.self, forKey: .permalink_url)
@@ -101,6 +126,7 @@ struct SoundCloudTrack: Codable, Sendable {
         likes_count = try container.decodeIfPresent(Int.self, forKey: .likes_count)
         comment_count = try container.decodeIfPresent(Int.self, forKey: .comment_count)
         reposts_count = try container.decodeIfPresent(Int.self, forKey: .reposts_count)
+        _source = try container.decodeIfPresent(String.self, forKey: ._source)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -119,20 +145,49 @@ struct SoundCloudTrack: Codable, Sendable {
         try container.encodeIfPresent(likes_count, forKey: .likes_count)
         try container.encodeIfPresent(comment_count, forKey: .comment_count)
         try container.encodeIfPresent(reposts_count, forKey: .reposts_count)
+        try container.encodeIfPresent(_source, forKey: ._source)
     }
 }
 
 struct SoundCloudUser: Codable, Sendable {
-    let id: Int
+    let id: String  // Can be numeric (SoundCloud) or string (Spotify)
     let username: String
     let avatar_url: String?
     let permalink_url: String?
     let followers_count: Int?
     let followings_count: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id, username, avatar_url, permalink_url, followers_count, followings_count
+    }
+
+    init(id: String, username: String, avatar_url: String?, permalink_url: String?, followers_count: Int?, followings_count: Int?) {
+        self.id = id
+        self.username = username
+        self.avatar_url = avatar_url
+        self.permalink_url = permalink_url
+        self.followers_count = followers_count
+        self.followings_count = followings_count
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Handle id as either Int or String
+        if let intId = try? container.decode(Int.self, forKey: .id) {
+            id = String(intId)
+        } else {
+            id = try container.decode(String.self, forKey: .id)
+        }
+        username = try container.decode(String.self, forKey: .username)
+        avatar_url = try container.decodeIfPresent(String.self, forKey: .avatar_url)
+        permalink_url = try container.decodeIfPresent(String.self, forKey: .permalink_url)
+        followers_count = try container.decodeIfPresent(Int.self, forKey: .followers_count)
+        followings_count = try container.decodeIfPresent(Int.self, forKey: .followings_count)
+    }
 }
 
 struct SoundCloudPlaylist: Codable, Sendable {
-    let id: Int
+    let id: String  // Can be numeric (SoundCloud) or "spotify:xxx" (Spotify)
     let title: String
     let user: SoundCloudUser
     let duration: Int
@@ -143,10 +198,48 @@ struct SoundCloudPlaylist: Codable, Sendable {
     let description: String?
     let genre: String?
     let created_at: String?
+    let _source: String?  // "spotify" or "soundcloud"
+
+    /// Returns the music source platform
+    var source: MusicSource {
+        if let sourceStr = _source, sourceStr == "spotify" {
+            return .spotify
+        }
+        if id.hasPrefix("spotify:") {
+            return .spotify
+        }
+        return .soundcloud
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, user, duration, artwork_url, permalink_url
+        case track_count, tracks, description, genre, created_at, _source
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Handle id as either Int or String
+        if let intId = try? container.decode(Int.self, forKey: .id) {
+            id = String(intId)
+        } else {
+            id = try container.decode(String.self, forKey: .id)
+        }
+        title = try container.decode(String.self, forKey: .title)
+        user = try container.decode(SoundCloudUser.self, forKey: .user)
+        duration = (try? container.decode(Int.self, forKey: .duration)) ?? 0
+        artwork_url = try container.decodeIfPresent(String.self, forKey: .artwork_url)
+        permalink_url = try container.decodeIfPresent(String.self, forKey: .permalink_url)
+        track_count = try container.decodeIfPresent(Int.self, forKey: .track_count)
+        tracks = try container.decodeIfPresent([SoundCloudTrack].self, forKey: .tracks)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        genre = try container.decodeIfPresent(String.self, forKey: .genre)
+        created_at = try container.decodeIfPresent(String.self, forKey: .created_at)
+        _source = try container.decodeIfPresent(String.self, forKey: ._source)
+    }
 }
 
 struct SoundCloudProfile: Codable, Sendable {
-    let id: Int
+    let id: String  // Can be numeric (SoundCloud) or prefixed (spotify:xxx)
     let username: String
     let full_name: String?
     let first_name: String?
@@ -162,6 +255,53 @@ struct SoundCloudProfile: Codable, Sendable {
     let description: String?
     let city: String?
     let country: String?
+    let _source: String?  // "spotify" or "soundcloud"
+
+    /// Returns the music source platform
+    var source: MusicSource {
+        if let sourceStr = _source, sourceStr == "spotify" {
+            return .spotify
+        }
+        if id.hasPrefix("spotify:") {
+            return .spotify
+        }
+        return .soundcloud
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, username, full_name, first_name, last_name, avatar_url
+        case permalink_url, followers_count, followings_count, track_count
+        case playlist_count, likes_count, plan, description, city, country
+        case _source
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        // Handle id as either Int or String
+        if let intId = try? container.decode(Int.self, forKey: .id) {
+            self.id = String(intId)
+        } else {
+            self.id = try container.decode(String.self, forKey: .id)
+        }
+
+        username = try container.decode(String.self, forKey: .username)
+        full_name = try container.decodeIfPresent(String.self, forKey: .full_name)
+        first_name = try container.decodeIfPresent(String.self, forKey: .first_name)
+        last_name = try container.decodeIfPresent(String.self, forKey: .last_name)
+        avatar_url = try container.decodeIfPresent(String.self, forKey: .avatar_url)
+        permalink_url = try container.decodeIfPresent(String.self, forKey: .permalink_url)
+        followers_count = try container.decodeIfPresent(Int.self, forKey: .followers_count)
+        followings_count = try container.decodeIfPresent(Int.self, forKey: .followings_count)
+        track_count = try container.decodeIfPresent(Int.self, forKey: .track_count)
+        playlist_count = try container.decodeIfPresent(Int.self, forKey: .playlist_count)
+        likes_count = try container.decodeIfPresent(Int.self, forKey: .likes_count)
+        plan = try container.decodeIfPresent(String.self, forKey: .plan)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        city = try container.decodeIfPresent(String.self, forKey: .city)
+        country = try container.decodeIfPresent(String.self, forKey: .country)
+        _source = try container.decodeIfPresent(String.self, forKey: ._source)
+    }
 }
 
 extension KeyedDecodingContainer {

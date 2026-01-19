@@ -175,8 +175,9 @@ final class SpotifyAuthManager: NSObject {
             return
         }
         
-        // Check if user is already logged in (linking Spotify to existing account)
-        let isLinking = keychain.getUserId() != nil
+        // Check if user is currently authenticated (not just has stale keychain data)
+        // Must verify BOTH that AuthManager says we're authenticated AND userId exists
+        let isLinking = AuthManager.shared.isAuthenticated && keychain.getUserId() != nil
         
         if isLinking {
             // User already has an account - link Spotify to existing account
@@ -200,7 +201,8 @@ final class SpotifyAuthManager: NSObject {
                 // Save user session (same as SoundCloud auth)
                 try keychain.saveUserId(authResult.userId)
                 try keychain.saveUsername(authResult.username)
-                
+                try keychain.saveUserPlatform(.spotify)
+
                 // Set long expiry for session (30 days)
                 let expiry = Date().addingTimeInterval(30 * 24 * 60 * 60)
                 try keychain.saveTokenExpiry(expiry)

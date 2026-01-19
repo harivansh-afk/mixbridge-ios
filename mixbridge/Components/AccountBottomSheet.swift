@@ -231,12 +231,12 @@ struct AccountBottomSheet: View {
                     .foregroundColor(.primary)
 
                 HStack(spacing: 4) {
-                    Text("Connected to SoundCloud")
+                    Text("Connected to \(profile.source.displayName)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Image(systemName: "checkmark.circle.fill")
                         .font(.caption)
-                        .foregroundColor(.orange)
+                        .foregroundColor(profile.source == .spotify ? .green : .orange)
                 }
 
             }

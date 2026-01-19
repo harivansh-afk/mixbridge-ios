@@ -67,9 +67,9 @@ final class ArtistSync: Sendable {
             )
 
             let content = try await MainActor.run { () -> (tracks: [SoundCloudTrack], playlists: [SoundCloudPlaylist], tracksData: Data, playlistsData: Data, persistedTracks: [PersistedTrack], persistedPlaylists: [PersistedPlaylist], cachedOwner: String) in
-                let numericArtistId = Int(artistId) ?? 0
-                let tracks = results.tracks.filter { $0.user.id == numericArtistId }
-                let playlists = results.playlists.filter { $0.user.id == numericArtistId }
+                // Compare as strings since user.id is now String (supports Spotify IDs)
+                let tracks = results.tracks.filter { $0.user.id == artistId }
+                let playlists = results.playlists.filter { $0.user.id == artistId }
 
                 let encoder = JSONEncoder()
                 let tracksData = try encoder.encode(tracks)

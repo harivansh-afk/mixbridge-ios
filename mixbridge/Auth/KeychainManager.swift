@@ -13,7 +13,8 @@ final class KeychainManager {
         static let tokenExpiry = "com.mixbridge.soundcloud.tokenExpiry"
         static let userId = "com.mixbridge.soundcloud.userId"
         static let username = "com.mixbridge.soundcloud.username"
-        
+        static let userPlatform = "com.mixbridge.userPlatform"  // "soundcloud" or "spotify"
+
         // Spotify keys
         static let spotifyAccessToken = "com.mixbridge.spotify.accessToken"
         static let spotifyRefreshToken = "com.mixbridge.spotify.refreshToken"
@@ -43,6 +44,10 @@ final class KeychainManager {
         try saveString(username, forKey: Keys.username)
     }
 
+    func saveUserPlatform(_ platform: MusicSource) throws {
+        try saveString(platform.rawValue, forKey: Keys.userPlatform)
+    }
+
     // MARK: - Retrieve
 
     func getAccessToken() -> String? {
@@ -67,6 +72,23 @@ final class KeychainManager {
 
     func getUsername() -> String? {
         return getString(forKey: Keys.username)
+    }
+
+    func getUserPlatform() -> MusicSource {
+        // Check if platform was explicitly saved
+        if let rawValue = getString(forKey: Keys.userPlatform),
+           let platform = MusicSource(rawValue: rawValue) {
+            return platform
+        }
+
+        // Fallback: infer from available tokens
+        // If Spotify token exists but no SoundCloud token, assume Spotify user
+        if getSpotifyAccessToken() != nil && getAccessToken() == nil {
+            return .spotify
+        }
+
+        // Default to SoundCloud for existing users or when both/neither tokens exist
+        return .soundcloud
     }
 
     // MARK: - Spotify Save
@@ -118,6 +140,7 @@ final class KeychainManager {
         deleteItem(forKey: Keys.tokenExpiry)
         deleteItem(forKey: Keys.userId)
         deleteItem(forKey: Keys.username)
+        deleteItem(forKey: Keys.userPlatform)
         clearSpotifyTokens()
     }
 

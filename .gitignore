@@ -75,3 +75,4 @@ docs/syntax
 .claude/hooks/locks/
 .worktrees/
 .wt-origin
+.claude

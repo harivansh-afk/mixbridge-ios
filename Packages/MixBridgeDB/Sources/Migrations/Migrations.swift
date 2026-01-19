@@ -20,7 +20,7 @@ extension MixBridgeDB {
                 t.column("id", .text).primaryKey()
                 t.column("title", .text).notNull()
                 t.column("artist", .text).notNull()
-                t.column("artistId", .integer).notNull().indexed()
+                t.column("artistId", .text).notNull().indexed()  // String for Spotify support
                 t.column("album", .text).notNull()
                 t.column("artwork", .text).notNull()
                 t.column("duration", .double).notNull()
@@ -37,7 +37,7 @@ extension MixBridgeDB {
                 t.column("id", .text).primaryKey()
                 t.column("name", .text).notNull()
                 t.column("creator", .text).notNull()
-                t.column("creatorId", .integer).notNull().indexed()
+                t.column("creatorId", .text).notNull().indexed()  // String for Spotify support
                 t.column("artwork", .text).notNull()
                 t.column("trackCount", .integer).notNull().defaults(to: 0)
                 t.column("duration", .integer).notNull().defaults(to: 0)

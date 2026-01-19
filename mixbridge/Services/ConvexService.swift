@@ -11,6 +11,11 @@ final class ConvexService {
 
     private init() {}
 
+    /// Returns the current user's platform (Spotify or SoundCloud)
+    var userPlatform: MusicSource {
+        KeychainManager.shared.getUserPlatform()
+    }
+
     // MARK: - Core API Methods
 
     private func query<T: Codable>(_ path: String, args: [String: Any] = [:]) async throws -> T {
@@ -186,96 +191,165 @@ final class ConvexService {
         return convexResponse.value
     }
 
-    // MARK: - Data Fetching (Convex Actions - Auto-fetch from SoundCloud if needed)
+    // MARK: - Data Fetching (Platform-Aware)
 
     /// Get user's liked tracks
-    /// - Parameter forceRefresh: If true, bypasses cache and fetches directly from SoundCloud
+    /// - Parameter forceRefresh: If true, bypasses cache and fetches from source
     func getLikedTracks(userId: String, forceRefresh: Bool = false) async throws -> [SoundCloudTrack] {
         var args: [String: Any] = ["userId": userId]
         if forceRefresh {
             args["forceRefresh"] = true
         }
-        let result: ConvexTracksResponse = try await action(
-            "actions/likedTracks:get",
-            args: args
-        )
-        return result.tracks
+
+        switch userPlatform {
+        case .spotify:
+            let result: ConvexSpotifyTracksResponse = try await action(
+                "actions/likedTracks:get",
+                args: args
+            )
+            return result.tracks.toSoundCloudTracks()
+        case .soundcloud:
+            let result: ConvexTracksResponse = try await action(
+                "actions/likedTracks:get",
+                args: args
+            )
+            return result.tracks
+        }
     }
 
     /// Get user's liked playlists
-    /// - Parameter forceRefresh: If true, bypasses cache and fetches directly from SoundCloud
+    /// - Parameter forceRefresh: If true, bypasses cache and fetches from source
     func getLikedPlaylists(userId: String, forceRefresh: Bool = false) async throws -> [SoundCloudPlaylist] {
         var args: [String: Any] = ["userId": userId]
         if forceRefresh {
             args["forceRefresh"] = true
         }
-        let result: ConvexPlaylistsResponse = try await action(
-            "actions/likedPlaylists:get",
-            args: args
-        )
-        return result.playlists
+
+        switch userPlatform {
+        case .spotify:
+            let result: ConvexSpotifyPlaylistsResponse = try await action(
+                "actions/likedPlaylists:get",
+                args: args
+            )
+            return result.playlists.compactMap { $0.toSoundCloudPlaylist() }
+        case .soundcloud:
+            let result: ConvexPlaylistsResponse = try await action(
+                "actions/likedPlaylists:get",
+                args: args
+            )
+            return result.playlists
+        }
     }
 
     /// Get user's playlists
-    /// - Parameter forceRefresh: If true, bypasses cache and fetches directly from SoundCloud
+    /// - Parameter forceRefresh: If true, bypasses cache and fetches from source
     func getPlaylists(userId: String, forceRefresh: Bool = false) async throws -> [SoundCloudPlaylist] {
         var args: [String: Any] = ["userId": userId]
         if forceRefresh {
             args["forceRefresh"] = true
         }
-        let result: ConvexPlaylistsResponse = try await action(
-            "actions/playlists:getAll",
-            args: args
-        )
-        return result.playlists
+
+        switch userPlatform {
+        case .spotify:
+            let result: ConvexSpotifyPlaylistsResponse = try await action(
+                "actions/playlists:getAll",
+                args: args
+            )
+            return result.playlists.compactMap { $0.toSoundCloudPlaylist() }
+        case .soundcloud:
+            let result: ConvexPlaylistsResponse = try await action(
+                "actions/playlists:getAll",
+                args: args
+            )
+            return result.playlists
+        }
     }
 
     /// Get tracks for a specific playlist
-    /// - Parameter forceRefresh: If true, bypasses cache and fetches directly from SoundCloud
+    /// - Parameter forceRefresh: If true, bypasses cache and fetches from source
     func getPlaylistTracks(userId: String, playlistId: String, forceRefresh: Bool = false) async throws -> [SoundCloudTrack] {
         let playlist = try await getPlaylist(userId: userId, playlistId: playlistId, forceRefresh: forceRefresh)
         return playlist.tracks ?? []
     }
 
     /// Get playlist metadata (and tracks when included) for a specific playlist.
-    /// - Note: This is used to ensure playlist rows exist locally even when opened from Search/Artist.
     func getPlaylist(userId: String, playlistId: String, forceRefresh: Bool = false) async throws -> SoundCloudPlaylist {
         var args: [String: Any] = ["userId": userId, "playlistId": playlistId]
         if forceRefresh {
             args["forceRefresh"] = true
         }
-        let result: ConvexPlaylistResponse = try await action(
-            "actions/playlists:getTracks",
-            args: args
-        )
-        return result.playlist
+
+        switch userPlatform {
+        case .spotify:
+            let result: ConvexSpotifyPlaylistResponse = try await action(
+                "actions/playlists:getTracks",
+                args: args
+            )
+            guard let playlist = result.playlist.toSoundCloudPlaylist() else {
+                throw ConvexError.noData
+            }
+            return playlist
+        case .soundcloud:
+            let result: ConvexPlaylistResponse = try await action(
+                "actions/playlists:getTracks",
+                args: args
+            )
+            return result.playlist
+        }
     }
 
     /// Search for tracks, playlists, and users
-    /// - Parameter forceRefresh: If true, bypasses cache and fetches directly from SoundCloud
+    /// - Parameter forceRefresh: If true, bypasses cache and fetches from source
     func search(userId: String, query: String, limit: Int = 20, forceRefresh: Bool = false) async throws -> SearchResult {
         var args: [String: Any] = ["userId": userId, "query": query, "limit": limit]
         if forceRefresh {
             args["forceRefresh"] = true
         }
-        return try await action(
-            "actions/search:search",
-            args: args
-        )
+
+        switch userPlatform {
+        case .spotify:
+            let result: SpotifySearchResult = try await action(
+                "actions/search:search",
+                args: args
+            )
+            return SearchResult(
+                tracks: result.tracks?.toSoundCloudTracks() ?? [],
+                playlists: result.playlists?.compactMap { $0.toSoundCloudPlaylist() } ?? [],
+                users: result.artists?.toSoundCloudUsers() ?? []
+            )
+        case .soundcloud:
+            return try await action(
+                "actions/search:search",
+                args: args
+            )
+        }
     }
 
     /// Get user profile
-    /// - Parameter forceRefresh: If true, bypasses cache and fetches directly from SoundCloud
+    /// - Parameter forceRefresh: If true, bypasses cache and fetches from source
     func getUserProfile(userId: String, forceRefresh: Bool = false) async throws -> SoundCloudProfile {
         var args: [String: Any] = ["userId": userId]
         if forceRefresh {
             args["forceRefresh"] = true
         }
-        let result: ConvexProfileResponse = try await action(
-            "actions/profile:get",
-            args: args
-        )
-        return result.profile
+
+        switch userPlatform {
+        case .spotify:
+            let result: ConvexSpotifyProfileResponse = try await action(
+                "actions/profile:get",
+                args: args
+            )
+            guard let profile = result.profile.toSoundCloudProfile() else {
+                throw ConvexError.noData
+            }
+            return profile
+        case .soundcloud:
+            let result: ConvexProfileResponse = try await action(
+                "actions/profile:get",
+                args: args
+            )
+            return result.profile
+        }
     }
 
     /// Get play history
@@ -932,12 +1006,12 @@ final class ConvexService {
     
     /// Get user's Spotify playlists
     /// - Returns: Array of Spotify playlists
-    func spotifyGetPlaylists() async throws -> [SpotifyPlaylist] {
+    func spotifyGetPlaylists() async throws -> [SpotifyPlaylistFull] {
         guard let userId = KeychainManager.shared.getUserId() else {
             throw ConvexError.unauthorized
         }
-        
-        let response: SpotifyPlaylistsResponse = try await action("actions/spotify:getPlaylists", args: [
+
+        let response: ConvexSpotifyPlaylistsResponse = try await action("actions/spotify:getPlaylists", args: [
             "userId": userId
         ])
         return response.playlists
@@ -952,6 +1026,8 @@ struct ConvexResponse<T: Codable>: Codable {
     let value: T?
     let errorMessage: String?
 }
+
+// MARK: - SoundCloud Response Types
 
 struct ConvexTracksResponse: Codable {
     let tracks: [SoundCloudTrack]
@@ -971,6 +1047,34 @@ struct ConvexPlaylistResponse: Codable {
 struct ConvexProfileResponse: Codable {
     let profile: SoundCloudProfile
     let source: String?
+}
+
+// MARK: - Spotify Response Types (from Convex API)
+
+struct ConvexSpotifyTracksResponse: Codable {
+    let tracks: [SpotifyTrack]
+    let source: String?
+}
+
+struct ConvexSpotifyPlaylistsResponse: Codable {
+    let playlists: [SpotifyPlaylistFull]
+    let source: String?
+}
+
+struct ConvexSpotifyPlaylistResponse: Codable {
+    let playlist: SpotifyPlaylistFull
+    let source: String?
+}
+
+struct ConvexSpotifyProfileResponse: Codable {
+    let profile: SpotifyUserProfile
+    let source: String?
+}
+
+struct SpotifySearchResult: Codable {
+    let tracks: [SpotifyTrack]?
+    let playlists: [SpotifyPlaylistFull]?
+    let artists: [SpotifyArtist]?
 }
 
 struct SearchResult: Codable {
@@ -1021,7 +1125,7 @@ struct SharedUserInfo: Codable {
 }
 
 struct SharedPlaylistTrack: Codable {
-    let id: Int?
+    let id: String?  // Can be numeric (SoundCloud) or "spotify:xxx"
     let title: String?
     let artist: String?
     let artwork_url: String?
@@ -1039,7 +1143,12 @@ struct SharedPlaylistTrack: Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decodeLossyIntIfPresent(forKey: .id)
+        // Handle id as either Int or String
+        if let intId = try? container.decode(Int.self, forKey: .id) {
+            id = String(intId)
+        } else {
+            id = try container.decodeIfPresent(String.self, forKey: .id)
+        }
         title = try container.decodeIfPresent(String.self, forKey: .title)
         artist = try container.decodeIfPresent(String.self, forKey: .artist)
         artwork_url = try container.decodeIfPresent(String.self, forKey: .artwork_url)
@@ -1061,7 +1170,7 @@ struct SharedPlaylistTrack: Codable {
     func toSoundCloudTrack() -> SoundCloudTrack? {
         let resolvedUser = user ?? artist.map {
             SoundCloudUser(
-                id: 0,
+                id: "0",
                 username: $0,
                 avatar_url: nil,
                 permalink_url: nil,
@@ -1071,7 +1180,7 @@ struct SharedPlaylistTrack: Codable {
         }
         guard let id, let title, let resolvedUser else { return nil }
         return SoundCloudTrack(
-            id: id,
+            id: id,  // Already String now
             title: title,
             user: resolvedUser,
             duration: duration ?? 0,
@@ -1113,7 +1222,7 @@ struct FullSharedPlaylistResponse: Codable {
 // MARK: - Track Sharing Response Types
 
 struct SharedTrackData: Codable {
-    let id: Int?
+    let id: String?  // Can be numeric (SoundCloud) or "spotify:xxx"
     let title: String?
     let artwork_url: String?
     let duration: Int?
@@ -1133,7 +1242,12 @@ struct SharedTrackData: Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decodeLossyIntIfPresent(forKey: .id)
+        // Handle id as either Int or String
+        if let intId = try? container.decode(Int.self, forKey: .id) {
+            id = String(intId)
+        } else {
+            id = try container.decodeIfPresent(String.self, forKey: .id)
+        }
         title = try container.decodeIfPresent(String.self, forKey: .title)
         artwork_url = try container.decodeIfPresent(String.self, forKey: .artwork_url)
         duration = try container.decodeLossyDurationMsIfPresent(forKey: .duration)
@@ -1195,7 +1309,7 @@ struct SharedSoundCloudPlaylistResponse: Codable {
     let sourcePlaylistId: String?
 }
 
-// MARK: - Spotify Response Types
+// MARK: - Spotify Auth Response Types (used only for auth flow)
 
 struct SpotifyTokenResponse: Codable {
     let accessToken: String
@@ -1207,34 +1321,6 @@ struct SpotifyAuthResult: Codable {
     let username: String
     let avatarUrl: String?
     let isNewUser: Bool
-}
-
-struct SpotifyPlaylist: Codable, Sendable {
-    let id: String
-    let name: String
-    let description: String?
-    let images: [SpotifyImage]?
-    let tracks: SpotifyPlaylistTracks?
-    let owner: SpotifyUser?
-}
-
-struct SpotifyImage: Codable, Sendable {
-    let url: String
-    let width: Int?
-    let height: Int?
-}
-
-struct SpotifyUser: Codable, Sendable {
-    let id: String
-    let display_name: String?
-}
-
-struct SpotifyPlaylistTracks: Codable, Sendable {
-    let total: Int
-}
-
-struct SpotifyPlaylistsResponse: Codable {
-    let playlists: [SpotifyPlaylist]
 }
 
 // MARK: - Errors

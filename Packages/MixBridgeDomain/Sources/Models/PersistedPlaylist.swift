@@ -19,7 +19,7 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
     public var id: String
     public var name: String
     public var creator: String
-    public var creatorId: Int
+    public var creatorId: String  // Can be numeric (SoundCloud) or string (Spotify)
     public var artwork: String
     public var trackCount: Int
     public var duration: Int
@@ -68,7 +68,7 @@ public struct PersistedPlaylist: Codable, Equatable, Identifiable, Hashable, Sen
 		id: String,
 		name: String,
 		creator: String,
-		creatorId: Int,
+		creatorId: String,
 		artwork: String,
 		trackCount: Int = 0,
 		duration: Int = 0,

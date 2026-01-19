@@ -17,7 +17,7 @@ public struct PersistedTrack: Codable, Equatable, Identifiable, Hashable, Sendab
     public var id: String
     public var title: String
     public var artist: String
-    public var artistId: Int
+    public var artistId: String  // Can be numeric (SoundCloud) or string (Spotify)
     public var album: String
     public var artwork: String
     public var duration: Double
@@ -36,7 +36,7 @@ public struct PersistedTrack: Codable, Equatable, Identifiable, Hashable, Sendab
         id: String,
         title: String,
         artist: String,
-        artistId: Int,
+        artistId: String,
         album: String,
         artwork: String,
         duration: Double,

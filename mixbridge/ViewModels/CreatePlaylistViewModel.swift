@@ -171,12 +171,12 @@ final class CreatePlaylistViewModel {
             let history = try await convex.getPlayHistory(userId: userId, limit: 50)
 
             // Dedupe by track ID, keeping first occurrence (most recent)
-            var seenIds = Set<Int>()
+            var seenIds = Set<String>()
             recentlyPlayed = history.compactMap { record -> TrackItem? in
                 let trackData = record.trackData
 
                 // Skip invalid/incomplete tracks
-                guard trackData.id > 0,
+                guard !trackData.id.isEmpty,
                       !trackData.title.trimmingCharacters(in: .whitespaces).isEmpty,
                       !trackData.user.username.trimmingCharacters(in: .whitespaces).isEmpty
                 else {

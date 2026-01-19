@@ -194,15 +194,15 @@ final class EditPlaylistViewModel {
         do {
             let history = try await convex.getPlayHistory(userId: userId, limit: 50)
             
-            var seenIds = Set<Int>()
+            var seenIds = Set<String>()
             recentlyPlayed = history.compactMap { record -> TrackItem? in
                 let trackData = record.trackData
-                
-                guard trackData.id > 0,
+
+                guard !trackData.id.isEmpty,
                       !trackData.title.trimmingCharacters(in: .whitespaces).isEmpty,
                       !trackData.user.username.trimmingCharacters(in: .whitespaces).isEmpty
                 else { return nil }
-                
+
                 guard !seenIds.contains(trackData.id) else { return nil }
                 seenIds.insert(trackData.id)
                 
