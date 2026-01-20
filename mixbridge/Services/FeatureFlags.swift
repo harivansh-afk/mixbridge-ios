@@ -12,9 +12,14 @@ import Statsig
 @Observable
 final class FeatureFlags {
     static let shared = FeatureFlags()
-    
+
+    // MARK: - Initialization State
+
+    /// True once Statsig SDK has finished initializing
+    private(set) var isInitialized = false
+
     // MARK: - Feature Gates
-    
+
     var downloadsEnabled: Bool {
         Statsig.checkGate("downloads_enabled")
     }
@@ -22,9 +27,9 @@ final class FeatureFlags {
     var spotifyLoginEnabled: Bool {
         Statsig.checkGate("spotify_login_enabled")
     }
-    
+
     // MARK: - Initialization
-    
+
     private init() {}
     
     /// Initialize Statsig SDK. Call this early in app lifecycle.
@@ -45,6 +50,7 @@ final class FeatureFlags {
                 continuation.resume()
             }
         }
+        isInitialized = true
     }
     
     /// Update user identity after login

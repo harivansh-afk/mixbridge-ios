@@ -22,8 +22,8 @@ struct SpotifyBetaSheet: View {
                 Image("spotify")
                     .renderingMode(.template)
                     .resizable()
-                    .frame(width: 56, height: 56)
-                    .foregroundStyle(.primary.opacity(0.85))
+                    .frame(width: 45 , height: 45 )
+                    .foregroundStyle(.primary.opacity(0.75))
 
                 VStack(spacing: 14) {
                     Text(hasSubmitted ? "You're on the list" : "Join the waitlist")
@@ -32,7 +32,7 @@ struct SpotifyBetaSheet: View {
 
                     Text(hasSubmitted
                          ? "I'll add your account within minutes. Try logging in again shortly."
-                         : "Spotify integration is in private beta. Enter your Spotify email and we'll add you.")
+                         : "Spotify integration is in beta. Enter your Spotify email.")
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)

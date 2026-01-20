@@ -38,10 +38,13 @@ struct mixbridgeApp: App {
     var body: some Scene {
         WindowGroup {
             ZStack {
-                if authManager.isAuthenticated {
-                    ContentView()
-                } else {
-                    OnboardingView()
+                // Only render main content after app is initialized (feature flags loaded)
+                if isAppInitialized {
+                    if authManager.isAuthenticated {
+                        ContentView()
+                    } else {
+                        OnboardingView()
+                    }
                 }
 
                 splashView
@@ -79,15 +82,20 @@ struct mixbridgeApp: App {
                     .environmentObject(systemNotification)
             }
             .onAppear {
-                // Initialize Statsig feature flags
-                Task {
-                    await featureFlags.initialize(userId: authManager.currentUserId)
-                }
-                
-                // No preloading needed - views load from local database
-                // Short delay for splash timing only
+                // Initialize app: wait for both minimum splash time AND feature flags
                 Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(400))
+                    await withTaskGroup(of: Void.self) { group in
+                        // Minimum splash display time
+                        group.addTask {
+                            try? await Task.sleep(for: .milliseconds(400))
+                        }
+                        // Feature flags must be ready before showing UI
+                        group.addTask {
+                            await featureFlags.initialize(userId: authManager.currentUserId)
+                        }
+                        // Wait for both to complete
+                        await group.waitForAll()
+                    }
                     isAppInitialized = true
                 }
 
