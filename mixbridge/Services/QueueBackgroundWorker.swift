@@ -29,9 +29,15 @@ actor QueueBackgroundWorker {
         }
     }
 
-    func prefetchQueue(tracks: [Track], currentIndex: Int = 0) async {
+    func prefetchQueue(items: [QueueItem], currentIndex: Int = 0) async {
+        let tracks = items.map { $0.track }
+        let spotifyUrls = items.reduce(into: [String: String]()) { dict, item in
+            if let url = item.soundCloudTrack?.permalink_url, url.contains("spotify") {
+                dict[item.track.id] = url
+            }
+        }
         await TrackPrefetcher.shared.prefetchForQueue(tracks, currentIndex: currentIndex)
-        await StreamURLCache.shared.prefetchUpcoming(tracks: tracks, lookAhead: 5)
+        await StreamURLCache.shared.prefetchUpcoming(tracks: tracks, spotifyUrls: spotifyUrls, lookAhead: 5)
     }
 
     func syncQueueFromServer(userId: String) async throws -> [QueueItem] {

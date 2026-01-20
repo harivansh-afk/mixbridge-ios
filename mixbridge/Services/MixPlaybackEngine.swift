@@ -57,6 +57,12 @@ final class MixPlaybackEngine {
     }
 
     var duration: Double {
+        // Spotify streams via YouTube report incorrect (doubled) duration from AVPlayer.
+        // Always trust track metadata duration for Spotify tracks.
+        if let ctx = currentContext,
+           ctx.soundCloudTrack?.permalink_url?.contains("spotify") == true {
+            return ctx.track.duration
+        }
         guard let item = currentPlayer.currentItem else { return 0 }
         let dur = CMTimeGetSeconds(item.duration)
         return dur.isFinite ? dur : 0
@@ -70,6 +76,11 @@ final class MixPlaybackEngine {
 
     /// Next track's duration (during crossfade)
     var nextDuration: Double {
+        // Spotify streams via YouTube report incorrect (doubled) duration from AVPlayer.
+        if let ctx = nextContext,
+           ctx.soundCloudTrack?.permalink_url?.contains("spotify") == true {
+            return ctx.track.duration
+        }
         guard let player = nextPlayer, let item = player.currentItem else { return 0 }
         let dur = CMTimeGetSeconds(item.duration)
         return dur.isFinite ? dur : 0
@@ -241,6 +252,7 @@ final class MixPlaybackEngine {
 
             logInfo(.playback, "[MixEngine] instant_mix_triggered: prewarming \(nextTrack.title)")
 
+            let scTrack = nextItem.soundCloudTrack
             Task {
                 do {
                     // Check for downloaded file first - instant offline playback
@@ -255,8 +267,17 @@ final class MixPlaybackEngine {
                         return
                     }
 
+                    // Determine if this is a Spotify track
+                    let spotifyUrl = scTrack?.permalink_url.flatMap { url in
+                        (url.contains("spotify.com") || url.contains("spotify:")) ? url : nil
+                    }
+
                     // Fall back to streaming
-                    let streamData = try await streamCache.ensureStream(for: nextTrack.id, priority: .userInitiated)
+                    let streamData = try await streamCache.ensureStream(
+                        for: nextTrack.id,
+                        spotifyUrl: spotifyUrl,
+                        priority: .userInitiated
+                    )
                     await prepareAndStartInstantCrossfade(with: streamData)
                 } catch {
                     logError(.playback, "[MixEngine] Instant mix prewarm failed: \(error)")
@@ -420,6 +441,7 @@ final class MixPlaybackEngine {
 
         logInfo(.playback, "[MixEngine] mix_prewarm_start: \(nextTrack.title)")
 
+        let scTrack = nextItem.soundCloudTrack
         Task {
             do {
                 // Check for downloaded file first - instant offline playback
@@ -434,20 +456,29 @@ final class MixPlaybackEngine {
                     return
                 }
 
+                // Determine if this is a Spotify track
+                let spotifyUrl = scTrack?.permalink_url.flatMap { url in
+                    (url.contains("spotify.com") || url.contains("spotify:")) ? url : nil
+                }
+
                 // Fall back to streaming - check if we need to refresh
                 let deadline = Date().addingTimeInterval(crossfadeSeconds + 15)
                 let needsRefresh = await streamCache.isStreamExpiring(for: nextTrack.id, before: deadline)
                 let streamData: CachedStreamData
 
                 if needsRefresh {
-                    // Force refresh
-                    guard let refreshed = await streamCache.forceRefresh(for: nextTrack.id) else {
+                    // Force refresh (pass spotifyUrl for Spotify tracks)
+                    guard let refreshed = await streamCache.forceRefresh(for: nextTrack.id, spotifyUrl: spotifyUrl) else {
                         throw NSError(domain: "MixEngine", code: 1, userInfo: [NSLocalizedDescriptionKey: "Stream refresh failed"])
                     }
                     streamData = refreshed
                 } else {
                     // Get cached or fetch fresh
-                    streamData = try await streamCache.ensureStream(for: nextTrack.id, priority: .userInitiated)
+                    streamData = try await streamCache.ensureStream(
+                        for: nextTrack.id,
+                        spotifyUrl: spotifyUrl,
+                        priority: .userInitiated
+                    )
                 }
 
                 prepareNextPlayer(with: streamData)
@@ -703,11 +734,11 @@ final class MixPlaybackEngine {
         }
 
         let asset: AVURLAsset
-        if streamData.streamType == "local" {
-            // Local file - no headers needed
+        if streamData.streamType == "local" || streamData.accessToken.isEmpty {
+            // Local file or Spotify stream - no OAuth headers needed
             asset = AVURLAsset(url: url)
         } else {
-            // Remote stream - add OAuth headers
+            // SoundCloud remote stream - add OAuth headers
             let headers = ["Authorization": "OAuth \(streamData.accessToken)"]
             asset = AVURLAsset(url: url, options: [
                 "AVURLAssetHTTPHeaderFieldsKey": headers
@@ -731,8 +762,9 @@ final class MixPlaybackEngine {
                 switch item.status {
                 case .readyToPlay:
                     // Duration is now available - notify delegate for UI update
-                    let dur = CMTimeGetSeconds(item.duration)
-                    if dur.isFinite && dur > 0 {
+                    // Use self.duration which handles Spotify duration override
+                    let dur = self.duration
+                    if dur > 0 {
                         self.delegate?.mixEngineDidUpdateTime(self, currentTime: self.currentTime, duration: dur)
                     }
                 case .failed:

@@ -9,31 +9,45 @@
 import Foundation
 
 /// Cached stream URL with expiration tracking
-private struct CachedStream {
+private struct CachedStream: Sendable {
     let url: String
     let streamType: String
-    let accessToken: String  // OAuth token for direct CDN access
+    let accessToken: String  // OAuth token for direct CDN access (empty for Spotify)
     let cachedAt: Date
     let expiresAt: Date
+    let isSpotify: Bool
+    let spotifyUrl: String?  // Original Spotify URL for refresh
 
     nonisolated var isExpired: Bool {
         Date() > expiresAt
     }
 
     nonisolated var isExpiringSoon: Bool {
-        // Consider expiring soon if within 1 minute of expiry
-        Date().addingTimeInterval(60) > expiresAt
+        // Spotify URLs expire in ~6 hours, so use 5 minute buffer
+        // SoundCloud URLs expire in ~5 minutes, so use 1 minute buffer
+        let buffer: TimeInterval = isSpotify ? 300 : 60
+        return Date().addingTimeInterval(buffer) > expiresAt
+    }
+
+    nonisolated init(url: String, streamType: String, accessToken: String, cachedAt: Date, expiresAt: Date, isSpotify: Bool = false, spotifyUrl: String? = nil) {
+        self.url = url
+        self.streamType = streamType
+        self.accessToken = accessToken
+        self.cachedAt = cachedAt
+        self.expiresAt = expiresAt
+        self.isSpotify = isSpotify
+        self.spotifyUrl = spotifyUrl
     }
 }
 
 /// Stream URL cache errors
 enum StreamCacheError: LocalizedError {
-    case spotifyNotSupported
+    case noStreamAvailable
 
     var errorDescription: String? {
         switch self {
-        case .spotifyNotSupported:
-            return "Spotify streaming coming soon"
+        case .noStreamAvailable:
+            return "No stream available for this track"
         }
     }
 }
@@ -51,6 +65,7 @@ actor StreamURLCache {
     static let shared = StreamURLCache()
 
     private let convexService = ConvexService.shared
+    private let spotifyService = SpotifyStreamService.shared
 
     /// Track ID -> Cached stream mapping
     private var cache: [String: CachedStream] = [:]
@@ -59,7 +74,7 @@ actor StreamURLCache {
     private var inFlight: [String: Task<CachedStreamData, Error>] = [:]
 
     /// Pending prefetch queue (rate-limited to avoid flooding network/server)
-    private var pendingPrefetch: [String] = []
+    private var pendingPrefetch: [(trackId: String, spotifyUrl: String?)] = []
     private var pendingPrefetchSet: Set<String> = []
     private var prefetchWorker: Task<Void, Never>?
 
@@ -68,7 +83,11 @@ actor StreamURLCache {
 
     /// SoundCloud HLS URLs expire after ~5 minutes (signed Policy + Signature)
     /// Cache for 3 minutes to leave buffer before expiration
-    private let defaultExpiryInterval: TimeInterval = 180
+    private let soundCloudExpiryInterval: TimeInterval = 180
+
+    /// Spotify stream URLs expire after ~6 hours
+    /// Cache for 5.5 hours to leave buffer before expiration
+    private let spotifyExpiryInterval: TimeInterval = 19800
 
     private init() {
         logDebug(.cache, "StreamURLCache initialized")
@@ -88,7 +107,7 @@ actor StreamURLCache {
         }
 
         if cached.isExpiringSoon {
-            enqueuePrefetch(trackId: trackId)
+            enqueuePrefetch(trackId: trackId, spotifyUrl: nil)
         }
 
         return CachedStreamData(
@@ -121,31 +140,31 @@ actor StreamURLCache {
     }
 
     /// Prefetch stream URL for a track (fire and forget)
-    /// Uses Convex action for direct CDN URLs
-    func prefetchStreamURL(for trackId: String) {
-        enqueuePrefetch(trackId: trackId)
+    /// Uses Convex action for SoundCloud, SpotifyStreamService for Spotify
+    func prefetchStreamURL(for trackId: String, spotifyUrl: String? = nil) {
+        enqueuePrefetch(trackId: trackId, spotifyUrl: spotifyUrl)
     }
 
     /// Aggressively prefetch stream URLs for multiple tracks
-    /// Spotify-style: prefetch next 3-5 tracks in queue
-    func prefetchBatch(trackIds: [String], priority: TaskPriority = .utility) {
+    /// Prefetch next 3-5 tracks in queue
+    func prefetchBatch(trackIds: [String], spotifyUrls: [String: String] = [:], priority: TaskPriority = .utility) {
         logDebug(.cache, "Batch prefetching \(trackIds.count) tracks")
 
         for trackId in trackIds {
-            enqueuePrefetch(trackId: trackId)
+            enqueuePrefetch(trackId: trackId, spotifyUrl: spotifyUrls[trackId])
         }
     }
 
     /// Prefetch stream URLs for upcoming tracks in queue
-    /// Looks ahead N tracks (default: 3, Spotify uses 3)
-    func prefetchUpcoming(tracks: [Track], lookAhead: Int = 3) {
+    /// Looks ahead N tracks (default: 3)
+    func prefetchUpcoming(tracks: [Track], spotifyUrls: [String: String] = [:], lookAhead: Int = 3) {
         let trackIds = tracks.prefix(lookAhead).map { $0.id }
-        prefetchBatch(trackIds: trackIds)
+        prefetchBatch(trackIds: trackIds, spotifyUrls: spotifyUrls)
     }
 
     /// Prefetch current track + neighbors (previous + next N tracks)
     /// Useful for queue browsing and instant playback
-    func prefetchTrackAndNeighbors(currentIndex: Int, queue: [Track], lookAhead: Int = 3) {
+    func prefetchTrackAndNeighbors(currentIndex: Int, queue: [Track], spotifyUrls: [String: String] = [:], lookAhead: Int = 3) {
         var trackIds: [String] = []
 
         // Add previous track (instant back button)
@@ -160,7 +179,7 @@ actor StreamURLCache {
         let nextTracks = queue.dropFirst(currentIndex + 1).prefix(lookAhead)
         trackIds.append(contentsOf: nextTracks.map { $0.id })
 
-        prefetchBatch(trackIds: trackIds, priority: .userInitiated)
+        prefetchBatch(trackIds: trackIds, spotifyUrls: spotifyUrls, priority: .userInitiated)
     }
 
     /// Clear expired entries from cache
@@ -189,18 +208,22 @@ actor StreamURLCache {
     /// Force refresh stream URL for a track (bypasses cache)
     /// Use when stream fails during playback and needs fresh URL
     @discardableResult
-    func forceRefresh(for trackId: String) async -> CachedStreamData? {
-        // Remove from cache first
+    func forceRefresh(for trackId: String, spotifyUrl: String? = nil) async -> CachedStreamData? {
+        // Preserve spotifyUrl from cache before removing (for Spotify track refresh)
+        let cachedSpotifyUrl = cache[trackId]?.spotifyUrl
+        let effectiveSpotifyUrl = spotifyUrl ?? cachedSpotifyUrl
+        
+        // Remove from cache
         cache.removeValue(forKey: trackId)
         inFlight[trackId]?.cancel()
         inFlight.removeValue(forKey: trackId)
         pendingPrefetchSet.remove(trackId)
-        pendingPrefetch.removeAll { $0 == trackId }
+        pendingPrefetch.removeAll { $0.trackId == trackId }
 
-        logDebug(.cache, "Force refreshing stream URL for track: \(trackId)")
+        logDebug(.cache, "Force refreshing stream URL for track: \(trackId), spotifyUrl: \(effectiveSpotifyUrl ?? "nil")")
 
         do {
-            let stream = try await ensureStream(for: trackId, priority: .userInitiated, forceRefresh: true)
+            let stream = try await ensureStream(for: trackId, spotifyUrl: effectiveSpotifyUrl, priority: .userInitiated, forceRefresh: true)
 
             logDebug(.cache, "Force refresh successful for track: \(trackId)")
 
@@ -220,18 +243,18 @@ actor StreamURLCache {
 
     /// Ensure a stream is available (used by actual playback start).
     /// - Note: Returns cached value if fresh; otherwise fetches and updates cache.
+    /// - Parameters:
+    ///   - trackId: The track ID to fetch stream for
+    ///   - spotifyUrl: Optional Spotify URL (if nil and user is on Spotify, constructs from trackId)
+    ///   - priority: Task priority for the fetch
+    ///   - forceRefresh: If true, bypasses cache and fetches fresh URL
     func ensureStream(
         for trackId: String,
+        spotifyUrl: String? = nil,
         priority: TaskPriority = .userInitiated,
         forceRefresh: Bool = false
     ) async throws -> CachedStreamData {
-        // Spotify streaming not supported - fail fast without network call
-        let isSpotify = await MainActor.run { AuthManager.shared.currentProvider == .spotify }
-        if isSpotify {
-            throw StreamCacheError.spotifyNotSupported
-        }
-
-        if !forceRefresh, let cached = getCachedStream(for: trackId), cached.url.isEmpty == false {
+        if !forceRefresh, let cached = getCachedStream(for: trackId), !cached.url.isEmpty {
             return cached
         }
 
@@ -239,13 +262,40 @@ actor StreamURLCache {
             return try await existingTask.value
         }
 
-        let task = Task<CachedStreamData, Error>(priority: priority) { [convexService] in
-            let response = try await convexService.getDirectStreamURL(trackId: trackId)
-            return CachedStreamData(
-                url: response.stream_url,
-                streamType: response.stream_type,
-                accessToken: response.access_token
-            )
+        // Determine if we should use Spotify service
+        // spotifyUrl MUST be explicitly provided - we cannot reliably detect Spotify tracks
+        // from trackId alone since normalized Spotify tracks use numeric IDs (not base62).
+        // The spotifyUrl comes from SoundCloudTrack.permalink_url which contains the Spotify URL.
+        let effectiveSpotifyUrl: String? = spotifyUrl
+        let isSpotify = effectiveSpotifyUrl != nil
+
+        logInfo(.cache, "[StreamCache] ensureStream: trackId=\(trackId), usingSpotifyService=\(isSpotify), spotifyUrl=\(effectiveSpotifyUrl ?? "nil")")
+
+        let task = Task<CachedStreamData, Error>(priority: priority) { [convexService, spotifyService] in
+            if let spotifyUrl = effectiveSpotifyUrl {
+                logInfo(.cache, "[StreamCache] Fetching via SpotifyStreamService: \(spotifyUrl)")
+                let response = try await spotifyService.getStreamURL(spotifyUrl: spotifyUrl)
+                logInfo(.cache, "[StreamCache] Spotify stream OK: format=\(response.format)")
+                return CachedStreamData(
+                    url: response.streamURL,
+                    streamType: response.format,
+                    accessToken: ""
+                )
+            } else {
+                logInfo(.cache, "[StreamCache] Fetching via Convex: trackId=\(trackId)")
+                do {
+                    let response = try await convexService.getDirectStreamURL(trackId: trackId)
+                    logInfo(.cache, "[StreamCache] Convex stream OK: type=\(response.stream_type)")
+                    return CachedStreamData(
+                        url: response.stream_url,
+                        streamType: response.stream_type,
+                        accessToken: response.access_token
+                    )
+                } catch {
+                    logError(.cache, "[StreamCache] Convex stream FAILED for trackId=\(trackId): \(error)")
+                    throw error
+                }
+            }
         }
 
         inFlight[trackId] = task
@@ -253,12 +303,15 @@ actor StreamURLCache {
 
         let stream = try await task.value
 
+        let expiryInterval = isSpotify ? spotifyExpiryInterval : soundCloudExpiryInterval
         let cached = CachedStream(
             url: stream.url,
             streamType: stream.streamType,
             accessToken: stream.accessToken,
             cachedAt: Date(),
-            expiresAt: Date().addingTimeInterval(defaultExpiryInterval)
+            expiresAt: Date().addingTimeInterval(expiryInterval),
+            isSpotify: isSpotify,
+            spotifyUrl: effectiveSpotifyUrl
         )
 
         cache[trackId] = cached
@@ -267,7 +320,7 @@ actor StreamURLCache {
 
     // MARK: - Prefetch Queue (rate-limited)
 
-    private func enqueuePrefetch(trackId: String) {
+    private func enqueuePrefetch(trackId: String, spotifyUrl: String?) {
         cleanupExpired()
 
         // Skip if already cached or in-flight
@@ -278,7 +331,7 @@ actor StreamURLCache {
         guard pendingPrefetch.count < maxQueuedPrefetches else { return }
         guard !pendingPrefetchSet.contains(trackId) else { return }
 
-        pendingPrefetch.append(trackId)
+        pendingPrefetch.append((trackId: trackId, spotifyUrl: spotifyUrl))
         pendingPrefetchSet.insert(trackId)
         startPrefetchWorkerIfNeeded()
     }
@@ -297,33 +350,24 @@ actor StreamURLCache {
             prefetchWorker = nil
         }
 
-        // Skip prefetching for Spotify users - streaming not supported
-        let isSpotify = await MainActor.run { AuthManager.shared.currentProvider == .spotify }
-        if isSpotify {
-            // Clear pending prefetches
-            pendingPrefetch.removeAll()
-            pendingPrefetchSet.removeAll()
-            return
-        }
-
         while !Task.isCancelled {
-            guard let trackId = dequeuePrefetch() else {
+            guard let item = dequeuePrefetch() else {
                 return
             }
 
             do {
-                _ = try await ensureStream(for: trackId, priority: .utility)
-                logDebug(.cache, "Prefetched stream URL for track: \(trackId)")
+                _ = try await ensureStream(for: item.trackId, spotifyUrl: item.spotifyUrl, priority: .utility)
+                logDebug(.cache, "Prefetched stream URL for track: \(item.trackId)")
             } catch {
-                logError(.cache, "Prefetch failed for track \(trackId): \(error)")
+                logError(.cache, "Prefetch failed for track \(item.trackId): \(error)")
             }
         }
     }
 
-    private func dequeuePrefetch() -> String? {
+    private func dequeuePrefetch() -> (trackId: String, spotifyUrl: String?)? {
         guard !pendingPrefetch.isEmpty else { return nil }
         let next = pendingPrefetch.removeFirst()
-        pendingPrefetchSet.remove(next)
+        pendingPrefetchSet.remove(next.trackId)
         return next
     }
 }

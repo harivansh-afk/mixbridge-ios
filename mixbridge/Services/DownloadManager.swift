@@ -52,12 +52,6 @@ final class DownloadManager: ObservableObject {
 
     /// Download a track for offline playback
     func downloadTrack(_ track: SoundCloudTrack) {
-        // Gate Spotify downloads - not supported in this phase
-        if AuthManager.shared.currentProvider == .spotify {
-            logWarning(.downloads, "Downloads disabled for Spotify provider")
-            return
-        }
-
         let trackId = String(track.id)
 
         guard !isDownloading(trackId: trackId) else { return }
@@ -72,11 +66,6 @@ final class DownloadManager: ObservableObject {
 
     /// Download multiple tracks with throttled concurrency
     func downloadTracks(_ tracks: [SoundCloudTrack]) {
-        // Gate Spotify downloads - not supported in this phase
-        if AuthManager.shared.currentProvider == .spotify {
-            logWarning(.downloads, "Downloads disabled for Spotify provider")
-            return
-        }
 
         let maxConcurrent = 3
 
@@ -324,15 +313,15 @@ final class DownloadManager: ObservableObject {
 
     private func performDownload(track: SoundCloudTrack) async {
         let trackId = String(track.id)
+        let permalinkUrl = track.permalink_url
 
         do {
             logInfo(.downloads, "Starting download for: \(track.title)")
 
-            // Build SoundCloud URL from track permalink_url
-            guard let soundcloudUrl = track.permalink_url else {
+            guard let permalinkUrl else {
                 throw DownloadError.invalidURL
             }
-            
+
             // Check disk space before downloading (require at least 50MB free)
             let downloadsDir = try getDownloadsDirectory()
             if let freeSpace = try? URL(fileURLWithPath: NSHomeDirectory())
@@ -341,52 +330,39 @@ final class DownloadManager: ObservableObject {
                freeSpace < 50_000_000 {
                 throw DownloadError.insufficientStorage
             }
-            
-            // Get signed stream URL via Railway yt-dlp API directly (no OAuth headers needed!)
-            let ytdlpResponse = try await getStreamURL(soundcloudUrl: soundcloudUrl)
-
-            guard let streamURL = URL(string: ytdlpResponse.streamURL) else {
-                throw DownloadError.invalidURL
-            }
-
-            // Determine file extension based on format
-            let fileExtension = ytdlpResponse.format.contains("mp3") ? "mp3" : "m4a"
-            let destinationURL = downloadsDir.appendingPathComponent("\(trackId).\(fileExtension)")
 
             // Remove any existing files (both .mp3 and .m4a)
             try? FileManager.default.removeItem(at: downloadsDir.appendingPathComponent("\(trackId).mp3"))
             try? FileManager.default.removeItem(at: downloadsDir.appendingPathComponent("\(trackId).m4a"))
 
-            if ytdlpResponse.isDirect {
-                // Direct HTTP URL - download file directly
-                logInfo(.downloads, "Downloading via direct HTTP URL (format: \(ytdlpResponse.format))")
-                try await downloadDirectFile(from: streamURL, to: destinationURL, trackId: trackId)
+            let finalPath: URL
+
+            if permalinkUrl.contains("spotify.com") || permalinkUrl.contains("spotify:") {
+                finalPath = try await performSpotifyDownload(
+                    spotifyUrl: permalinkUrl,
+                    trackId: trackId,
+                    downloadsDir: downloadsDir
+                )
             } else {
-                // HLS-only track - use server-side download endpoint (returns MP3)
-                logInfo(.downloads, "Downloading via server (HLS track)")
-                let mp3Destination = downloadsDir.appendingPathComponent("\(trackId).mp3")
-                try await downloadViaServer(soundcloudUrl: soundcloudUrl, to: mp3Destination, trackId: trackId)
+                finalPath = try await performSoundCloudDownload(
+                    soundcloudUrl: permalinkUrl,
+                    trackId: trackId,
+                    downloadsDir: downloadsDir
+                )
             }
 
-            // Find the actual downloaded file (could be .mp3 or .m4a)
-            let mp3Path = downloadsDir.appendingPathComponent("\(trackId).mp3")
-            let m4aPath = downloadsDir.appendingPathComponent("\(trackId).m4a")
-            let actualPath = FileManager.default.fileExists(atPath: mp3Path.path) ? mp3Path :
-                             FileManager.default.fileExists(atPath: m4aPath.path) ? m4aPath : nil
-
             guard !Task.isCancelled else {
-                try? FileManager.default.removeItem(at: mp3Path)
-                try? FileManager.default.removeItem(at: m4aPath)
+                try? FileManager.default.removeItem(at: finalPath)
                 downloadStatuses[trackId] = .notDownloaded
                 downloadTasks.removeValue(forKey: trackId)
                 return
             }
 
             // Verify file exists and get size
-            guard let finalPath = actualPath, FileManager.default.fileExists(atPath: finalPath.path) else {
+            guard FileManager.default.fileExists(atPath: finalPath.path) else {
                 throw DownloadError.saveFailed
             }
-            
+
             let attrs = try FileManager.default.attributesOfItem(atPath: finalPath.path)
             guard let fileSize = attrs[.size] as? Int64, fileSize > 0 else {
                 try? FileManager.default.removeItem(at: finalPath)
@@ -415,15 +391,68 @@ final class DownloadManager: ObservableObject {
             logInfo(.downloads, "Download complete: \(track.title) (\(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)))")
         } catch {
             logError(.downloads, "Download failed for \(track.title): \(error)")
-            
-            // Clean up partial files on failure (could be .mp3 or .m4a)
+
+            // Clean up partial files on failure
             if let downloadsDir = try? getDownloadsDirectory() {
                 try? FileManager.default.removeItem(at: downloadsDir.appendingPathComponent("\(trackId).mp3"))
                 try? FileManager.default.removeItem(at: downloadsDir.appendingPathComponent("\(trackId).m4a"))
             }
-            
+
             downloadStatuses[trackId] = .failed(error)
             downloadTasks.removeValue(forKey: trackId)
+        }
+    }
+
+    private func performSpotifyDownload(spotifyUrl: String, trackId: String, downloadsDir: URL) async throws -> URL {
+        logInfo(.downloads, "Downloading Spotify track via spotdl")
+
+        // Use SpotifyStreamService to get stream URL (direct HTTPS)
+        let streamResponse = try await SpotifyStreamService.shared.getStreamURL(spotifyUrl: spotifyUrl)
+
+        guard let streamURL = URL(string: streamResponse.streamURL) else {
+            throw DownloadError.invalidURL
+        }
+
+        // Spotify streams are typically m4a (mp4a.40.2)
+        let fileExtension = streamResponse.format.contains("mp3") ? "mp3" : "m4a"
+        let destinationURL = downloadsDir.appendingPathComponent("\(trackId).\(fileExtension)")
+
+        logInfo(.downloads, "Downloading Spotify stream (format: \(streamResponse.format))")
+        try await downloadDirectFile(from: streamURL, to: destinationURL, trackId: trackId)
+
+        return destinationURL
+    }
+
+    private func performSoundCloudDownload(soundcloudUrl: String, trackId: String, downloadsDir: URL) async throws -> URL {
+        // Get signed stream URL via Railway yt-dlp API
+        let ytdlpResponse = try await getStreamURL(soundcloudUrl: soundcloudUrl)
+
+        guard let streamURL = URL(string: ytdlpResponse.streamURL) else {
+            throw DownloadError.invalidURL
+        }
+
+        let fileExtension = ytdlpResponse.format.contains("mp3") ? "mp3" : "m4a"
+        let destinationURL = downloadsDir.appendingPathComponent("\(trackId).\(fileExtension)")
+
+        if ytdlpResponse.isDirect {
+            logInfo(.downloads, "Downloading via direct HTTP URL (format: \(ytdlpResponse.format))")
+            try await downloadDirectFile(from: streamURL, to: destinationURL, trackId: trackId)
+        } else {
+            logInfo(.downloads, "Downloading via server (HLS track)")
+            let mp3Destination = downloadsDir.appendingPathComponent("\(trackId).mp3")
+            try await downloadViaServer(soundcloudUrl: soundcloudUrl, to: mp3Destination, trackId: trackId)
+        }
+
+        // Find the actual downloaded file
+        let mp3Path = downloadsDir.appendingPathComponent("\(trackId).mp3")
+        let m4aPath = downloadsDir.appendingPathComponent("\(trackId).m4a")
+
+        if FileManager.default.fileExists(atPath: mp3Path.path) {
+            return mp3Path
+        } else if FileManager.default.fileExists(atPath: m4aPath.path) {
+            return m4aPath
+        } else {
+            throw DownloadError.saveFailed
         }
     }
 

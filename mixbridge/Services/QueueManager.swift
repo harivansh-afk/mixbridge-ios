@@ -42,6 +42,11 @@ class QueueManager {
         queue.items.map { $0.track }
     }
 
+    /// Direct access to queue items (includes SoundCloudTrack for Spotify URL lookup)
+    var queueItems: [QueueItem] {
+        queue.items
+    }
+
     private init() {
         logInfo(.queue, "QueueManager initialized")
     }
@@ -76,15 +81,15 @@ class QueueManager {
     private func notifyQueueChanged() {
         logDebug(.queue, "notifyQueueChanged: count=\(queue.count), peek=\(queue.peek()?.track.title ?? "nil")")
         prefetchTask?.cancel()
-        let snapshotTracks = queueTracks
-        prefetchTask = Task { [snapshotTracks] in
+        let snapshotItems = queueItems
+        prefetchTask = Task { [snapshotItems] in
             try? await Task.sleep(for: .milliseconds(100))  // Debounce rapid changes
             guard !Task.isCancelled else { return }
             logDebug(.queue, "notifyQueueChanged: triggering handleQueueChanged + prefetch")
             PlaybackCoordinator.shared.handleQueueChanged()
 
             Task(priority: .utility) {
-                await QueueBackgroundWorker.shared.prefetchQueue(tracks: snapshotTracks, currentIndex: 0)
+                await QueueBackgroundWorker.shared.prefetchQueue(items: snapshotItems, currentIndex: 0)
             }
             PlaybackCoordinator.shared.prefetchQueue()
         }
