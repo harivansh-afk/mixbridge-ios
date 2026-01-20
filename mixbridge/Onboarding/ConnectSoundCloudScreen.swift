@@ -4,14 +4,17 @@ import Foundation
 
 struct ConnectSoundCloudScreen: View {
     @Environment(AuthManager.self) private var authManager
+    @Environment(FeatureFlags.self) private var featureFlags
     @State private var authSession: ASWebAuthenticationSession?
     @State private var contextProvider = PresentationContextProvider()
     @State private var loginStartTime: Date?
     @State private var peelProgress: Double = 0
     @State private var contentOpacity: Double = 0
     @State private var authenticatingProvider: AuthProvider?
-
-    private let staticHoldProgress: Double = 0.65
+    
+    private var staticHoldProgress: Double {
+        featureFlags.spotifyLoginEnabled ? 0.65 : 0.70
+    }
     private let fadeInDuration: Double = 0.45
     private let screenBufferDelay: Double = 0.3
     private let buttonFadeDuration: Double = 0.35
@@ -45,37 +48,39 @@ struct ConnectSoundCloudScreen: View {
                         }
 
                         // Spotify Button
-                        Button {
-                            HapticManager.heavy()
-                            loginStartTime = Date()
-                            Analytics.shared.track("login_tapped", properties: ["provider": "spotify"])
-                            withAnimation(.easeOut(duration: buttonFadeDuration)) {
-                                authenticatingProvider = .spotify
+                        if featureFlags.spotifyLoginEnabled {
+                            Button {
+                                HapticManager.heavy()
+                                loginStartTime = Date()
+                                Analytics.shared.track("login_tapped", properties: ["provider": "spotify"])
+                                withAnimation(.easeOut(duration: buttonFadeDuration)) {
+                                    authenticatingProvider = .spotify
+                                }
+                                startAuthentication(provider: .spotify)
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image("spotify")
+                                        .renderingMode(.template)
+                                        .resizable()
+                                        .frame(width: 20, height: 20)
+                                    // Use SoundCloud text width as reference, overlay Spotify
+                                    Text("Login with SoundCloud")
+                                        .font(.callout)
+                                        .hidden()
+                                        .overlay(alignment: .leading) {
+                                            Text("Login with Spotify")
+                                                .font(.callout)
+                                        }
+                                }
+                                .foregroundStyle(.primary)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 50)
+                                .contentShape(Capsule())
+                                .glassEffect(.regular, in: .capsule)
                             }
-                            startAuthentication(provider: .spotify)
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image("spotify")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .frame(width: 20, height: 20)
-                                // Use SoundCloud text width as reference, overlay Spotify
-                                Text("Login with SoundCloud")
-                                    .font(.callout)
-                                    .hidden()
-                                    .overlay(alignment: .leading) {
-                                        Text("Login with Spotify")
-                                            .font(.callout)
-                                    }
-                            }
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .contentShape(Capsule())
-                            .glassEffect(.regular, in: .capsule)
+                            .buttonStyle(.plain)
+                            .opacity(authenticatingProvider == nil || authenticatingProvider == .spotify ? 1 : 0)
                         }
-                        .buttonStyle(.plain)
-                        .opacity(authenticatingProvider == nil || authenticatingProvider == .spotify ? 1 : 0)
 
                         // SoundCloud Button
                         Button {

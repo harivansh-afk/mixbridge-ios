@@ -18,6 +18,10 @@ final class FeatureFlags {
     var downloadsEnabled: Bool {
         Statsig.checkGate("downloads_enabled")
     }
+
+    var spotifyLoginEnabled: Bool {
+        Statsig.checkGate("spotify_login_enabled")
+    }
     
     // MARK: - Initialization
     
