@@ -10,7 +10,7 @@ struct ConnectSoundCloudScreen: View {
     @State private var peelProgress: Double = 0
     @State private var contentOpacity: Double = 0
 
-    private let staticHoldProgress: Double = 0.67
+    private let staticHoldProgress: Double = 0.65
     private let fadeInDuration: Double = 0.45
     private let screenBufferDelay: Double = 0.3
 
@@ -49,13 +49,19 @@ struct ConnectSoundCloudScreen: View {
                             Analytics.shared.track("login_tapped", properties: ["provider": "spotify"])
                             startAuthentication(provider: .spotify)
                         } label: {
-                            HStack(spacing: 12) {
+                            HStack(spacing: 10) {
                                 Image("spotify")
                                     .renderingMode(.template)
                                     .resizable()
                                     .frame(width: 20, height: 20)
-                                Text("Login with Spotify")
+                                // Use SoundCloud text width as reference, overlay Spotify
+                                Text("Login with SoundCloud")
                                     .font(.callout)
+                                    .hidden()
+                                    .overlay(alignment: .leading) {
+                                        Text("Login with Spotify")
+                                            .font(.callout)
+                                    }
                             }
                             .foregroundStyle(.primary)
                             .frame(maxWidth: .infinity)
@@ -71,8 +77,9 @@ struct ConnectSoundCloudScreen: View {
                             Analytics.shared.track("login_tapped", properties: ["provider": "soundcloud"])
                             startAuthentication(provider: .soundcloud)
                         } label: {
-                            HStack(spacing: 12) {
+                            HStack(spacing: 10) {
                                 Image(systemName: "cloud.fill")
+                                    .font(.system(size: 18))
                                 Text("Login with SoundCloud")
                                     .font(.callout)
                             }
