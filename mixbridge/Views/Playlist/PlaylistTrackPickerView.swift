@@ -5,9 +5,225 @@
 //  Apple Music-style track picker for playlist creation.
 //  Uses native SwiftUI List with insetGrouped sections.
 //
+//  PlaylistTrackPickerContent: Embeds in parent NavigationStack (no nested stack).
+//  PlaylistTrackPickerView: Standalone version with its own NavigationStack.
+//
 
 import SwiftUI
 
+// MARK: - Content View (Embedded in Parent NavigationStack)
+
+/// Track picker content that embeds in a parent NavigationStack.
+/// Uses navigationPath binding for proper back navigation with animation.
+struct PlaylistTrackPickerContent: View {
+    @Bindable var viewModel: CreatePlaylistViewModel
+    @Binding var navigationPath: NavigationPath
+    @Environment(AuthManager.self) private var authManager
+    var onCreated: ((String, Int) -> Void)?
+
+    private var navigationTitle: String {
+        let count = viewModel.selectedCount
+        if count == 0 {
+            return "Add to \"\(viewModel.playlistName)\""
+        } else {
+            let songText = count == 1 ? "song" : "songs"
+            return "\(count) \(songText) added to \"\(viewModel.playlistName)\""
+        }
+    }
+
+    var body: some View {
+        List {
+            if !viewModel.searchText.isEmpty {
+                searchResultsSection
+            } else {
+                librarySection
+                suggestionsSection
+            }
+        }
+        .listStyle(InsetGroupedListStyle())
+        .listSectionSpacing(16)
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle(navigationTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .searchable(text: $viewModel.searchText, prompt: "Artists, Songs, and More")
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button {
+                    navigationPath.removeLast()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .fontWeight(.medium)
+                }
+            }
+
+            ToolbarItem(placement: .confirmationAction) {
+                Button {
+                    createPlaylist()
+                } label: {
+                    Image(systemName: "checkmark")
+                        .fontWeight(.semibold)
+                }
+                .disabled(!viewModel.canCreatePlaylist || viewModel.isCreating)
+            }
+        }
+        .task {
+            if let userId = authManager.currentUserId {
+                await viewModel.loadTrackSources(userId: userId)
+            }
+        }
+        .onChange(of: viewModel.searchText) { _, newValue in
+            Task {
+                try? await Task.sleep(for: .milliseconds(300))
+                guard viewModel.searchText == newValue else { return }
+                if let userId = authManager.currentUserId {
+                    await viewModel.search(userId: userId)
+                }
+            }
+        }
+    }
+
+    // MARK: - Library Section
+
+    @ViewBuilder
+    private var librarySection: some View {
+        Section {
+            NavigationLink {
+                TrackSelectionListView(
+                    title: "Liked Tracks",
+                    tracks: viewModel.likedTracks,
+                    viewModel: viewModel,
+                    onConfirm: { createPlaylist() }
+                )
+            } label: {
+                Label {
+                    Text("Liked Tracks")
+                } icon: {
+                    Image("heart")
+                        .resizable()
+                        .frame(width: 25, height: 25)
+                }
+            }
+
+            NavigationLink {
+                TrackSelectionListView(
+                    title: "Recently Played",
+                    tracks: viewModel.recentlyPlayed,
+                    viewModel: viewModel,
+                    onConfirm: { createPlaylist() }
+                )
+            } label: {
+                Label {
+                    Text("Recently Played")
+                } icon: {
+                    Image("clock")
+                        .resizable()
+                        .frame(width: 25, height: 25)
+                }
+            }
+
+            NavigationLink {
+                PlaylistSelectionListView(
+                    playlists: viewModel.libraryPlaylists,
+                    viewModel: viewModel,
+                    onConfirm: { createPlaylist() }
+                )
+            } label: {
+                Label {
+                    Text("Playlists")
+                } icon: {
+                    Image("playlist")
+                        .resizable()
+                        .frame(width: 25, height: 25)
+                }
+            }
+        } header: {
+            Text("Library")
+        }
+    }
+
+    // MARK: - Suggestions Section
+
+    @ViewBuilder
+    private var suggestionsSection: some View {
+        if !viewModel.filteredRecentlyPlayed.isEmpty {
+            let items = Array(viewModel.filteredRecentlyPlayed.prefix(15))
+            Section {
+                let rows = items.indexedRows()
+                ForEach(rows) { row in
+                    SelectableTrackRow(
+                        track: row.item.track,
+                        isSelected: viewModel.isSelected(row.item)
+                    ) {
+                        viewModel.toggleTrackSelection(row.item)
+                    }
+                    .listRowInsets(EdgeInsets(
+                        top: row.index == 0 ? 16 : 6,
+                        leading: 16,
+                        bottom: row.index == rows.count - 1 ? 16 : 6,
+                        trailing: 16
+                    ))
+                }
+            } header: {
+                Text("Suggestions")
+            }
+        }
+    }
+
+    // MARK: - Search Results
+
+    @ViewBuilder
+    private var searchResultsSection: some View {
+        if viewModel.isSearching {
+            Section {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                    Spacer()
+                }
+                .padding(.vertical, 20)
+                .listRowBackground(Color(.systemGroupedBackground))
+            }
+        } else if viewModel.searchResults.isEmpty {
+            Section {
+                ContentUnavailableView.search(text: viewModel.searchText)
+                    .listRowBackground(Color(.systemGroupedBackground))
+            }
+        } else {
+            Section {
+                ForEach(viewModel.searchResults) { item in
+                    SelectableTrackRow(
+                        track: item.track,
+                        isSelected: viewModel.isSelected(item)
+                    ) {
+                        viewModel.toggleTrackSelection(item)
+                    }
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    .listRowBackground(Color(.systemGroupedBackground))
+                }
+            } header: {
+                Text("Search Results")
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func createPlaylist() {
+        Task {
+            if let userId = authManager.currentUserId {
+                if let playlistId = await viewModel.createPlaylist(userId: userId) {
+                    onCreated?(playlistId, viewModel.selectedTracks.count)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Standalone View (With Own NavigationStack)
+
+/// Standalone track picker with its own NavigationStack.
+/// Use this when presenting the picker outside of an existing navigation context.
 struct PlaylistTrackPickerView: View {
     @Bindable var viewModel: CreatePlaylistViewModel
     @Environment(AuthManager.self) private var authManager
@@ -43,9 +259,10 @@ struct PlaylistTrackPickerView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
-                        viewModel.goBackToNameEntry()
+                        dismiss()
                     } label: {
-                        Image(systemName: "chevron.left")
+                        Image(systemName: "xmark")
+                            .fontWeight(.medium)
                     }
                 }
 
@@ -85,7 +302,8 @@ struct PlaylistTrackPickerView: View {
                 TrackSelectionListView(
                     title: "Liked Tracks",
                     tracks: viewModel.likedTracks,
-                    viewModel: viewModel
+                    viewModel: viewModel,
+                    onConfirm: { createPlaylist() }
                 )
             } label: {
                 Label {
@@ -101,7 +319,8 @@ struct PlaylistTrackPickerView: View {
                 TrackSelectionListView(
                     title: "Recently Played",
                     tracks: viewModel.recentlyPlayed,
-                    viewModel: viewModel
+                    viewModel: viewModel,
+                    onConfirm: { createPlaylist() }
                 )
             } label: {
                 Label {
@@ -116,7 +335,8 @@ struct PlaylistTrackPickerView: View {
             NavigationLink {
                 PlaylistSelectionListView(
                     playlists: viewModel.libraryPlaylists,
-                    viewModel: viewModel
+                    viewModel: viewModel,
+                    onConfirm: { createPlaylist() }
                 )
             } label: {
                 Label {
@@ -217,6 +437,8 @@ private struct TrackSelectionListView: View {
     let title: String
     let tracks: [TrackItem]
     @Bindable var viewModel: CreatePlaylistViewModel
+    var onConfirm: (() -> Void)?
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Group {
@@ -247,6 +469,27 @@ private struct TrackSelectionListView: View {
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .fontWeight(.medium)
+                }
+            }
+
+            ToolbarItem(placement: .confirmationAction) {
+                Button {
+                    onConfirm?()
+                } label: {
+                    Image(systemName: "checkmark")
+                        .fontWeight(.semibold)
+                }
+                .disabled(!viewModel.canCreatePlaylist || viewModel.isCreating)
+            }
+        }
     }
 }
 
@@ -256,6 +499,8 @@ private struct PlaylistSelectionListView: View {
     let playlists: [Playlist]
     @Bindable var viewModel: CreatePlaylistViewModel
     @Environment(AuthManager.self) private var authManager
+    @Environment(\.dismiss) private var dismiss
+    var onConfirm: (() -> Void)?
 
     var body: some View {
         Group {
@@ -272,7 +517,8 @@ private struct PlaylistSelectionListView: View {
                             NavigationLink {
                                 PlaylistTracksSelectionView(
                                     playlist: playlist,
-                                    viewModel: viewModel
+                                    viewModel: viewModel,
+                                    onConfirm: onConfirm
                                 )
                             } label: {
                                 PlaylistRowView(playlist: playlist)
@@ -288,6 +534,27 @@ private struct PlaylistSelectionListView: View {
         }
         .navigationTitle("Playlists")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .fontWeight(.medium)
+                }
+            }
+
+            ToolbarItem(placement: .confirmationAction) {
+                Button {
+                    onConfirm?()
+                } label: {
+                    Image(systemName: "checkmark")
+                        .fontWeight(.semibold)
+                }
+                .disabled(!viewModel.canCreatePlaylist || viewModel.isCreating)
+            }
+        }
     }
 }
 
@@ -335,6 +602,8 @@ private struct PlaylistTracksSelectionView: View {
     let playlist: Playlist
     @Bindable var viewModel: CreatePlaylistViewModel
     @Environment(AuthManager.self) private var authManager
+    @Environment(\.dismiss) private var dismiss
+    var onConfirm: (() -> Void)?
 
     @State private var tracks: [TrackItem] = []
     @State private var isLoading = true
@@ -387,6 +656,27 @@ private struct PlaylistTracksSelectionView: View {
         }
         .navigationTitle(playlist.name)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .fontWeight(.medium)
+                }
+            }
+
+            ToolbarItem(placement: .confirmationAction) {
+                Button {
+                    onConfirm?()
+                } label: {
+                    Image(systemName: "checkmark")
+                        .fontWeight(.semibold)
+                }
+                .disabled(!viewModel.canCreatePlaylist || viewModel.isCreating)
+            }
+        }
         .task {
             if let userId = authManager.currentUserId {
                 tracks = await viewModel.loadPlaylistTracks(userId: userId, playlistId: playlist.id)

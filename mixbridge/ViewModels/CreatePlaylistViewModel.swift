@@ -5,6 +5,8 @@
 //  ViewModel for Apple Music-style playlist creation flow.
 //  Manages two-step flow: name entry → track selection.
 //
+//  Navigation is handled by NavigationPath in the view layer.
+//
 
 import Foundation
 import MixBridgeDB
@@ -12,15 +14,6 @@ import MixBridgeDB
 @Observable
 @MainActor
 final class CreatePlaylistViewModel {
-    // MARK: - Flow State
-    
-    enum Step {
-        case nameEntry
-        case trackSelection
-    }
-    
-    var currentStep: Step = .nameEntry
-    
     // MARK: - Name Entry State
 
     var playlistName: String = ""
@@ -30,12 +23,12 @@ final class CreatePlaylistViewModel {
     var canProceedToTrackSelection: Bool {
         !playlistName.trimmingCharacters(in: .whitespaces).isEmpty
     }
-    
+
     // MARK: - Track Selection State
-    
+
     var selectedTracks: [TrackItem] = []
     var searchText: String = ""
-    
+
     var canCreatePlaylist: Bool {
         !selectedTracks.isEmpty && canProceedToTrackSelection
     }
@@ -90,22 +83,9 @@ final class CreatePlaylistViewModel {
     }
     
     // MARK: - Initialization
-    
+
     init() {}
-    
-    // MARK: - Flow Actions
-    
-    func proceedToTrackSelection() {
-        guard canProceedToTrackSelection else { return }
-        HapticManager.medium()
-        currentStep = .trackSelection
-    }
-    
-    func goBackToNameEntry() {
-        HapticManager.light()
-        currentStep = .nameEntry
-    }
-    
+
     // MARK: - Track Selection Actions
     
     func toggleTrackSelection(_ item: TrackItem) {
