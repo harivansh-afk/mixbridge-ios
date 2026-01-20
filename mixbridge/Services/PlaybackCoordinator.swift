@@ -194,13 +194,6 @@ final class PlaybackCoordinator: NSObject {
     }
 
     func play(track: Track, soundCloudTrack: SoundCloudTrack?, queueIndex: Int?, startTime: Double? = nil) {
-        // Gate Spotify playback - not supported in this phase
-        if AuthManager.shared.currentProvider == .spotify {
-            logWarning(.playback, "Playback disabled for Spotify provider")
-            status = .failed("Spotify playback coming soon")
-            return
-        }
-
         // Cancel any in-flight preparation so rapid taps feel instantaneous.
         playbackTask?.cancel()
         isIntendedToPlay = true
@@ -584,7 +577,14 @@ final class PlaybackCoordinator: NSObject {
                 return
             }
 
-            logDebug(.playback, "[MixMode] Fetching stream URL\(forceRefreshURL ? " (force refresh)" : "")...")
+            // Determine if this is a Spotify track
+            let permalinkUrl = context.soundCloudTrack?.permalink_url
+            logInfo(.playback, "[MixMode] trackId=\(context.track.id), permalink_url=\(permalinkUrl ?? "nil"), soundCloudTrack=\(context.soundCloudTrack != nil)")
+            
+            let spotifyUrl = permalinkUrl.flatMap { url in
+                (url.contains("spotify.com") || url.contains("spotify:")) ? url : nil
+            }
+            logInfo(.playback, "[MixMode] spotifyUrl=\(spotifyUrl ?? "nil")")
 
             let stream: CachedStreamData
             if forceRefreshURL {
@@ -603,7 +603,11 @@ final class PlaybackCoordinator: NSObject {
                     }
                     stream = refreshedStream
                 } else {
-                    stream = try await streamCache.ensureStream(for: context.track.id, priority: .userInitiated)
+                    stream = try await streamCache.ensureStream(
+                        for: context.track.id,
+                        spotifyUrl: spotifyUrl,
+                        priority: .userInitiated
+                    )
                 }
             }
             guard activeRequestId == requestId, !Task.isCancelled else { return }
@@ -698,6 +702,14 @@ final class PlaybackCoordinator: NSObject {
             return item
         }
 
+        // Determine if this is a Spotify track (permalink_url contains spotify.com)
+        let permalinkUrl = context.soundCloudTrack?.permalink_url
+        logInfo(.playback, "[prepareItem] trackId=\(context.track.id), permalink_url=\(permalinkUrl ?? "nil")")
+        
+        let spotifyUrl = permalinkUrl.flatMap { url in
+            (url.contains("spotify.com") || url.contains("spotify:")) ? url : nil
+        }
+
         // Fall back to streaming
         let stream: CachedStreamData
 
@@ -720,7 +732,11 @@ final class PlaybackCoordinator: NSObject {
                 }
                 stream = refreshedStream
             } else {
-                stream = try await streamCache.ensureStream(for: context.track.id, priority: .userInitiated)
+                stream = try await streamCache.ensureStream(
+                    for: context.track.id,
+                    spotifyUrl: spotifyUrl,
+                    priority: .userInitiated
+                )
             }
         }
 
@@ -728,12 +744,17 @@ final class PlaybackCoordinator: NSObject {
             throw PlayerState.PlaybackError.invalidStreamURL
         }
 
-        // Use SoundCloud OAuth token directly for CDN access
-        // This bypasses the HLS proxy, saving ~200-400ms
-        let headers = ["Authorization": "OAuth \(stream.accessToken)"]
-        let asset = AVURLAsset(url: url, options: [
-            "AVURLAssetHTTPHeaderFieldsKey": headers
-        ])
+        let asset: AVURLAsset
+        if spotifyUrl != nil || stream.accessToken.isEmpty {
+            // Spotify streams don't need OAuth headers
+            asset = AVURLAsset(url: url)
+        } else {
+            // SoundCloud: Use OAuth token directly for CDN access
+            let headers = ["Authorization": "OAuth \(stream.accessToken)"]
+            asset = AVURLAsset(url: url, options: [
+                "AVURLAssetHTTPHeaderFieldsKey": headers
+            ])
+        }
 
         let item = AVPlayerItem(asset: asset)
 

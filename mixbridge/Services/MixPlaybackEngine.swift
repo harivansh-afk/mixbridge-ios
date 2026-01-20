@@ -241,6 +241,7 @@ final class MixPlaybackEngine {
 
             logInfo(.playback, "[MixEngine] instant_mix_triggered: prewarming \(nextTrack.title)")
 
+            let scTrack = nextItem.soundCloudTrack
             Task {
                 do {
                     // Check for downloaded file first - instant offline playback
@@ -255,8 +256,17 @@ final class MixPlaybackEngine {
                         return
                     }
 
+                    // Determine if this is a Spotify track
+                    let spotifyUrl = scTrack?.permalink_url.flatMap { url in
+                        (url.contains("spotify.com") || url.contains("spotify:")) ? url : nil
+                    }
+
                     // Fall back to streaming
-                    let streamData = try await streamCache.ensureStream(for: nextTrack.id, priority: .userInitiated)
+                    let streamData = try await streamCache.ensureStream(
+                        for: nextTrack.id,
+                        spotifyUrl: spotifyUrl,
+                        priority: .userInitiated
+                    )
                     await prepareAndStartInstantCrossfade(with: streamData)
                 } catch {
                     logError(.playback, "[MixEngine] Instant mix prewarm failed: \(error)")
@@ -420,6 +430,7 @@ final class MixPlaybackEngine {
 
         logInfo(.playback, "[MixEngine] mix_prewarm_start: \(nextTrack.title)")
 
+        let scTrack = nextItem.soundCloudTrack
         Task {
             do {
                 // Check for downloaded file first - instant offline playback
@@ -432,6 +443,11 @@ final class MixPlaybackEngine {
                     )
                     prepareNextPlayer(with: localStream)
                     return
+                }
+
+                // Determine if this is a Spotify track
+                let spotifyUrl = scTrack?.permalink_url.flatMap { url in
+                    (url.contains("spotify.com") || url.contains("spotify:")) ? url : nil
                 }
 
                 // Fall back to streaming - check if we need to refresh
@@ -447,7 +463,11 @@ final class MixPlaybackEngine {
                     streamData = refreshed
                 } else {
                     // Get cached or fetch fresh
-                    streamData = try await streamCache.ensureStream(for: nextTrack.id, priority: .userInitiated)
+                    streamData = try await streamCache.ensureStream(
+                        for: nextTrack.id,
+                        spotifyUrl: spotifyUrl,
+                        priority: .userInitiated
+                    )
                 }
 
                 prepareNextPlayer(with: streamData)
@@ -703,11 +723,11 @@ final class MixPlaybackEngine {
         }
 
         let asset: AVURLAsset
-        if streamData.streamType == "local" {
-            // Local file - no headers needed
+        if streamData.streamType == "local" || streamData.accessToken.isEmpty {
+            // Local file or Spotify stream - no OAuth headers needed
             asset = AVURLAsset(url: url)
         } else {
-            // Remote stream - add OAuth headers
+            // SoundCloud remote stream - add OAuth headers
             let headers = ["Authorization": "OAuth \(streamData.accessToken)"]
             asset = AVURLAsset(url: url, options: [
                 "AVURLAssetHTTPHeaderFieldsKey": headers
