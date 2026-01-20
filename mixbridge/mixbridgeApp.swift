@@ -25,7 +25,6 @@ struct mixbridgeApp: App {
     // Splash state management
     @State private var finishedSplash: Bool = false
     @State private var isAppInitialized: Bool = false
-    @State private var isSplashActive: Bool = true
 
     // Splash is visible until both animation and app initialization are complete
     private var isShowingSplash: Bool {
@@ -41,13 +40,11 @@ struct mixbridgeApp: App {
             ZStack {
                 if authManager.isAuthenticated {
                     ContentView()
-                } else if !isSplashActive {
+                } else {
                     OnboardingView()
                 }
 
-                if isSplashActive {
-                    splashView
-                }
+                splashView
             }
             .preferredColorScheme(.dark)
             .environment(authManager)
@@ -139,32 +136,17 @@ struct mixbridgeApp: App {
                 // Optional: add slight delay after animation completes
                 try? await Task.sleep(for: .milliseconds(200))
                 finishedSplash = true
-                tryDismissSplashIfReady()
+                // Completion triggers splash fade-out via isShowingSplash
             }
         }
         .opacity(isShowingSplash ? 1 : 0)
-        .onChange(of: finishedSplash) {
-            tryDismissSplashIfReady()
-        }
-        .onChange(of: isAppInitialized) {
-            tryDismissSplashIfReady()
-        }
+        .allowsHitTesting(isShowingSplash)
         .animation(.easeInOut(duration: 0.2), value: isShowingSplash)
-    }
-
-    private func tryDismissSplashIfReady() {
-        if finishedSplash && isAppInitialized {
-            // Smoothly fade out splash
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                isSplashActive = false
-            }
-        }
     }
 }
 
 private struct SplashView: View {
     var onFinished: () -> Void
-    @State private var didFinish = false
     private let splashAspectRatio: CGFloat = 900.0 / 1200.0
 
     var body: some View {

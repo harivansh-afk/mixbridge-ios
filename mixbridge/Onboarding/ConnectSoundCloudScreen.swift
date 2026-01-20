@@ -14,6 +14,7 @@ struct ConnectSoundCloudScreen: View {
     private let staticHoldProgress: Double = 0.65
     private let fadeInDuration: Double = 0.45
     private let screenBufferDelay: Double = 0.3
+    private let buttonFadeDuration: Double = 0.35
 
     var body: some View {
         GeometryReader { geometry in
@@ -48,7 +49,7 @@ struct ConnectSoundCloudScreen: View {
                             HapticManager.heavy()
                             loginStartTime = Date()
                             Analytics.shared.track("login_tapped", properties: ["provider": "spotify"])
-                            withAnimation(.easeOut(duration: 0.2)) {
+                            withAnimation(.easeOut(duration: buttonFadeDuration)) {
                                 authenticatingProvider = .spotify
                             }
                             startAuthentication(provider: .spotify)
@@ -81,7 +82,7 @@ struct ConnectSoundCloudScreen: View {
                             HapticManager.heavy()
                             loginStartTime = Date()
                             Analytics.shared.track("login_tapped", properties: ["provider": "soundcloud"])
-                            withAnimation(.easeOut(duration: 0.2)) {
+                            withAnimation(.easeOut(duration: buttonFadeDuration)) {
                                 authenticatingProvider = .soundcloud
                             }
                             startAuthentication(provider: .soundcloud)
@@ -126,7 +127,7 @@ struct ConnectSoundCloudScreen: View {
     private func startAuthentication(provider: AuthProvider) {
         guard let authURL = authManager.getAuthorizationURL(provider: provider) else {
             authManager.errorMessage = "Failed to generate auth URL"
-            withAnimation(.easeOut(duration: 0.2)) {
+            withAnimation(.easeOut(duration: buttonFadeDuration)) {
                 authenticatingProvider = nil
             }
             return
@@ -154,7 +155,7 @@ struct ConnectSoundCloudScreen: View {
             if let error = error {
                 if case ASWebAuthenticationSessionError.canceledLogin = error {
                     authManager.isLoading = false
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withAnimation(.easeOut(duration: buttonFadeDuration)) {
                         authenticatingProvider = nil
                     }
                     trackLoginResult("cancel")
@@ -163,7 +164,7 @@ struct ConnectSoundCloudScreen: View {
 
                 authManager.errorMessage = error.localizedDescription
                 authManager.isLoading = false
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(.easeOut(duration: buttonFadeDuration)) {
                     authenticatingProvider = nil
                 }
                 trackLoginResult("fail")
@@ -173,7 +174,7 @@ struct ConnectSoundCloudScreen: View {
             guard let callbackURL = callbackURL else {
                 authManager.errorMessage = "No callback URL received"
                 authManager.isLoading = false
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(.easeOut(duration: buttonFadeDuration)) {
                     authenticatingProvider = nil
                 }
                 trackLoginResult("fail")
@@ -203,7 +204,7 @@ struct ConnectSoundCloudScreen: View {
         let started = session.start()
         if !started {
             authManager.errorMessage = "Authentication session failed to start"
-            withAnimation(.easeOut(duration: 0.2)) {
+            withAnimation(.easeOut(duration: buttonFadeDuration)) {
                 authenticatingProvider = nil
             }
         }
