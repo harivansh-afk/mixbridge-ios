@@ -2,9 +2,10 @@ import Foundation
 import SwiftUI
 
 /// Auth provider type
-enum AuthProvider: String {
+enum AuthProvider: String, Codable, Sendable {
     case soundcloud
     case spotify
+    case applemusic
 }
 
 /// Manages authentication state and OAuth flow
@@ -76,6 +77,7 @@ class AuthManager {
     // MARK: - OAuth Flow (Web-based via backend)
 
     /// Get backend OAuth URL for mobile
+    /// Note: Apple Music uses native MusicKit authorization, not a URL
     func getAuthorizationURL(provider: AuthProvider = .soundcloud) -> URL? {
         switch provider {
         case .soundcloud:
@@ -83,6 +85,10 @@ class AuthManager {
         case .spotify:
             // Spotify uses client-side PKCE - delegate to SpotifyAuthManager
             return SpotifyAuthManager.shared.getAuthorizationURL()
+        case .applemusic:
+            // Apple Music uses native MusicKit - no URL needed
+            // Return a placeholder that won't be used
+            return nil
         }
     }
 
@@ -169,6 +175,32 @@ class AuthManager {
             Analytics.shared.identify(userId: result.userId, properties: [
                 "username": result.username,
                 "provider": "spotify"
+            ])
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isLoading = false
+    }
+
+    /// Handle Apple Music authorization via native MusicKit
+    func handleAppleMusicAuthorization() async {
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            // AppleMusicAuthManager handles native MusicKit authorization
+            let result = try await AppleMusicAuthManager.shared.requestAuthorization()
+            try AppleMusicAuthManager.shared.saveAuthResult(result)
+
+            currentUserId = result.userId
+            isAuthenticated = true
+
+            Analytics.shared.identify(userId: result.userId, properties: [
+                "username": "Apple Music User",
+                "provider": "applemusic",
+                "storefront": result.storefront,
+                "can_play_catalog": result.canPlayCatalogContent
             ])
         } catch {
             errorMessage = error.localizedDescription

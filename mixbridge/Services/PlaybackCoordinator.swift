@@ -10,6 +10,7 @@ import AVFoundation
 import MediaPlayer
 import SwiftUI
 import Combine
+import MusicKit
 
 @MainActor
 protocol PlaybackCoordinatorDelegate: AnyObject {
@@ -29,7 +30,22 @@ struct PlaybackSnapshot {
 struct PlaybackContext: Equatable {
     let track: Track
     let soundCloudTrack: SoundCloudTrack?
+    let appleMusicTrack: AppleMusicTrack?
     let queueIndex: Int?
+
+    init(track: Track, soundCloudTrack: SoundCloudTrack?, queueIndex: Int?) {
+        self.track = track
+        self.soundCloudTrack = soundCloudTrack
+        self.appleMusicTrack = nil
+        self.queueIndex = queueIndex
+    }
+
+    init(track: Track, appleMusicTrack: AppleMusicTrack?, queueIndex: Int?) {
+        self.track = track
+        self.soundCloudTrack = nil
+        self.appleMusicTrack = appleMusicTrack
+        self.queueIndex = queueIndex
+    }
 
     static func == (lhs: PlaybackContext, rhs: PlaybackContext) -> Bool {
         lhs.track.id == rhs.track.id && lhs.queueIndex == rhs.queueIndex
@@ -200,13 +216,16 @@ final class PlaybackCoordinator: NSObject {
         let requestId = UUID()
         activeRequestId = requestId
 
-        // Stop current audio immediately so UI never “bounces” between old/new tracks.
+        // Stop current audio immediately so UI never "bounces" between old/new tracks.
         if isUsingMixMode {
             mixEngine.stop()
             isUsingMixMode = false
         } else {
             player.pause()
         }
+        // Stop Apple Music playback if it was playing
+        stopAppleMusicPlayback()
+
         PlayerState.shared.crossfadeFromArtwork = ""
         PlayerState.shared.crossfadeProgress = 0
         PlayerState.shared.isCrossfading = false
@@ -237,6 +256,105 @@ final class PlaybackCoordinator: NSObject {
             } else {
                 await self.startPlayback(with: context, requestId: requestId, startTime: startTime)
             }
+        }
+    }
+
+    /// Play an Apple Music track using MusicKit
+    func playAppleMusicTrack(_ appleMusicTrack: AppleMusicTrack, queueIndex: Int?, startTime: Double? = nil) {
+        // Cancel any in-flight preparation
+        playbackTask?.cancel()
+        isIntendedToPlay = true
+        let requestId = UUID()
+        activeRequestId = requestId
+
+        // Stop AVPlayer playback
+        if isUsingMixMode {
+            mixEngine.stop()
+            isUsingMixMode = false
+        } else {
+            player.pause()
+        }
+
+        PlayerState.shared.crossfadeFromArtwork = ""
+        PlayerState.shared.crossfadeProgress = 0
+        PlayerState.shared.isCrossfading = false
+        PlayerState.shared.crossfadeNextTrack = nil
+        PlayerState.shared.crossfadeNextPosition = 0
+        PlayerState.shared.crossfadeNextDuration = 0
+
+        let effectiveQueueIndex = queueIndex ?? queueManager.indexOfTrack(withId: appleMusicTrack.id)
+        let track = appleMusicTrack.toTrack()
+        let context = PlaybackContext(track: track, appleMusicTrack: appleMusicTrack, queueIndex: effectiveQueueIndex)
+
+        currentContext = context
+        status = .loading
+
+        playbackTask = Task { [weak self] in
+            guard let self else { return }
+            await self.startAppleMusicPlayback(with: context, requestId: requestId, startTime: startTime)
+        }
+    }
+
+    /// Start Apple Music playback using SystemMusicPlayer
+    private func startAppleMusicPlayback(with context: PlaybackContext, requestId: UUID, startTime: Double? = nil) async {
+        guard activeRequestId == requestId else { return }
+
+        do {
+            guard let appleMusicTrack = context.appleMusicTrack else {
+                throw AppleMusicServiceError.invalidId
+            }
+
+            // Get the Song from MusicKit
+            let song = try await AppleMusicService.shared.getSongForPlayback(trackId: appleMusicTrack.id)
+
+            guard activeRequestId == requestId, !Task.isCancelled else { return }
+
+            // Use SystemMusicPlayer for Apple Music playback
+            let musicPlayer = SystemMusicPlayer.shared
+            musicPlayer.queue = [song]
+
+            if let startTime = startTime, startTime > 0 {
+                musicPlayer.playbackTime = startTime
+            }
+
+            guard isIntendedToPlay else {
+                status = .paused
+                return
+            }
+
+            try await musicPlayer.play()
+
+            handleTrackStartedPlaying(context: context)
+            status = .playing
+
+            logInfo(.playback, "[AppleMusic] Playback started: \(context.track.title)")
+
+            // Start position tracking
+            if let userId = AuthManager.shared.currentUserId, autoplayEnabled {
+                _ = positionTracker.startSession(
+                    trackId: context.track.id,
+                    queueIndex: context.queueIndex,
+                    duration: appleMusicTrack.duration
+                )
+            }
+
+        } catch {
+            if Task.isCancelled || error is CancellationError {
+                return
+            }
+
+            isIntendedToPlay = false
+            delegate?.playbackCoordinator(self, didEncounter: error)
+            status = .failed(error.localizedDescription)
+            logError(.playback, "[AppleMusic] Playback failed: \(error)")
+        }
+    }
+
+    /// Stop Apple Music playback
+    private func stopAppleMusicPlayback() {
+        Task {
+            let musicPlayer = SystemMusicPlayer.shared
+            musicPlayer.stop()
         }
     }
 

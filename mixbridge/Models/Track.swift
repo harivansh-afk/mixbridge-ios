@@ -15,6 +15,7 @@ struct Track: Identifiable, Codable, Equatable, Hashable, Sendable {
     let album: String
     let artwork: String
     let duration: Double
+    let provider: AuthProvider
 
     init(
         id: String = UUID().uuidString,
@@ -22,7 +23,8 @@ struct Track: Identifiable, Codable, Equatable, Hashable, Sendable {
         artist: String,
         album: String = "",
         artwork: String = "",
-        duration: Double = 0.0
+        duration: Double = 0.0,
+        provider: AuthProvider = .soundcloud
     ) {
         self.id = id
         self.title = title
@@ -30,6 +32,7 @@ struct Track: Identifiable, Codable, Equatable, Hashable, Sendable {
         self.album = album
         self.artwork = artwork
         self.duration = duration
+        self.provider = provider
     }
 }
 
