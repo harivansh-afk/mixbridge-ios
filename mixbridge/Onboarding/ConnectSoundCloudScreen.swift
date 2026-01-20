@@ -10,7 +10,7 @@ struct ConnectSoundCloudScreen: View {
     @State private var peelProgress: Double = 0
     @State private var contentOpacity: Double = 0
 
-    private let staticHoldProgress: Double = 0.67
+    private let staticHoldProgress: Double = 0.65
     private let fadeInDuration: Double = 0.45
     private let screenBufferDelay: Double = 0.3
 
@@ -42,15 +42,44 @@ struct ConnectSoundCloudScreen: View {
                                 .padding(.horizontal, 24)
                         }
 
-                        // Connect Button
+                        // Spotify Button
                         Button {
                             HapticManager.heavy()
                             loginStartTime = Date()
-                            Analytics.shared.track("soundcloud_login_tapped")
-                            startAuthentication()
+                            Analytics.shared.track("login_tapped", properties: ["provider": "spotify"])
+                            startAuthentication(provider: .spotify)
                         } label: {
-                            HStack(spacing: 12) {
+                            HStack(spacing: 10) {
+                                Image("spotify")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .frame(width: 20, height: 20)
+                                // Use SoundCloud text width as reference, overlay Spotify
+                                Text("Login with SoundCloud")
+                                    .font(.callout)
+                                    .hidden()
+                                    .overlay(alignment: .leading) {
+                                        Text("Login with Spotify")
+                                            .font(.callout)
+                                    }
+                            }
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .glassEffect(.regular, in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+
+                        // SoundCloud Button
+                        Button {
+                            HapticManager.heavy()
+                            loginStartTime = Date()
+                            Analytics.shared.track("login_tapped", properties: ["provider": "soundcloud"])
+                            startAuthentication(provider: .soundcloud)
+                        } label: {
+                            HStack(spacing: 10) {
                                 Image(systemName: "cloud.fill")
+                                    .font(.system(size: 18))
                                 Text("Login with SoundCloud")
                                     .font(.callout)
                             }
@@ -83,8 +112,8 @@ struct ConnectSoundCloudScreen: View {
         }
     }
 
-    private func startAuthentication() {
-        guard let authURL = authManager.getAuthorizationURL() else {
+    private func startAuthentication(provider: AuthProvider) {
+        guard let authURL = authManager.getAuthorizationURL(provider: provider) else {
             authManager.errorMessage = "Failed to generate auth URL"
             return
         }
@@ -98,8 +127,12 @@ struct ConnectSoundCloudScreen: View {
             func trackLoginResult(_ result: String) {
                 Task { @MainActor in
                     Analytics.shared.track(
-                        "soundcloud_login_result",
-                        properties: ["result": result, "latency_ms": latencyMs]
+                        "login_result",
+                        properties: [
+                            "result": result,
+                            "provider": provider.rawValue,
+                            "latency_ms": latencyMs
+                        ]
                     )
                 }
             }
@@ -124,14 +157,19 @@ struct ConnectSoundCloudScreen: View {
                 return
             }
 
-            if callbackURL.host == "auth-success" {
-                trackLoginResult("success")
-            } else {
-                trackLoginResult("fail")
-            }
+            // Route callback based on provider
+            // SoundCloud: mixbridge://auth-success?token=xxx or mixbridge://auth-error?error=xxx
+            // Spotify: mixbridge://spotify-auth-callback?code=xxx or mixbridge://spotify-auth-error?error=xxx
+            let isSuccess = callbackURL.host == "auth-success" || callbackURL.host == "spotify-auth-callback"
+            trackLoginResult(isSuccess ? "success" : "fail")
 
             Task {
-                await authManager.handleCallback(url: callbackURL)
+                switch provider {
+                case .soundcloud:
+                    await authManager.handleCallback(url: callbackURL)
+                case .spotify:
+                    await authManager.handleSpotifyCallback(url: callbackURL)
+                }
             }
         }
 

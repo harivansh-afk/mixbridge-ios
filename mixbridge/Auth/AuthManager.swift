@@ -1,7 +1,13 @@
 import Foundation
 import SwiftUI
 
-/// Manages authentication state and SoundCloud OAuth flow
+/// Auth provider type
+enum AuthProvider: String {
+    case soundcloud
+    case spotify
+}
+
+/// Manages authentication state and OAuth flow
 @Observable
 @MainActor
 class AuthManager {
@@ -13,6 +19,12 @@ class AuthManager {
     var isLoading: Bool = false
     var currentUserId: String?
     var errorMessage: String?
+
+    /// Current auth provider (soundcloud or spotify)
+    var currentProvider: AuthProvider? {
+        guard let provider = keychain.getProvider() else { return nil }
+        return AuthProvider(rawValue: provider)
+    }
 
     // MARK: - Configuration
 
@@ -48,6 +60,13 @@ class AuthManager {
                     try? keychain.saveUsername(extractedUsername)
                 }
             }
+
+            // If provider is nil, try to extract it from token
+            if keychain.getProvider() == nil {
+                if let extractedProvider = SessionTokenDecoder.getProvider(from: token) {
+                    try? keychain.saveProvider(extractedProvider)
+                }
+            }
         } else {
             isAuthenticated = false
             currentUserId = nil
@@ -57,11 +76,17 @@ class AuthManager {
     // MARK: - OAuth Flow (Web-based via backend)
 
     /// Get backend OAuth URL for mobile
-    func getAuthorizationURL() -> URL? {
-        return URL(string: "\(backendUrl)/api/auth/mobile")
+    func getAuthorizationURL(provider: AuthProvider = .soundcloud) -> URL? {
+        switch provider {
+        case .soundcloud:
+            return URL(string: "\(backendUrl)/api/auth/mobile")
+        case .spotify:
+            // Spotify uses client-side PKCE - delegate to SpotifyAuthManager
+            return SpotifyAuthManager.shared.getAuthorizationURL()
+        }
     }
 
-    /// Handle OAuth callback with session token
+    /// Handle SoundCloud OAuth callback with session token
     func handleCallback(url: URL) async {
         isLoading = true
         errorMessage = nil
@@ -103,6 +128,11 @@ class AuthManager {
                 try keychain.saveUsername(username)
             }
 
+            // Extract and save provider from JWT
+            if let provider = SessionTokenDecoder.getProvider(from: token) {
+                try keychain.saveProvider(provider)
+            }
+
             // Set long expiry for session token (30 days)
             let expiry = Date().addingTimeInterval(30 * 24 * 60 * 60)
             try keychain.saveTokenExpiry(expiry)
@@ -112,12 +142,39 @@ class AuthManager {
 
             if let userId = currentUserId,
                let username = keychain.getUsername() {
-                Analytics.shared.identify(userId: userId, properties: ["username": username])
+                Analytics.shared.identify(userId: userId, properties: [
+                    "username": username,
+                    "provider": keychain.getProvider() ?? "soundcloud"
+                ])
             }
         } catch {
             errorMessage = "Failed to save session token: \(error.localizedDescription)"
             isLoading = false
         }
+    }
+
+    /// Handle Spotify OAuth callback - exchanges code via Convex
+    func handleSpotifyCallback(url: URL) async {
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            // SpotifyAuthManager handles PKCE exchange via Convex
+            let result = try await SpotifyAuthManager.shared.handleCallback(url: url)
+            try SpotifyAuthManager.shared.saveAuthResult(result)
+
+            currentUserId = result.userId
+            isAuthenticated = true
+
+            Analytics.shared.identify(userId: result.userId, properties: [
+                "username": result.username,
+                "provider": "spotify"
+            ])
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isLoading = false
     }
 
     // MARK: - Logout

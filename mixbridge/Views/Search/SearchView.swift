@@ -9,16 +9,34 @@ import SwiftUI
 
 // MARK: - Search Source
 
-enum SearchSource: String, CaseIterable, Identifiable {
-    case soundcloud = "SoundCloud"
-    case library = "Library"
+enum SearchSource: CaseIterable, Identifiable {
+    case provider
+    case library
 
-    var id: String { rawValue }
+    var id: String {
+        switch self {
+        case .provider: return "provider"
+        case .library: return "library"
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .provider:
+            let isSpotify = AuthManager.shared.currentProvider == .spotify
+            return isSpotify ? "Spotify" : "SoundCloud"
+        case .library:
+            return "Library"
+        }
+    }
 
     var placeholder: String {
         switch self {
-        case .soundcloud: return "Search SoundCloud"
-        case .library: return "Search your library"
+        case .provider:
+            let isSpotify = AuthManager.shared.currentProvider == .spotify
+            return isSpotify ? "Search Spotify" : "Search SoundCloud"
+        case .library:
+            return "Search your library"
         }
     }
 }
@@ -69,7 +87,7 @@ struct SearchView: View {
     @State private var selectedPlaylist: Playlist?
     @State private var selectedArtist: ArtistInfo?
     @State private var selectedTab: SearchTab = .tracks
-    @State private var searchSource: SearchSource = .soundcloud
+    @State private var searchSource: SearchSource = .provider
     @State private var viewModel = LikedViewModel()
     @State private var libraryViewModel = LibraryViewModel()
     @Namespace private var namespace
@@ -157,7 +175,7 @@ struct SearchView: View {
                 }
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: searchSource.placeholder)
                 .onChange(of: searchText) { oldValue, newValue in
-                    guard searchSource == .soundcloud else { return }
+                    guard searchSource == .provider else { return }
 
                     searchTask?.cancel()
 
@@ -227,7 +245,7 @@ struct SearchView: View {
         VStack(spacing: 0) {
             Picker("Search Source", selection: $searchSource) {
                 ForEach(SearchSource.allCases) { source in
-                    Text(source.rawValue).tag(source)
+                    Text(source.displayName).tag(source)
                 }
             }
             .pickerStyle(.segmented)
@@ -237,7 +255,7 @@ struct SearchView: View {
 
             if recentSearchManager.recentSearches.isEmpty {
                 ContentUnavailableView {
-                    Label(searchSource == .soundcloud ? "Search SoundCloud" : "Search Your Library", systemImage: "magnifyingglass")
+                    Label(searchSource == .provider ? searchSource.displayName : "Search Your Library", systemImage: "magnifyingglass")
                 }
                 .padding(.top, 100)
             } else {

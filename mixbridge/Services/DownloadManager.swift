@@ -52,6 +52,12 @@ final class DownloadManager: ObservableObject {
 
     /// Download a track for offline playback
     func downloadTrack(_ track: SoundCloudTrack) {
+        // Gate Spotify downloads - not supported in this phase
+        if AuthManager.shared.currentProvider == .spotify {
+            logWarning(.downloads, "Downloads disabled for Spotify provider")
+            return
+        }
+
         let trackId = String(track.id)
 
         guard !isDownloading(trackId: trackId) else { return }
@@ -66,6 +72,12 @@ final class DownloadManager: ObservableObject {
 
     /// Download multiple tracks with throttled concurrency
     func downloadTracks(_ tracks: [SoundCloudTrack]) {
+        // Gate Spotify downloads - not supported in this phase
+        if AuthManager.shared.currentProvider == .spotify {
+            logWarning(.downloads, "Downloads disabled for Spotify provider")
+            return
+        }
+
         let maxConcurrent = 3
 
         Task {

@@ -231,12 +231,13 @@ struct AccountBottomSheet: View {
                     .foregroundColor(.primary)
 
                 HStack(spacing: 4) {
-                    Text("Connected to SoundCloud")
+                    let isSpotify = authManager.currentProvider == .spotify
+                    Text("Connected to \(isSpotify ? "Spotify" : "SoundCloud")")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Image(systemName: "checkmark.circle.fill")
                         .font(.caption)
-                        .foregroundColor(.orange)
+                        .foregroundColor(isSpotify ? .green : .orange)
                 }
 
             }

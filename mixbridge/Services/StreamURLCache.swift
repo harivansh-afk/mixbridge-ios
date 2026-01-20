@@ -26,6 +26,18 @@ private struct CachedStream {
     }
 }
 
+/// Stream URL cache errors
+enum StreamCacheError: LocalizedError {
+    case spotifyNotSupported
+
+    var errorDescription: String? {
+        switch self {
+        case .spotifyNotSupported:
+            return "Spotify streaming coming soon"
+        }
+    }
+}
+
 /// Cached stream data including OAuth token for direct CDN access
 struct CachedStreamData {
     let url: String
@@ -213,6 +225,12 @@ actor StreamURLCache {
         priority: TaskPriority = .userInitiated,
         forceRefresh: Bool = false
     ) async throws -> CachedStreamData {
+        // Spotify streaming not supported - fail fast without network call
+        let isSpotify = await MainActor.run { AuthManager.shared.currentProvider == .spotify }
+        if isSpotify {
+            throw StreamCacheError.spotifyNotSupported
+        }
+
         if !forceRefresh, let cached = getCachedStream(for: trackId), cached.url.isEmpty == false {
             return cached
         }
@@ -277,6 +295,15 @@ actor StreamURLCache {
     private func runPrefetchWorker() async {
         defer {
             prefetchWorker = nil
+        }
+
+        // Skip prefetching for Spotify users - streaming not supported
+        let isSpotify = await MainActor.run { AuthManager.shared.currentProvider == .spotify }
+        if isSpotify {
+            // Clear pending prefetches
+            pendingPrefetch.removeAll()
+            pendingPrefetchSet.removeAll()
+            return
         }
 
         while !Task.isCancelled {

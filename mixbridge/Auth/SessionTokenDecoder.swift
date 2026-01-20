@@ -21,6 +21,12 @@ struct SessionTokenDecoder {
         return payload?["avatar_url"] as? String
     }
 
+    /// Decode JWT and extract provider (soundcloud or spotify)
+    static func getProvider(from token: String) -> String? {
+        let payload = decodeJWT(token: token)
+        return payload?["provider"] as? String
+    }
+
     /// Decode JWT payload (without verification)
     /// Note: This is safe for reading user info, but don't use for authorization
     private static func decodeJWT(token: String) -> [String: Any]? {
