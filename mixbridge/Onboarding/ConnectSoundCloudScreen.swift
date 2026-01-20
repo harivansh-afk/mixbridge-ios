@@ -5,6 +5,7 @@ import Foundation
 struct ConnectSoundCloudScreen: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(FeatureFlags.self) private var featureFlags
+    @Environment(DeepLinkRouter.self) private var deepLinkRouter
     @State private var authSession: ASWebAuthenticationSession?
     @State private var contextProvider = PresentationContextProvider()
     @State private var loginStartTime: Date?
@@ -126,6 +127,22 @@ struct ConnectSoundCloudScreen: View {
         .ignoresSafeArea()
         .onAppear {
             Analytics.shared.track("onboarding_viewed")
+            
+            // Check for pending login on appear (in case deep link arrived before view)
+            if let provider = deepLinkRouter.pendingLoginProvider {
+                deepLinkRouter.clearPendingLoginProvider()
+                if provider == "spotify" && featureFlags.spotifyLoginEnabled {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        HapticManager.heavy()
+                        loginStartTime = Date()
+                        Analytics.shared.track("login_tapped", properties: ["provider": "spotify", "source": "deeplink"])
+                        withAnimation(.easeOut(duration: buttonFadeDuration)) {
+                            authenticatingProvider = .spotify
+                        }
+                        startAuthentication(provider: .spotify)
+                    }
+                }
+            }
         }
         .sheet(isPresented: Binding(
             get: { authManager.showSpotifyBetaSheet },
@@ -137,6 +154,24 @@ struct ConnectSoundCloudScreen: View {
             if !isShowing {
                 withAnimation(.easeOut(duration: buttonFadeDuration)) {
                     authenticatingProvider = nil
+                }
+            }
+        }
+        .onChange(of: deepLinkRouter.pendingLoginProvider) { _, provider in
+            // Handle deep link login (e.g., from waitlist email)
+            if let provider = provider {
+                deepLinkRouter.clearPendingLoginProvider()
+                if provider == "spotify" && featureFlags.spotifyLoginEnabled {
+                    // Small delay to ensure view is ready
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        HapticManager.heavy()
+                        loginStartTime = Date()
+                        Analytics.shared.track("login_tapped", properties: ["provider": "spotify", "source": "deeplink"])
+                        withAnimation(.easeOut(duration: buttonFadeDuration)) {
+                            authenticatingProvider = .spotify
+                        }
+                        startAuthentication(provider: .spotify)
+                    }
                 }
             }
         }

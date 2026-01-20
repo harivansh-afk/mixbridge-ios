@@ -15,6 +15,7 @@ final class DeepLinkRouter {
 
     var pendingDeepLink: DeepLink?
     var isShowingSharedContent: Bool = false
+    var pendingLoginProvider: String? = nil  // For login deep links (e.g., "spotify")
 
     enum DeepLink: Equatable {
         case sharedPlaylist(shareId: String)
@@ -82,6 +83,16 @@ final class DeepLinkRouter {
     }
 
     private func handleCustomScheme(url: URL) {
+        // Handle login deep link: mixbridge://login?provider=spotify
+        if url.host == "login" {
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            if let provider = components?.queryItems?.first(where: { $0.name == "provider" })?.value {
+                logInfo(.app, "Deep link: login with provider \(provider)")
+                pendingLoginProvider = provider
+                return
+            }
+        }
+
         // Support shared content links for easier local testing.
         // Example: mixbridge://p/{shareId} or mixbridge://t/{shareId}
         let pathComponents = url.path.split(separator: "/").map(String.init)
@@ -135,5 +146,10 @@ final class DeepLinkRouter {
     func dismissSharedContent() {
         isShowingSharedContent = false
         pendingDeepLink = nil
+    }
+
+    /// Clear pending login provider after handling
+    func clearPendingLoginProvider() {
+        pendingLoginProvider = nil
     }
 }
