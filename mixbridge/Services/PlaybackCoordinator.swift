@@ -588,7 +588,7 @@ final class PlaybackCoordinator: NSObject {
 
             let stream: CachedStreamData
             if forceRefreshURL {
-                guard let freshStream = await streamCache.forceRefresh(for: context.track.id) else {
+                guard let freshStream = await streamCache.forceRefresh(for: context.track.id, spotifyUrl: spotifyUrl) else {
                     throw PlayerState.PlaybackError.invalidStreamURL
                 }
                 stream = freshStream
@@ -598,7 +598,7 @@ final class PlaybackCoordinator: NSObject {
                 let needsRefresh = await streamCache.isStreamExpiring(for: context.track.id, before: deadline)
 
                 if needsRefresh {
-                    guard let refreshedStream = await streamCache.forceRefresh(for: context.track.id) else {
+                    guard let refreshedStream = await streamCache.forceRefresh(for: context.track.id, spotifyUrl: spotifyUrl) else {
                         throw PlayerState.PlaybackError.invalidStreamURL
                     }
                     stream = refreshedStream
@@ -864,7 +864,12 @@ final class PlaybackCoordinator: NSObject {
                 guard let self else { return }
 
                 let currentTime = CMTimeGetSeconds(self.player.currentTime())
-                let duration = CMTimeGetSeconds(self.player.currentItem?.duration ?? .invalid)
+                
+                // For Spotify tracks, use track metadata duration (AVPlayer reports incorrect doubled duration)
+                let isSpotifyTrack = self.currentContext?.soundCloudTrack?.permalink_url?.contains("spotify") == true
+                let duration: Double = isSpotifyTrack
+                    ? (self.currentContext?.track.duration ?? 0)
+                    : CMTimeGetSeconds(self.player.currentItem?.duration ?? .invalid)
 
                 // Track position for periodic flush (every 10 seconds)
                 if currentTime.isFinite && duration.isFinite {
@@ -992,14 +997,20 @@ final class PlaybackCoordinator: NSObject {
             duration = CMTimeGetSeconds(player.currentItem?.duration ?? .invalid)
         }
 
-        // When switching tracks, avoid reporting the previous item’s time/duration during the loading gap.
+        // When switching tracks, avoid reporting the previous item's time/duration during the loading gap.
         let isLoading = (status == .loading)
         let effectiveTime = isLoading ? 0 : (currentTime.isFinite ? currentTime : 0)
-        // Use AVPlayer duration only if valid (> 0), otherwise fall back to track metadata duration.
-        // This fixes local file playback where AVPlayer may not immediately report duration.
-        let effectiveDuration = isLoading
-            ? (currentContext?.track.duration ?? 0)
-            : (duration.isFinite && duration > 0 ? duration : (currentContext?.track.duration ?? 0))
+        
+        // Spotify streams via YouTube have unreliable AVPlayer duration (often doubled).
+        // Always trust the API-provided duration for Spotify tracks.
+        let isSpotifyTrack = currentContext?.soundCloudTrack?.permalink_url?.contains("spotify") == true
+        
+        let effectiveDuration: Double = {
+            if isLoading || isSpotifyTrack {
+                return currentContext?.track.duration ?? 0
+            }
+            return duration.isFinite && duration > 0 ? duration : (currentContext?.track.duration ?? 0)
+        }()
 
         let effectiveStatus: PlayerState.PlaybackStatus = {
             if case .failed = status { return status }
@@ -1040,17 +1051,27 @@ final class PlaybackCoordinator: NSObject {
     // MARK: - Prefetching
 
     func prefetchQueue() {
-        let tracks = queueManager.queueTracks
-        guard !tracks.isEmpty else { return }
+        let items = queueManager.queueItems
+        guard !items.isEmpty else { return }
 
-        Task(priority: .utility) { [tracks] in
-            await StreamURLCache.shared.prefetchUpcoming(tracks: tracks, lookAhead: 5)
+        let tracks = items.map { $0.track }
+        let spotifyUrls = items.reduce(into: [String: String]()) { dict, item in
+            if let url = item.soundCloudTrack?.permalink_url, url.contains("spotify") {
+                dict[item.track.id] = url
+            }
+        }
+
+        Task(priority: .utility) { [tracks, spotifyUrls] in
+            await StreamURLCache.shared.prefetchUpcoming(tracks: tracks, spotifyUrls: spotifyUrls, lookAhead: 5)
         }
     }
 
     func prefetchTrack(_ track: Track, with soundCloudTrack: SoundCloudTrack?) {
-        Task(priority: .utility) { [trackId = track.id] in
-            await StreamURLCache.shared.prefetchStreamURL(for: trackId)
+        let spotifyUrl = soundCloudTrack?.permalink_url?.contains("spotify") == true
+            ? soundCloudTrack?.permalink_url
+            : nil
+        Task(priority: .utility) { [trackId = track.id, spotifyUrl] in
+            await StreamURLCache.shared.prefetchStreamURL(for: trackId, spotifyUrl: spotifyUrl)
         }
     }
 

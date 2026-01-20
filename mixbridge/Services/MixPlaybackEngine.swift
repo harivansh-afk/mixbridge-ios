@@ -57,6 +57,12 @@ final class MixPlaybackEngine {
     }
 
     var duration: Double {
+        // Spotify streams via YouTube report incorrect (doubled) duration from AVPlayer.
+        // Always trust track metadata duration for Spotify tracks.
+        if let ctx = currentContext,
+           ctx.soundCloudTrack?.permalink_url?.contains("spotify") == true {
+            return ctx.track.duration
+        }
         guard let item = currentPlayer.currentItem else { return 0 }
         let dur = CMTimeGetSeconds(item.duration)
         return dur.isFinite ? dur : 0
@@ -70,6 +76,11 @@ final class MixPlaybackEngine {
 
     /// Next track's duration (during crossfade)
     var nextDuration: Double {
+        // Spotify streams via YouTube report incorrect (doubled) duration from AVPlayer.
+        if let ctx = nextContext,
+           ctx.soundCloudTrack?.permalink_url?.contains("spotify") == true {
+            return ctx.track.duration
+        }
         guard let player = nextPlayer, let item = player.currentItem else { return 0 }
         let dur = CMTimeGetSeconds(item.duration)
         return dur.isFinite ? dur : 0
@@ -456,8 +467,8 @@ final class MixPlaybackEngine {
                 let streamData: CachedStreamData
 
                 if needsRefresh {
-                    // Force refresh
-                    guard let refreshed = await streamCache.forceRefresh(for: nextTrack.id) else {
+                    // Force refresh (pass spotifyUrl for Spotify tracks)
+                    guard let refreshed = await streamCache.forceRefresh(for: nextTrack.id, spotifyUrl: spotifyUrl) else {
                         throw NSError(domain: "MixEngine", code: 1, userInfo: [NSLocalizedDescriptionKey: "Stream refresh failed"])
                     }
                     streamData = refreshed
@@ -751,8 +762,9 @@ final class MixPlaybackEngine {
                 switch item.status {
                 case .readyToPlay:
                     // Duration is now available - notify delegate for UI update
-                    let dur = CMTimeGetSeconds(item.duration)
-                    if dur.isFinite && dur > 0 {
+                    // Use self.duration which handles Spotify duration override
+                    let dur = self.duration
+                    if dur > 0 {
                         self.delegate?.mixEngineDidUpdateTime(self, currentTime: self.currentTime, duration: dur)
                     }
                 case .failed:

@@ -16,6 +16,7 @@ private struct CachedStream: Sendable {
     let cachedAt: Date
     let expiresAt: Date
     let isSpotify: Bool
+    let spotifyUrl: String?  // Original Spotify URL for refresh
 
     nonisolated var isExpired: Bool {
         Date() > expiresAt
@@ -28,13 +29,14 @@ private struct CachedStream: Sendable {
         return Date().addingTimeInterval(buffer) > expiresAt
     }
 
-    nonisolated init(url: String, streamType: String, accessToken: String, cachedAt: Date, expiresAt: Date, isSpotify: Bool = false) {
+    nonisolated init(url: String, streamType: String, accessToken: String, cachedAt: Date, expiresAt: Date, isSpotify: Bool = false, spotifyUrl: String? = nil) {
         self.url = url
         self.streamType = streamType
         self.accessToken = accessToken
         self.cachedAt = cachedAt
         self.expiresAt = expiresAt
         self.isSpotify = isSpotify
+        self.spotifyUrl = spotifyUrl
     }
 }
 
@@ -206,18 +208,22 @@ actor StreamURLCache {
     /// Force refresh stream URL for a track (bypasses cache)
     /// Use when stream fails during playback and needs fresh URL
     @discardableResult
-    func forceRefresh(for trackId: String) async -> CachedStreamData? {
-        // Remove from cache first
+    func forceRefresh(for trackId: String, spotifyUrl: String? = nil) async -> CachedStreamData? {
+        // Preserve spotifyUrl from cache before removing (for Spotify track refresh)
+        let cachedSpotifyUrl = cache[trackId]?.spotifyUrl
+        let effectiveSpotifyUrl = spotifyUrl ?? cachedSpotifyUrl
+        
+        // Remove from cache
         cache.removeValue(forKey: trackId)
         inFlight[trackId]?.cancel()
         inFlight.removeValue(forKey: trackId)
         pendingPrefetchSet.remove(trackId)
         pendingPrefetch.removeAll { $0.trackId == trackId }
 
-        logDebug(.cache, "Force refreshing stream URL for track: \(trackId)")
+        logDebug(.cache, "Force refreshing stream URL for track: \(trackId), spotifyUrl: \(effectiveSpotifyUrl ?? "nil")")
 
         do {
-            let stream = try await ensureStream(for: trackId, priority: .userInitiated, forceRefresh: true)
+            let stream = try await ensureStream(for: trackId, spotifyUrl: effectiveSpotifyUrl, priority: .userInitiated, forceRefresh: true)
 
             logDebug(.cache, "Force refresh successful for track: \(trackId)")
 
@@ -257,15 +263,13 @@ actor StreamURLCache {
         }
 
         // Determine if we should use Spotify service
-        // If spotifyUrl is provided, use it. Otherwise, check if user is on Spotify provider
-        // AND the track ID looks like a Spotify ID (base62, ~22 chars with letters).
-        // SoundCloud IDs are purely numeric, so we can distinguish them.
-        let isSpotifyUser = await MainActor.run { AuthManager.shared.currentProvider == .spotify }
-        let looksLikeSpotifyId = trackId.contains(where: { $0.isLetter }) && trackId.count >= 20 && trackId.count <= 24
-        let effectiveSpotifyUrl: String? = spotifyUrl ?? (isSpotifyUser && looksLikeSpotifyId ? "https://open.spotify.com/track/\(trackId)" : nil)
+        // spotifyUrl MUST be explicitly provided - we cannot reliably detect Spotify tracks
+        // from trackId alone since normalized Spotify tracks use numeric IDs (not base62).
+        // The spotifyUrl comes from SoundCloudTrack.permalink_url which contains the Spotify URL.
+        let effectiveSpotifyUrl: String? = spotifyUrl
         let isSpotify = effectiveSpotifyUrl != nil
 
-        logInfo(.cache, "[StreamCache] ensureStream: trackId=\(trackId), provider=\(isSpotifyUser ? "spotify" : "soundcloud"), looksLikeSpotifyId=\(looksLikeSpotifyId), usingSpotifyService=\(isSpotify), spotifyUrl=\(effectiveSpotifyUrl ?? "nil")")
+        logInfo(.cache, "[StreamCache] ensureStream: trackId=\(trackId), usingSpotifyService=\(isSpotify), spotifyUrl=\(effectiveSpotifyUrl ?? "nil")")
 
         let task = Task<CachedStreamData, Error>(priority: priority) { [convexService, spotifyService] in
             if let spotifyUrl = effectiveSpotifyUrl {
@@ -306,7 +310,8 @@ actor StreamURLCache {
             accessToken: stream.accessToken,
             cachedAt: Date(),
             expiresAt: Date().addingTimeInterval(expiryInterval),
-            isSpotify: isSpotify
+            isSpotify: isSpotify,
+            spotifyUrl: effectiveSpotifyUrl
         )
 
         cache[trackId] = cached
