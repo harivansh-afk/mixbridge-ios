@@ -715,7 +715,7 @@ final class PlaybackCoordinator: NSObject {
 
         if forceRefresh {
             // Force refresh - invalidate cache and fetch fresh URL
-            guard let freshStream = await streamCache.forceRefresh(for: context.track.id) else {
+            guard let freshStream = await streamCache.forceRefresh(for: context.track.id, spotifyUrl: spotifyUrl) else {
                 throw PlayerState.PlaybackError.invalidStreamURL
             }
             stream = freshStream
@@ -727,7 +727,7 @@ final class PlaybackCoordinator: NSObject {
 
             if needsRefresh {
                 logDebug(.playback, "Cached stream expiring soon, fetching fresh URL...")
-                guard let refreshedStream = await streamCache.forceRefresh(for: context.track.id) else {
+                guard let refreshedStream = await streamCache.forceRefresh(for: context.track.id, spotifyUrl: spotifyUrl) else {
                     throw PlayerState.PlaybackError.invalidStreamURL
                 }
                 stream = refreshedStream
