@@ -59,15 +59,14 @@ struct ExpandedMusicPlayer: View {
         return playerState.playbackPosition
     }
 
-    // Get next track - always queue.peek() since current track is never in queue
+    // Get next track - forward history takes priority, otherwise queue.peek()
     private func getNextTrack() -> Track? {
-        queueManager.queue.peek()?.track
+        playerState.nextForwardTrack ?? queueManager.queue.peek()?.track
     }
 
-    // Get previous track - not applicable in the new model
-    // (current track is not in queue, so there's no "previous" in queue terms)
+    // Get previous track from session history (not from queue)
     private func getPreviousTrack() -> Track? {
-        nil
+        playerState.previousHistoryTrack
     }
 
     // Prefetch tracks for carousel
@@ -353,10 +352,10 @@ struct ExpandedPlayerView: View {
                                 // Sync carousel when player changes externally (buttons, auto-advance)
                                 if displayedTrack.id != newValue {
                                     withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.8)) {
-                                        displayedPrevious = displayedTrack  // Old current becomes previous
+                                        displayedPrevious = playerState.previousHistoryTrack
                                         displayedTrack = currentTrack
                                         displayedQueueIndex = 0
-                                        displayedNext = queueManager.queue.peek()?.track  // Read from queue directly
+                                        displayedNext = playerState.nextForwardTrack ?? queueManager.queue.peek()?.track
                                         dragOffset = 0
                                         isDraggingArtwork = false
                                     }
@@ -364,7 +363,7 @@ struct ExpandedPlayerView: View {
                             }
                             .onChange(of: queueManager.queue.items.first?.id) { oldValue, newValue in
                                 // Sync displayedNext when queue changes (reorder, remove, etc.)
-                                let newNext = queueManager.queue.peek()?.track
+                                let newNext = playerState.nextForwardTrack ?? queueManager.queue.peek()?.track
                                 if displayedNext?.id != newNext?.id {
                                     displayedNext = newNext
 
@@ -385,8 +384,8 @@ struct ExpandedPlayerView: View {
                                 // Initialize carousel with current tracks
                                 displayedTrack = currentTrack
                                 displayedQueueIndex = 0
-                                displayedNext = queueManager.queue.peek()?.track  // Read from queue directly
-                                displayedPrevious = nil  // No previous initially
+                                displayedNext = playerState.nextForwardTrack ?? queueManager.queue.peek()?.track
+                                displayedPrevious = playerState.previousHistoryTrack
 
                                 // Crossfade-safe background: start from the current track artwork.
                                 backgroundStableArtwork = currentTrack.artwork
@@ -713,7 +712,7 @@ struct ExpandedPlayerView: View {
                     displayedPrevious = trackBecomingPrevious
                     displayedTrack = trackBecomingCurrent
                     displayedQueueIndex = 0  // Index is always 0 in new model (current not in queue)
-                    displayedNext = queueManager.queue.peek()?.track  // Now correct!
+                    displayedNext = playerState.nextForwardTrack ?? queueManager.queue.peek()?.track
                     dragOffset = 0
                     isDraggingArtwork = false
                 }
@@ -739,14 +738,14 @@ struct ExpandedPlayerView: View {
 
     // MARK: - Helper Functions
 
-    // Get next track - always queue.peek() in the new model
+    // Get next track - forward history takes priority, otherwise queue.peek()
     private func getNextTrackByIndex(_ index: Int) -> Track? {
-        queueManager.queue.peek()?.track
+        playerState.nextForwardTrack ?? queueManager.queue.peek()?.track
     }
 
-    // Get previous track - not supported in new model (no history)
+    // Get previous track from session history (index is ignored in history mode)
     private func getPreviousTrackByIndex(_ index: Int) -> Track? {
-        nil
+        playerState.previousHistoryTrack
     }
 
     // Move queue item for reordering - SYNCHRONOUS local update, async backend sync

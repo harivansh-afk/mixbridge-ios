@@ -87,6 +87,7 @@ final class PlaybackCoordinator: NSObject {
     private let player = AVQueuePlayer()
     private var timeObserverToken: Any?
     private var currentContext: PlaybackContext?
+    private var lastStartedContext: PlaybackContext?
     private var nextPreloadedContext: PlaybackContext?
     private var nextPreloadedItem: AVPlayerItem?
     private var itemContextMap: [AVPlayerItem: PlaybackContext] = [:]
@@ -104,6 +105,43 @@ final class PlaybackCoordinator: NSObject {
 
     /// Track retry attempts with exponential backoff
     private var retryAttempts: [String: RetryMetadata] = [:]
+
+    // MARK: - Session Navigation History
+
+    private enum NavigationKind {
+        case normal
+        case back
+        case forward
+    }
+
+    private var pendingNavigationKind: NavigationKind = .normal
+    private var hasNavigationOverride = false
+    private var historyStack: [PlaybackContext] = []
+    private var forwardStack: [PlaybackContext] = []
+    private let historyLimit = 100
+    private let backSeekThresholdSeconds: Double = 3
+
+    var previousHistoryTrack: Track? {
+        historyStack.last?.track
+    }
+
+    var nextForwardTrack: Track? {
+        forwardStack.last?.track
+    }
+
+    var canPlayPrevious: Bool {
+        guard currentContext != nil || lastStartedContext != nil else { return false }
+        let currentTime = currentPlaybackTimeSeconds()
+        if currentTime > backSeekThresholdSeconds {
+            return true
+        }
+        return !historyStack.isEmpty
+    }
+
+    var canPlayNext: Bool {
+        if !forwardStack.isEmpty { return true }
+        return queueManager.hasQueue
+    }
 
     private struct RetryMetadata {
         var attemptCount: Int = 0
@@ -194,6 +232,12 @@ final class PlaybackCoordinator: NSObject {
     }
 
     func play(track: Track, soundCloudTrack: SoundCloudTrack?, queueIndex: Int?, startTime: Double? = nil) {
+        if hasNavigationOverride {
+            hasNavigationOverride = false
+        } else {
+            pendingNavigationKind = .normal
+        }
+
         // Cancel any in-flight preparation so rapid taps feel instantaneous.
         playbackTask?.cancel()
         isIntendedToPlay = true
@@ -313,6 +357,16 @@ final class PlaybackCoordinator: NSObject {
     func playNext(manual: Bool = false) {
         logInfo(.queue, "playNext called (manual=\(manual))")
 
+        if let forwardContext = forwardStack.popLast() {
+            logInfo(.queue, "playNext: using forward history '\(forwardContext.track.title)' (forwardCount=\(forwardStack.count))")
+            setNavigationOverride(.forward)
+            play(track: forwardContext.track, soundCloudTrack: forwardContext.soundCloudTrack, queueIndex: nil)
+            if manual {
+                HapticManager.selection()
+            }
+            return
+        }
+
         // If manual forward in mix mode, trigger instant mix instead of normal skip
         if manual && mixEnabled && isUsingMixMode {
             if mixEngine.triggerInstantMix() {
@@ -348,16 +402,27 @@ final class PlaybackCoordinator: NSObject {
     }
 
     func playPrevious() {
-        guard let currentContext else {
+        guard currentContext != nil || lastStartedContext != nil else {
             playNext(manual: true)
             return
         }
 
-        if let previous = queueManager.previousTrack(before: currentContext.queueIndex ?? queueManager.indexOfTrack(withId: currentContext.track.id) ?? 0) {
-            play(track: previous.track, soundCloudTrack: queueManager.soundCloudTrack(for: previous.track.id), queueIndex: previous.index)
-        } else {
+        let currentTime = currentPlaybackTimeSeconds()
+        if currentTime > backSeekThresholdSeconds {
+            logInfo(.queue, "playPrevious: restart current at t=\(String(format: "%.2f", currentTime))s")
             seek(to: 0)
+            return
         }
+
+        guard let previous = historyStack.popLast() else {
+            logInfo(.queue, "playPrevious: no history, restart current at t=\(String(format: "%.2f", currentTime))s")
+            seek(to: 0)
+            return
+        }
+
+        logInfo(.queue, "playPrevious: using history '\(previous.track.title)' (historyCount=\(historyStack.count))")
+        setNavigationOverride(.back)
+        play(track: previous.track, soundCloudTrack: previous.soundCloudTrack, queueIndex: nil)
     }
 
     /// Called when the app queue changes (reorder/insert/remove).
@@ -381,12 +446,59 @@ final class PlaybackCoordinator: NSObject {
         hasPreloadedForCurrentTrack = false
     }
 
+    // MARK: - Session History Helpers
+
+    private func setNavigationOverride(_ kind: NavigationKind) {
+        pendingNavigationKind = kind
+        hasNavigationOverride = true
+    }
+
+    private func currentPlaybackTimeSeconds() -> Double {
+        if isUsingMixMode {
+            return mixEngine.currentTime
+        }
+        let time = CMTimeGetSeconds(player.currentTime())
+        return time.isFinite ? time : 0
+    }
+
+    private func recordHistoryTransition(to context: PlaybackContext) {
+        defer {
+            pendingNavigationKind = .normal
+            lastStartedContext = context
+        }
+
+        guard let previous = lastStartedContext, previous.track.id != context.track.id else { return }
+
+        switch pendingNavigationKind {
+        case .back:
+            forwardStack.append(previous)
+            logInfo(.queue, "history: back -> push forward '\(previous.track.title)' (forwardCount=\(forwardStack.count))")
+            if forwardStack.count > historyLimit {
+                forwardStack.removeFirst(forwardStack.count - historyLimit)
+            }
+        case .forward:
+            historyStack.append(previous)
+            logInfo(.queue, "history: forward -> push history '\(previous.track.title)' (historyCount=\(historyStack.count))")
+            if historyStack.count > historyLimit {
+                historyStack.removeFirst(historyStack.count - historyLimit)
+            }
+        case .normal:
+            historyStack.append(previous)
+            logInfo(.queue, "history: normal -> push history '\(previous.track.title)' (historyCount=\(historyStack.count))")
+            if historyStack.count > historyLimit {
+                historyStack.removeFirst(historyStack.count - historyLimit)
+            }
+            forwardStack.removeAll()
+        }
+    }
+
     // MARK: - Playback Pipeline
 
     /// Called when a track successfully starts playing. Updates context.
     /// Note: Track removal from queue happens BEFORE play() is called (via popNext),
     /// so we don't need to remove here.
     private func handleTrackStartedPlaying(context: PlaybackContext) {
+        recordHistoryTransition(to: context)
         currentContext = context
         Analytics.shared.track(
             "track_played",

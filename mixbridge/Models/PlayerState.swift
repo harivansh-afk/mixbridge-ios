@@ -155,33 +155,22 @@ final class PlayerState: NSObject {
     /// Public getter for the current queue index (-1 if not playing from queue)
     var currentQueueIndex: Int { _currentQueueIndex }
 
-    /// Returns true if there's a next track available in the queue
-    /// This considers the current track's position even if played from outside the queue
+    /// Returns true if there's a next track available (forward history or queue)
     var canPlayNext: Bool {
-        // First check explicit queue index
-        if _currentQueueIndex >= 0 {
-            return queueManager.canPlayNext(from: _currentQueueIndex)
-        }
-        // Fallback: check if current track is in queue
-        if let position = queueManager.queuePosition(for: currentTrack.id) {
-            return position.hasNext
-        }
-        // Last resort: check if queue has any tracks
-        return queueManager.hasQueue
+        playbackCoordinator.canPlayNext
     }
 
-    /// Returns true if there's a previous track available in the queue
-    /// This considers the current track's position even if played from outside the queue
+    /// Returns true if there's a previous track available (history or restart)
     var canPlayPrevious: Bool {
-        // First check explicit queue index
-        if _currentQueueIndex >= 0 {
-            return queueManager.canPlayPrevious(from: _currentQueueIndex)
-        }
-        // Fallback: check if current track is in queue
-        if let position = queueManager.queuePosition(for: currentTrack.id) {
-            return position.hasPrevious
-        }
-        return false
+        playbackCoordinator.canPlayPrevious
+    }
+
+    var previousHistoryTrack: Track? {
+        playbackCoordinator.previousHistoryTrack
+    }
+
+    var nextForwardTrack: Track? {
+        playbackCoordinator.nextForwardTrack
     }
 
     /// Returns true if the current track is in the queue (regardless of entry point)
