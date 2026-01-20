@@ -6,83 +6,95 @@
 //  Step 1: Enter name
 //  Step 2: Select tracks (required - no empty playlists)
 //
+//  Uses single NavigationStack with NavigationPath for smooth transitions.
+//
 
 import SwiftUI
 import PhotosUI
+
+/// Navigation destinations for playlist creation flow
+enum CreatePlaylistDestination: Hashable {
+    case trackSelection
+}
 
 struct CreatePlaylistSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
 
     @State private var viewModel = CreatePlaylistViewModel()
+    @State private var navigationPath = NavigationPath()
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var customArtworkImage: Image?
 
     var onCreated: ((String) -> Void)?
-    
+
     var body: some View {
-        Group {
-            switch viewModel.currentStep {
-            case .nameEntry:
-                nameEntryView
-            case .trackSelection:
-                PlaylistTrackPickerView(viewModel: viewModel) { playlistId, trackCount in
-                    Analytics.shared.track(
-                        "playlist_created",
-                        properties: [
-                            "playlist_id": playlistId,
-                            "initial_track_count": trackCount
-                        ]
-                    )
+        NavigationStack(path: $navigationPath) {
+            nameEntryContent
+                .navigationDestination(for: CreatePlaylistDestination.self) { destination in
+                    switch destination {
+                    case .trackSelection:
+                        PlaylistTrackPickerContent(
+                            viewModel: viewModel,
+                            navigationPath: $navigationPath
+                        ) { playlistId, trackCount in
+                            Analytics.shared.track(
+                                "playlist_created",
+                                properties: [
+                                    "playlist_id": playlistId,
+                                    "initial_track_count": trackCount
+                                ]
+                            )
+                            onCreated?(playlistId)
+                            dismiss()
+                        }
+                        .environment(authManager)
+                    }
                 }
-                    .environment(authManager)
-            }
         }
     }
-    
-    // MARK: - Name Entry View
-    
-    private var nameEntryView: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Artwork Preview
-                    artworkPreview
-                    
-                    // Name Field
-                    TextField("Playlist Title", text: $viewModel.playlistName)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .multilineTextAlignment(.center)
-                        .textFieldStyle(.plain)
-                        .padding(.horizontal)
 
-                    Spacer(minLength: 100)
-                }
-                .padding(.top, 32)
+    // MARK: - Name Entry Content
+
+    private var nameEntryContent: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                // Artwork Preview
+                artworkPreview
+
+                // Name Field
+                TextField("Playlist Title", text: $viewModel.playlistName)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .multilineTextAlignment(.center)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal)
+
+                Spacer(minLength: 100)
             }
-            .background(Color(.systemBackground))
-            .navigationTitle("New Playlist")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .fontWeight(.medium)
-                    }
+            .padding(.top, 32)
+        }
+        .background(Color(.systemBackground))
+        .navigationTitle("New Playlist")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .fontWeight(.medium)
                 }
-                
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        viewModel.proceedToTrackSelection()
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .fontWeight(.semibold)
-                    }
-                    .disabled(!viewModel.canProceedToTrackSelection)
+            }
+
+            ToolbarItem(placement: .confirmationAction) {
+                Button {
+                    navigationPath.append(CreatePlaylistDestination.trackSelection)
+                } label: {
+                    Image(systemName: "checkmark")
+                        .fontWeight(.semibold)
                 }
+                .disabled(!viewModel.canProceedToTrackSelection)
             }
         }
     }

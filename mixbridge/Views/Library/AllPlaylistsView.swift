@@ -24,147 +24,152 @@ struct AllPlaylistsView: View {
 
 
     var body: some View {
-        Group {
-            if viewModel.isLoading && viewModel.playlists.isEmpty && !isRefreshing {
-                VStack {
-                    Spacer()
-                    ProgressView()
-                        .scaleEffect(1.5)
-                    Spacer()
+        Color.clear
+            .overlay {
+                contentView
+            }
+            .navigationTitle("Playlists")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showCreateSheet = true
+                        HapticManager.light()
+                    } label: {
+                        Image(systemName: "plus")
+                    }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = viewModel.error, viewModel.playlists.isEmpty {
-                errorView(error)
-            } else if viewModel.playlists.isEmpty {
-                ContentUnavailableView(
-                    "No Playlists",
-                    image: "playlist",
-                    description: Text("Your playlists will appear here")
-                )
-            } else {
-                ScrollView {
-                    if filteredPlaylists.isEmpty && !searchText.isEmpty {
-                        ContentUnavailableView.search(text: searchText)
-                            .frame(minHeight: 300)
-                    } else {
-                        LazyVGrid(
-                            columns: [
-                                GridItem(.flexible(), spacing: 14),
-                                GridItem(.flexible(), spacing: 14)
-                            ],
-                            spacing: 20
-                        ) {
-                            ForEach(filteredPlaylists) { playlist in
-                                NavigationLink {
-                                    PlaylistDetailView(playlist: playlist)
-                                        .navigationTransition(.zoom(sourceID: "all-\(playlist.id)", in: namespace))
-                                } label: {
-                                    VStack(alignment: .center, spacing: 6) {
-                                        Group {
-                                            if playlist.artwork.starts(with: "http") {
-                                                CachedAsyncImagePhase(url: URL(string: playlist.artwork)) { phase in
-                                                    switch phase {
-                                                    case .empty:
-                                                        artworkPlaceholder
-                                                    case .success(let image):
-                                                        image
-                                                            .resizable()
-                                                            .scaledToFill()
-                                                            .frame(maxWidth: .infinity)
-                                                            .aspectRatio(1, contentMode: .fit)
-                                                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                                                    case .failure:
-                                                        artworkPlaceholder
-                                                    @unknown default:
-                                                        artworkPlaceholder
-                                                    }
-                                                }
-                                            } else {
-                                                Color.clear
-                                                    .aspectRatio(1, contentMode: .fit)
-                                            }
-                                        }
+            }
+            .sheet(isPresented: $showCreateSheet) {
+                CreatePlaylistSheet()
+            }
+            .navigationBarTitleDisplayMode(.large)
+            // Start database observation
+            .task {
+                if let userId = authManager.currentUserId {
+                    await viewModel.observeDatabase(userId: userId)
+                }
+            }
+            // Fetch fresh data
+            .task {
+                if let userId = authManager.currentUserId {
+                    await viewModel.refresh(userId: userId)
+                }
+            }
+            .onAppear {
+                allowDismissalGesture = .all
+            }
+    }
 
-                                        Text(playlist.name)
-                                            .font(.caption)
-                                            .fontWeight(.semibold)
-                                            .foregroundStyle(.primary)
-                                            .lineLimit(1)
-                                            .truncationMode(.tail)
-                                            .frame(maxWidth: .infinity)
-                                    }
-                                    .matchedTransitionSource(id: "all-\(playlist.id)", in: namespace)
-                                }
-                                .buttonStyle(.plain)
-                                .haptic(.selection)
-                                .onAppear {
-                                    if let userId = authManager.currentUserId {
-                                        Task(priority: .background) {
-                                            await viewModel.preloadPlaylistTracks(userId: userId, playlistId: playlist.id)
+    @ViewBuilder
+    private var contentView: some View {
+        if viewModel.isLoading && viewModel.playlists.isEmpty && !isRefreshing {
+            VStack {
+                Spacer()
+                ProgressView()
+                    .scaleEffect(1.5)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let error = viewModel.error, viewModel.playlists.isEmpty {
+            errorView(error)
+        } else if viewModel.playlists.isEmpty {
+            ContentUnavailableView(
+                "No Playlists",
+                image: "playlist",
+                description: Text("Your playlists will appear here")
+            )
+        } else {
+            ScrollView {
+                if filteredPlaylists.isEmpty && !searchText.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                        .frame(minHeight: 300)
+                } else {
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(), spacing: 14),
+                            GridItem(.flexible(), spacing: 14)
+                        ],
+                        spacing: 20
+                    ) {
+                        ForEach(filteredPlaylists) { playlist in
+                            NavigationLink {
+                                PlaylistDetailView(playlist: playlist)
+                                    .navigationTransition(.zoom(sourceID: "all-\(playlist.id)", in: namespace))
+                            } label: {
+                                VStack(alignment: .center, spacing: 6) {
+                                    Group {
+                                        if playlist.artwork.starts(with: "http") {
+                                            CachedAsyncImagePhase(url: URL(string: playlist.artwork)) { phase in
+                                                switch phase {
+                                                case .empty:
+                                                    artworkPlaceholder
+                                                case .success(let image):
+                                                    image
+                                                        .resizable()
+                                                        .scaledToFill()
+                                                        .frame(maxWidth: .infinity)
+                                                        .aspectRatio(1, contentMode: .fit)
+                                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                                case .failure:
+                                                    artworkPlaceholder
+                                                @unknown default:
+                                                    artworkPlaceholder
+                                                }
+                                            }
+                                        } else {
+                                            Color.clear
+                                                .aspectRatio(1, contentMode: .fit)
                                         }
+                                    }
+
+                                    Text(playlist.name)
+                                        .font(.caption)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .matchedTransitionSource(id: "all-\(playlist.id)", in: namespace)
+                            }
+                            .buttonStyle(.plain)
+                            .haptic(.selection)
+                            .onAppear {
+                                if let userId = authManager.currentUserId {
+                                    Task(priority: .background) {
+                                        await viewModel.preloadPlaylistTracks(userId: userId, playlistId: playlist.id)
                                     }
                                 }
                             }
                         }
-                        .padding(.horizontal)
-                        .padding(.top, 8)
                     }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
                 }
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentOffset.y + geometry.contentInsets.top
-                } action: { _, newValue in
-                    scrollOffset = newValue
-                }
-                .onScrollPhaseChange { oldPhase, newPhase, context in
-                    guard oldPhase == .interacting, newPhase != .interacting else { return }
-                    let geometry = context.geometry
-                    let offset = geometry.contentOffset.y + geometry.contentInsets.top
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, newValue in
+                scrollOffset = newValue
+            }
+            .onScrollPhaseChange { oldPhase, newPhase, context in
+                guard oldPhase == .interacting, newPhase != .interacting else { return }
+                let geometry = context.geometry
+                let offset = geometry.contentOffset.y + geometry.contentInsets.top
 
-                    // Show search when pulled past threshold
-                    if offset < -revealThreshold && !isSearchPresented {
-                        isSearchPresented = true
-                        HapticManager.light()
-                    }
-                }
-                .refreshable {
-                    if let userId = authManager.currentUserId {
-                        await viewModel.refresh(userId: userId, forceRefresh: true)
-                    }
-                }
-                .searchable(text: $searchText, isPresented: $isSearchPresented, prompt: "Search Playlists")
-                .navigationAllowDismissalGestures(allowDismissalGesture)
-            }
-        }
-        .navigationTitle("Playlists")
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showCreateSheet = true
+                // Show search when pulled past threshold
+                if offset < -revealThreshold && !isSearchPresented {
+                    isSearchPresented = true
                     HapticManager.light()
-                } label: {
-                    Image(systemName: "plus")
                 }
             }
-        }
-        .sheet(isPresented: $showCreateSheet) {
-            CreatePlaylistSheet()
-        }
-        .navigationBarTitleDisplayMode(.large)
-        // Start database observation
-        .task {
-            if let userId = authManager.currentUserId {
-                await viewModel.observeDatabase(userId: userId)
+            .refreshable {
+                if let userId = authManager.currentUserId {
+                    await viewModel.refresh(userId: userId, forceRefresh: true)
+                }
             }
-        }
-        // Fetch fresh data
-        .task {
-            if let userId = authManager.currentUserId {
-                await viewModel.refresh(userId: userId)
-            }
-        }
-        .task {
-            try? await Task.sleep(for: .seconds(1))
-            allowDismissalGesture = .all
+            .searchable(text: $searchText, isPresented: $isSearchPresented, prompt: "Search Playlists")
+            .navigationAllowDismissalGestures(allowDismissalGesture)
         }
     }
 
