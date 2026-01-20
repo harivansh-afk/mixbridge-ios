@@ -90,6 +90,7 @@ struct SearchView: View {
     @State private var searchSource: SearchSource = .provider
     @State private var viewModel = LikedViewModel()
     @State private var libraryViewModel = LibraryViewModel()
+    @State private var hideToolbarTitle = false
     @Namespace private var namespace
 
     private var filteredLibraryTracks: [TrackItem] {
@@ -170,6 +171,7 @@ struct SearchView: View {
                             .fontWeight(.bold)
                             .fixedSize()
                             .padding(.leading, -4)
+                            .opacity(hideToolbarTitle ? 0 : 1)
                     }
                     .sharedBackgroundVisibility(.hidden)
                 }
@@ -578,6 +580,16 @@ struct SearchView: View {
             }
         }
         .listStyle(.plain)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y
+        } action: { _, newValue in
+            let shouldHide = newValue > 0
+            if shouldHide != hideToolbarTitle {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    hideToolbarTitle = shouldHide
+                }
+            }
+        }
         .onChange(of: selectedTab) { _, _ in
             HapticManager.selection()
         }
