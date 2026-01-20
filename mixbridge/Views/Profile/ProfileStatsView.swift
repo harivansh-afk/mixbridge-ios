@@ -33,6 +33,17 @@ struct ProfileStatsView: View {
                         Text("@\(profile.username)")
                             .font(.custom("InstrumentSerif-Italic", size: 20))
                             .foregroundColor(.white)
+
+                        // Provider badge
+                        if let provider = AuthManager.shared.currentProvider {
+                            HStack(spacing: 4) {
+                                Image(systemName: provider == .spotify ? "music.note" : "cloud.fill")
+                                    .font(.caption2)
+                                Text("Signed in with \(provider == .spotify ? "Spotify" : "SoundCloud")")
+                                    .font(.caption2)
+                            }
+                            .foregroundColor(.white.opacity(0.6))
+                        }
                     }
                 }
 

@@ -194,6 +194,13 @@ final class PlaybackCoordinator: NSObject {
     }
 
     func play(track: Track, soundCloudTrack: SoundCloudTrack?, queueIndex: Int?, startTime: Double? = nil) {
+        // Gate Spotify playback - not supported in this phase
+        if AuthManager.shared.currentProvider == .spotify {
+            logWarning(.playback, "Playback disabled for Spotify provider")
+            status = .failed("Spotify playback coming soon")
+            return
+        }
+
         // Cancel any in-flight preparation so rapid taps feel instantaneous.
         playbackTask?.cancel()
         isIntendedToPlay = true

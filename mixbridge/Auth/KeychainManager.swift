@@ -13,6 +13,7 @@ final class KeychainManager {
         static let tokenExpiry = "com.mixbridge.soundcloud.tokenExpiry"
         static let userId = "com.mixbridge.soundcloud.userId"
         static let username = "com.mixbridge.soundcloud.username"
+        static let provider = "com.mixbridge.auth.provider"
     }
 
     // MARK: - Save
@@ -36,6 +37,10 @@ final class KeychainManager {
 
     func saveUsername(_ username: String) throws {
         try saveString(username, forKey: Keys.username)
+    }
+
+    func saveProvider(_ provider: String) throws {
+        try saveString(provider, forKey: Keys.provider)
     }
 
     // MARK: - Retrieve
@@ -64,6 +69,10 @@ final class KeychainManager {
         return getString(forKey: Keys.username)
     }
 
+    func getProvider() -> String? {
+        return getString(forKey: Keys.provider)
+    }
+
     // MARK: - Delete
 
     func clearAllTokens() {
@@ -72,6 +81,7 @@ final class KeychainManager {
         deleteItem(forKey: Keys.tokenExpiry)
         deleteItem(forKey: Keys.userId)
         deleteItem(forKey: Keys.username)
+        deleteItem(forKey: Keys.provider)
     }
 
     // MARK: - Private Helpers
