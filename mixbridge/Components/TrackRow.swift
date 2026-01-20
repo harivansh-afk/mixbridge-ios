@@ -85,7 +85,12 @@ struct TrackRow: View {
         .listRowBackground(Color.clear)
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isCurrentTrack)
         .contentShape(Rectangle())
-        .prefetchStream(for: track.id)
+        .prefetchStream(
+            for: track.id,
+            spotifyUrl: soundCloudTrack?.permalink_url?.contains("spotify") == true
+                ? soundCloudTrack?.permalink_url
+                : nil
+        )
         .onTapGesture {
             handlePlayTapped()
         }

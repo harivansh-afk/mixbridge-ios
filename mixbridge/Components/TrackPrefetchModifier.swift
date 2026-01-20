@@ -11,12 +11,13 @@ import SwiftUI
 /// Prefetch stream URL when track becomes visible
 struct TrackPrefetchModifier: ViewModifier {
     let trackId: String
+    let spotifyUrl: String?
 
     func body(content: Content) -> some View {
         content
             .onAppear {
-                Task.detached(priority: .utility) { [trackId] in
-                    await StreamURLCache.shared.prefetchStreamURL(for: trackId)
+                Task.detached(priority: .utility) { [trackId, spotifyUrl] in
+                    await StreamURLCache.shared.prefetchStreamURL(for: trackId, spotifyUrl: spotifyUrl)
                 }
             }
     }
@@ -25,7 +26,7 @@ struct TrackPrefetchModifier: ViewModifier {
 extension View {
     /// Prefetch stream URL when this view appears
     /// Use on track rows to reduce playback latency
-    func prefetchStream(for trackId: String) -> some View {
-        modifier(TrackPrefetchModifier(trackId: trackId))
+    func prefetchStream(for trackId: String, spotifyUrl: String? = nil) -> some View {
+        modifier(TrackPrefetchModifier(trackId: trackId, spotifyUrl: spotifyUrl))
     }
 }

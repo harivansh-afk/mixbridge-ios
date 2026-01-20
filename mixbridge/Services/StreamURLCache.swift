@@ -107,7 +107,7 @@ actor StreamURLCache {
         }
 
         if cached.isExpiringSoon {
-            enqueuePrefetch(trackId: trackId, spotifyUrl: nil)
+            enqueuePrefetch(trackId: trackId, spotifyUrl: cached.spotifyUrl)
         }
 
         return CachedStreamData(
@@ -268,6 +268,12 @@ actor StreamURLCache {
         // The spotifyUrl comes from SoundCloudTrack.permalink_url which contains the Spotify URL.
         let effectiveSpotifyUrl: String? = spotifyUrl
         let isSpotify = effectiveSpotifyUrl != nil
+
+        // Avoid falling back to Convex for Spotify-only users.
+        if !isSpotify, KeychainManager.shared.getProvider() == "spotify" {
+            logError(.cache, "[StreamCache] Missing spotifyUrl for Spotify user; refusing Convex fallback (trackId=\(trackId))")
+            throw StreamCacheError.noStreamAvailable
+        }
 
         logInfo(.cache, "[StreamCache] ensureStream: trackId=\(trackId), usingSpotifyService=\(isSpotify), spotifyUrl=\(effectiveSpotifyUrl ?? "nil")")
 
