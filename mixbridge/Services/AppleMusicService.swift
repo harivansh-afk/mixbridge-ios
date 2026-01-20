@@ -29,42 +29,54 @@ actor AppleMusicService {
 
     // MARK: - Library Playlists
 
-    /// Fetch user's library playlists
+    /// Fetch user's library playlists using MusicLibrarySectionedRequest
     func getLibraryPlaylists(limit: Int = 50) async throws -> [AppleMusicPlaylist] {
-        var request = MusicLibraryRequest<Playlist>()
+        // Use MusicLibrarySectionedRequest for playlists
+        var request = MusicLibrarySectionedRequest<MusicKit.Playlist>()
         request.limit = limit
 
         let response = try await request.response()
 
-        return response.items.map { playlist in
-            AppleMusicPlaylist(
-                id: playlist.id.rawValue,
-                name: playlist.name,
-                description: playlist.standardDescription ?? "",
-                artwork: playlist.artwork?.url(width: 500, height: 500)?.absoluteString ?? "",
-                trackCount: 0 // MusicKit doesn't expose count directly
-            )
+        var playlists: [AppleMusicPlaylist] = []
+        for section in response.sections {
+            for playlist in section.items {
+                let appleMusicPlaylist = AppleMusicPlaylist(
+                    id: playlist.id.rawValue,
+                    name: playlist.name,
+                    description: playlist.standardDescription ?? "",
+                    artwork: playlist.artwork?.url(width: 500, height: 500)?.absoluteString ?? "",
+                    trackCount: 0 // MusicKit doesn't expose count directly
+                )
+                playlists.append(appleMusicPlaylist)
+                if playlists.count >= limit {
+                    return playlists
+                }
+            }
         }
+
+        return playlists
     }
 
     /// Fetch tracks from a playlist
     func getPlaylistTracks(playlistId: String, limit: Int = 100) async throws -> [AppleMusicTrack] {
-        guard let id = MusicItemID(playlistId) else {
-            throw AppleMusicServiceError.invalidId
-        }
+        let id = MusicItemID(playlistId)
 
-        var request = MusicLibraryRequest<Playlist>()
-        request.filter(matching: \.id, equalTo: id)
+        // Fetch playlist from catalog first
+        let catalogRequest = MusicCatalogResourceRequest<MusicKit.Playlist>(matching: \.id, equalTo: id)
+        let catalogResponse = try await catalogRequest.response()
 
-        let response = try await request.response()
-        guard let playlist = response.items.first else {
+        guard let playlist = catalogResponse.items.first else {
             throw AppleMusicServiceError.notFound
         }
 
-        let detailedPlaylist = try await playlist.with([.tracks])
+        let detailedPlaylist = try await playlist.with(.tracks)
+        guard let tracks = detailedPlaylist.tracks else {
+            return []
+        }
 
-        return detailedPlaylist.tracks?.compactMap { track in
-            AppleMusicTrack(
+        var result: [AppleMusicTrack] = []
+        for track in tracks {
+            let appleMusicTrack = AppleMusicTrack(
                 id: track.id.rawValue,
                 title: track.title,
                 artist: track.artistName,
@@ -74,7 +86,13 @@ actor AppleMusicService {
                 isExplicit: track.contentRating == .explicit,
                 appleMusicUrl: track.url?.absoluteString ?? ""
             )
-        } ?? []
+            result.append(appleMusicTrack)
+            if result.count >= limit {
+                break
+            }
+        }
+
+        return result
     }
 
     // MARK: - Library Songs (Likes)
@@ -126,13 +144,15 @@ actor AppleMusicService {
 
     /// Search Apple Music catalog
     func search(query: String, limit: Int = 25) async throws -> AppleMusicSearchResult {
-        var request = MusicCatalogSearchRequest(term: query, types: [Song.self, Album.self, Artist.self, Playlist.self])
+        // Note: Playlist is not MusicCatalogSearchable, so we search songs, albums, and artists
+        var request = MusicCatalogSearchRequest(term: query, types: [Song.self, Album.self, Artist.self])
         request.limit = limit
 
         let response = try await request.response()
 
-        let tracks = response.songs.map { song in
-            AppleMusicTrack(
+        var tracks: [AppleMusicTrack] = []
+        for song in response.songs {
+            let track = AppleMusicTrack(
                 id: song.id.rawValue,
                 title: song.title,
                 artist: song.artistName,
@@ -142,30 +162,24 @@ actor AppleMusicService {
                 isExplicit: song.contentRating == .explicit,
                 appleMusicUrl: song.url?.absoluteString ?? ""
             )
+            tracks.append(track)
         }
 
-        let playlists = response.playlists.map { playlist in
-            AppleMusicPlaylist(
-                id: playlist.id.rawValue,
-                name: playlist.name,
-                description: playlist.standardDescription ?? "",
-                artwork: playlist.artwork?.url(width: 500, height: 500)?.absoluteString ?? "",
-                trackCount: 0
-            )
-        }
-
-        let artists = response.artists.map { artist in
-            AppleMusicArtist(
+        var artists: [AppleMusicArtist] = []
+        for artist in response.artists {
+            let appleMusicArtist = AppleMusicArtist(
                 id: artist.id.rawValue,
                 name: artist.name,
                 artwork: artist.artwork?.url(width: 500, height: 500)?.absoluteString ?? ""
             )
+            artists.append(appleMusicArtist)
         }
 
+        // Return empty playlists array since catalog search doesn't support playlists
         return AppleMusicSearchResult(
-            tracks: Array(tracks),
-            playlists: Array(playlists),
-            artists: Array(artists)
+            tracks: tracks,
+            playlists: [],
+            artists: artists
         )
     }
 
@@ -194,11 +208,9 @@ actor AppleMusicService {
 
     /// Get a Song item for playback by ID
     func getSongForPlayback(trackId: String) async throws -> Song {
-        guard let id = MusicItemID(trackId) else {
-            throw AppleMusicServiceError.invalidId
-        }
+        let id = MusicItemID(trackId)
 
-        var request = MusicCatalogResourceRequest<Song>(matching: \.id, equalTo: id)
+        let request = MusicCatalogResourceRequest<Song>(matching: \.id, equalTo: id)
         let response = try await request.response()
 
         guard let song = response.items.first else {
@@ -211,9 +223,7 @@ actor AppleMusicService {
 
     /// Get a Song from user's library for playback
     private func getLibrarySongForPlayback(trackId: String) async throws -> Song {
-        guard let id = MusicItemID(trackId) else {
-            throw AppleMusicServiceError.invalidId
-        }
+        let id = MusicItemID(trackId)
 
         var request = MusicLibraryRequest<Song>()
         request.filter(matching: \.id, equalTo: id)
