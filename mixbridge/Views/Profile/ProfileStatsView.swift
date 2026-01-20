@@ -33,47 +33,38 @@ struct ProfileStatsView: View {
                         Text("@\(profile.username)")
                             .font(.custom("InstrumentSerif-Italic", size: 20))
                             .foregroundColor(.white)
-
-                        // Provider badge
-                        if let provider = AuthManager.shared.currentProvider {
-                            HStack(spacing: 4) {
-                                Image(systemName: provider == .spotify ? "music.note" : "cloud.fill")
-                                    .font(.caption2)
-                                Text("Signed in with \(provider == .spotify ? "Spotify" : "SoundCloud")")
-                                    .font(.caption2)
-                            }
-                            .foregroundColor(.white.opacity(0.6))
-                        }
                     }
                 }
 
-                // Stats
-                HStack(spacing: 30) {
-                    // Followers
-                    VStack(spacing: 5) {
-                        Text("\(profile?.followers_count ?? 0)")
-                            .font(.custom("InstrumentSerif-Italic", size: 15))
-                            .foregroundColor(.white)
+                // Stats - only show for SoundCloud (Spotify doesn't have this data)
+                if AuthManager.shared.currentProvider != .spotify {
+                    HStack(spacing: 30) {
+                        // Followers
+                        VStack(spacing: 5) {
+                            Text("\(profile?.followers_count ?? 0)")
+                                .font(.custom("InstrumentSerif-Italic", size: 15))
+                                .foregroundColor(.white)
 
-                        Text("Followers")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.7))
-                    }
+                            Text("Followers")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.7))
+                        }
 
-                    // Divider
-                    Rectangle()
-                        .fill(Color.white.opacity(0.3))
-                        .frame(width: 1, height: 30)
+                        // Divider
+                        Rectangle()
+                            .fill(Color.white.opacity(0.3))
+                            .frame(width: 1, height: 30)
 
-                    // Playlists
-                    VStack(spacing: 5) {
-                        Text("\(profile?.playlist_count ?? 0)")
-                            .font(.custom("InstrumentSerif-Italic", size: 15))
-                            .foregroundColor(.white)
+                        // Playlists
+                        VStack(spacing: 5) {
+                            Text("\(profile?.playlist_count ?? 0)")
+                                .font(.custom("InstrumentSerif-Italic", size: 15))
+                                .foregroundColor(.white)
 
-                        Text("Playlists")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.7))
+                            Text("Playlists")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.7))
+                        }
                     }
                 }
             }

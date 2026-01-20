@@ -49,12 +49,18 @@ struct ConnectSoundCloudScreen: View {
                             Analytics.shared.track("login_tapped", properties: ["provider": "spotify"])
                             startAuthentication(provider: .spotify)
                         } label: {
-                            Text("Login with Spotify")
-                                .font(.callout)
-                                .foregroundStyle(.primary)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 50)
-                                .glassEffect(.regular, in: .capsule)
+                            HStack(spacing: 12) {
+                                Image("spotify")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .frame(width: 20, height: 20)
+                                Text("Login with Spotify")
+                                    .font(.callout)
+                            }
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .glassEffect(.regular, in: .capsule)
                         }
                         .buttonStyle(.plain)
 
