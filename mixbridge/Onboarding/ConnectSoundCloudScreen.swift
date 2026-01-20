@@ -127,6 +127,19 @@ struct ConnectSoundCloudScreen: View {
         .onAppear {
             Analytics.shared.track("onboarding_viewed")
         }
+        .sheet(isPresented: Binding(
+            get: { authManager.showSpotifyBetaSheet },
+            set: { authManager.showSpotifyBetaSheet = $0 }
+        )) {
+            SpotifyBetaSheet()
+        }
+        .onChange(of: authManager.showSpotifyBetaSheet) { _, isShowing in
+            if !isShowing {
+                withAnimation(.easeOut(duration: buttonFadeDuration)) {
+                    authenticatingProvider = nil
+                }
+            }
+        }
     }
 
     private func startAuthentication(provider: AuthProvider) {

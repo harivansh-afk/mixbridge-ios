@@ -125,6 +125,11 @@ final class SpotifyAuthManager {
               let value = convexResponse.value,
               value.success,
               let user = value.user else {
+            // Check for beta not approved error
+            if convexResponse.value?.errorCode == "beta_not_approved" {
+                throw SpotifyAuthError.betaNotApproved
+            }
+
             let errorMsg = convexResponse.value?.error ?? convexResponse.errorMessage ?? "Unknown error"
             throw SpotifyAuthError.exchangeFailed(errorMsg)
         }
@@ -171,6 +176,7 @@ struct SpotifyExchangeResponse: Codable {
 struct SpotifyExchangeValue: Codable {
     let success: Bool
     let error: String?
+    let errorCode: String?
     let user: SpotifyUser?
     let accessToken: String?
     let expiresAt: Int?
@@ -189,6 +195,7 @@ enum SpotifyAuthError: LocalizedError {
     case missingCode
     case missingVerifier
     case exchangeFailed(String)
+    case betaNotApproved
 
     var errorDescription: String? {
         switch self {
@@ -202,6 +209,8 @@ enum SpotifyAuthError: LocalizedError {
             return "PKCE verifier not found - please try again"
         case .exchangeFailed(let msg):
             return "Failed to complete login: \(msg)"
+        case .betaNotApproved:
+            return "You're on the Spotify beta waitlist. Please wait for admin approval."
         }
     }
 }

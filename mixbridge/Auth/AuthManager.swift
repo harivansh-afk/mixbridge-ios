@@ -19,6 +19,7 @@ class AuthManager {
     var isLoading: Bool = false
     var currentUserId: String?
     var errorMessage: String?
+    var showSpotifyBetaSheet: Bool = false
 
     /// Current auth provider (soundcloud or spotify)
     var currentProvider: AuthProvider? {
@@ -170,6 +171,9 @@ class AuthManager {
                 "username": result.username,
                 "provider": "spotify"
             ])
+        } catch SpotifyAuthError.betaNotApproved {
+            // Show the beta waitlist sheet instead of an error message
+            showSpotifyBetaSheet = true
         } catch {
             errorMessage = error.localizedDescription
         }
