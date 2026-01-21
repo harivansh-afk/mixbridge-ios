@@ -1007,6 +1007,10 @@ struct HexagonArtworkFace: View {
     // keep showing the destination artwork until the track swap arrives.
     @State private var crossfadeHandoffTrackId: String? = nil
     @State private var crossfadeHandoffArtwork: String? = nil
+    @State private var crossfadeHasStarted: Bool = false
+    @State private var handoffCleanupTask: Task<Void, Never>? = nil
+    @State private var morphIsVisible: Bool = false
+    @State private var morphTargetId: String? = nil
 
     var body: some View {
         let contentWidth = max(artworkWidth - (contentHorizontalPadding * 2), 1)
@@ -1023,9 +1027,19 @@ struct HexagonArtworkFace: View {
                 let baseArtwork: String = {
                     guard isCurrentTrack else { return track.artwork }
                     if playerState.isCrossfading {
+                        if playerState.crossfadeProgress <= 0.0001 {
+                            return playerState.currentTrack.artwork
+                        }
+                        if LiquidMorphView.isMetalAvailable {
+                            let targetId = playerState.crossfadeNextTrack?.id
+                            if morphTargetId != targetId || !morphIsVisible {
+                                return playerState.currentTrack.artwork
+                            }
+                        }
                         return playerState.crossfadeNextTrack?.artwork ?? playerState.currentTrack.artwork
                     }
-                    if let targetId = crossfadeHandoffTrackId,
+                    if crossfadeHasStarted,
+                       let targetId = crossfadeHandoffTrackId,
                        playerState.currentTrack.id != targetId,
                        let handoff = crossfadeHandoffArtwork {
                         return handoff
@@ -1052,7 +1066,8 @@ struct HexagonArtworkFace: View {
                         fromArtworkURL: fromArtwork,
                         toArtworkURL: nextTrack.artwork,
                         progress: playerState.crossfadeProgress,
-                        size: CGSize(width: artworkWidth, height: artworkWidth)
+                        size: CGSize(width: artworkWidth, height: artworkWidth),
+                        isShowing: $morphIsVisible
                     )
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                     .allowsHitTesting(false)
@@ -1092,27 +1107,71 @@ struct HexagonArtworkFace: View {
         .frame(width: artworkWidth)
         .onChange(of: playerState.crossfadeNextTrack?.id) { _, _ in
             guard isCurrentTrack, let next = playerState.crossfadeNextTrack else { return }
+            handoffCleanupTask?.cancel()
             crossfadeHandoffTrackId = next.id
             crossfadeHandoffArtwork = next.artwork
+            morphTargetId = next.id
+            morphIsVisible = false
         }
         .onChange(of: playerState.currentTrack.id) { _, _ in
             guard isCurrentTrack else { return }
             if let targetId = crossfadeHandoffTrackId, playerState.currentTrack.id == targetId {
+                handoffCleanupTask?.cancel()
                 crossfadeHandoffTrackId = nil
                 crossfadeHandoffArtwork = nil
+                crossfadeHasStarted = false
+            }
+        }
+        .onChange(of: playerState.isCrossfading) { _, isCrossfading in
+            guard isCurrentTrack else { return }
+            if !isCrossfading {
+                morphIsVisible = false
             }
         }
         .onChange(of: playerState.crossfadeProgress) { _, progress in
             // Abort case: progress snaps back to 0 with no next track, and we never swapped tracks.
             // Keep the handoff alive across normal completion (where `currentTrack.id` becomes the target).
             guard isCurrentTrack else { return }
-            guard progress <= 0.0001 else { return }
+            if progress > 0.0001 {
+                crossfadeHasStarted = true
+                handoffCleanupTask?.cancel()
+                if crossfadeHandoffTrackId == nil, let next = playerState.crossfadeNextTrack {
+                    crossfadeHandoffTrackId = next.id
+                    crossfadeHandoffArtwork = next.artwork
+                }
+                return
+            }
+
             guard !playerState.isCrossfading else { return }
             guard playerState.crossfadeNextTrack == nil else { return }
             guard let targetId = crossfadeHandoffTrackId else { return }
-            guard playerState.currentTrack.id != targetId else { return }
-            crossfadeHandoffTrackId = nil
-            crossfadeHandoffArtwork = nil
+
+            if playerState.currentTrack.id == targetId {
+                handoffCleanupTask?.cancel()
+                crossfadeHandoffTrackId = nil
+                crossfadeHandoffArtwork = nil
+                crossfadeHasStarted = false
+                return
+            }
+
+            if !crossfadeHasStarted {
+                handoffCleanupTask?.cancel()
+                crossfadeHandoffTrackId = nil
+                crossfadeHandoffArtwork = nil
+                return
+            }
+
+            handoffCleanupTask?.cancel()
+            let pendingTargetId = targetId
+            handoffCleanupTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                guard crossfadeHandoffTrackId == pendingTargetId else { return }
+                if playerState.currentTrack.id != pendingTargetId {
+                    crossfadeHandoffTrackId = nil
+                    crossfadeHandoffArtwork = nil
+                }
+                crossfadeHasStarted = false
+            }
         }
     }
 }

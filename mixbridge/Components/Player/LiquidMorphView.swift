@@ -17,6 +17,7 @@ struct LiquidMorphView: UIViewRepresentable {
     let toArtworkURL: String
     let progress: Double
     let size: CGSize
+    @Binding var isShowing: Bool
 
     // MARK: - Metal Availability Check
 
@@ -85,6 +86,11 @@ struct LiquidMorphView: UIViewRepresentable {
         let shouldShow = renderer.texturesReady && renderer.hasPresentedTexturedFrame && progress > 0
         mtkView.isHidden = !shouldShow
         mtkView.alpha = shouldShow ? 1.0 : 0.0
+        if isShowing != shouldShow {
+            DispatchQueue.main.async {
+                isShowing = shouldShow
+            }
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -110,7 +116,8 @@ struct LiquidMorphView: UIViewRepresentable {
             fromArtworkURL: "https://example.com/art1.jpg",
             toArtworkURL: "https://example.com/art2.jpg",
             progress: 0.5,
-            size: CGSize(width: 300, height: 300)
+            size: CGSize(width: 300, height: 300),
+            isShowing: .constant(false)
         )
         .frame(width: 300, height: 300)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
