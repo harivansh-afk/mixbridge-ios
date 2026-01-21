@@ -1165,7 +1165,6 @@ struct HexagonArtworkFace: View {
             let pendingTargetId = targetId
             handoffCleanupTask = Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 150_000_000)
-                guard !Task.isCancelled else { return }
                 guard crossfadeHandoffTrackId == pendingTargetId else { return }
                 if playerState.currentTrack.id != pendingTargetId {
                     crossfadeHandoffTrackId = nil

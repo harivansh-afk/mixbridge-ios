@@ -7,10 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5E9A1C3B2F12345600ABCDEF /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = 5E9A1C3B2F12345600ABCDE1 /* PostHog */; };
 		5EA1F94A2F1AF9680081D331 /* SystemNotification in Frameworks */ = {isa = PBXBuildFile; productRef = 5E8C2C702F9B8A2200A3D4E5 /* SystemNotification */; };
 		5EF67A772ECA7D4C00D6673D /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 5EF67A782ECA7D4C00D6673D /* Lottie */; };
 		5EF67A7A2ECA7D4D00D6673D /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 5EF67A7B2ECA7D4D00D6673D /* GRDB */; };
-		5E9A1C3B2F12345600ABCDEF /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = 5E9A1C3B2F12345600ABCDE1 /* PostHog */; };
 		5EFB14BB2F0A8A33007C9E1A /* MixBridgeDB in Frameworks */ = {isa = PBXBuildFile; productRef = 5EFB14BA2F0A8A33007C9E1A /* MixBridgeDB */; };
 		5ESTATSG2F1A0000001A0001 /* Statsig in Frameworks */ = {isa = PBXBuildFile; productRef = 5ESTATSG2F1A0000001A0002 /* Statsig */; };
 /* End PBXBuildFile section */
@@ -324,7 +324,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.6;
+				MARKETING_VERSION = 1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.hari.mixbridge;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -362,7 +362,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.6;
+				MARKETING_VERSION = 1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.hari.mixbridge;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
