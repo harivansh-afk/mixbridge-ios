@@ -511,8 +511,7 @@ struct ExpandedPlayerView: View {
                                 .shadow(color: playerState.repeatMode.isEnabled ? .white.opacity(0.3) : .clear, radius: 12)
                                 .animation(.easeInOut(duration: 0.25), value: playerState.repeatMode)
                                 .contentTransition(.symbolEffect(.replace))
-                                .frame(width: 44, height: 44)
-                                .clipShape(Circle())
+                                .padding(12)
                         }
                         .glassEffect(.clear, in: .circle)
 
