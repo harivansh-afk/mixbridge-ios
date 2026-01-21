@@ -28,12 +28,17 @@ extension PlayerState {
            let curve = FadeCurve(rawValue: curveRaw) {
             fadeCurve = curve
         }
+        if let repeatRaw = defaults.string(forKey: kRepeatMode),
+           let mode = RepeatMode(rawValue: repeatRaw) {
+            repeatMode = mode
+        }
 
         // Sync to coordinator
         playbackCoordinator.mixEnabled = mixEnabled
         playbackCoordinator.crossfadeSeconds = crossfadeSeconds
         playbackCoordinator.prewarmSeconds = prewarmSeconds
         playbackCoordinator.fadeCurve = fadeCurve
+        playbackCoordinator.repeatMode = repeatMode
     }
 
     func scheduleSavePlaybackState(immediate: Bool = false) {

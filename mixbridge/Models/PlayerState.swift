@@ -136,6 +136,45 @@ final class PlayerState: NSObject {
             playbackCoordinator.fadeCurve = fadeCurve
         }
     }
+
+    // MARK: - Repeat Mode
+
+    enum RepeatMode: String, CaseIterable {
+        case off
+        case all
+        case one
+
+        var symbolName: String {
+            switch self {
+            case .off:
+                return "repeat"
+            case .all:
+                return "repeat"
+            case .one:
+                return "repeat.1"
+            }
+        }
+
+        var isEnabled: Bool { self != .off }
+
+        func next() -> RepeatMode {
+            switch self {
+            case .off:
+                return .all
+            case .all:
+                return .one
+            case .one:
+                return .off
+            }
+        }
+    }
+
+    var repeatMode: RepeatMode = .off {
+        didSet {
+            UserDefaults.standard.set(repeatMode.rawValue, forKey: kRepeatMode)
+            playbackCoordinator.repeatMode = repeatMode
+        }
+    }
     
     /// Returns true if there's an active track (not idle and has valid duration)
     var hasActiveTrack: Bool {
@@ -195,6 +234,7 @@ final class PlayerState: NSObject {
     let kCrossfadeSeconds = "mixbridge.crossfadeSeconds"
     let kPrewarmSeconds = "mixbridge.prewarmSeconds"
     let kFadeCurve = "mixbridge.fadeCurve"
+    let kRepeatMode = "mixbridge.repeatMode"
 
     private override init() {
         // Initialize with placeholder initially
@@ -342,6 +382,10 @@ final class PlayerState: NSObject {
         }
 
         playbackCoordinator.togglePlayback()
+    }
+
+    func cycleRepeatMode() {
+        repeatMode = repeatMode.next()
     }
 
     func pause() {

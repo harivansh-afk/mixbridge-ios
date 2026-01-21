@@ -47,6 +47,8 @@ final class MixPlaybackEngine {
     var crossfadeSeconds: Double = 6
     var prewarmSeconds: Double = 15
     var fadeCurve: FadeCurve = .equalPower
+    var allowAutoAdvance: Bool = true
+    var loopCurrentTrack: Bool = false
 
     var isPlaying: Bool {
         currentPlayer.timeControlStatus == .playing
@@ -371,7 +373,8 @@ final class MixPlaybackEngine {
         switch state {
         case .singlePlaying:
             // Check if we should start prewarming
-            if currentTime >= schedule.prewarmStartTime && schedule.isCrossfadeEnabled {
+            if (allowAutoAdvance || loopCurrentTrack),
+               currentTime >= schedule.prewarmStartTime && schedule.isCrossfadeEnabled {
                 startPrewarm(schedule: schedule)
             }
 
@@ -419,6 +422,71 @@ final class MixPlaybackEngine {
 
     private func startPrewarm(schedule: MixScheduleInfo) {
         guard let currentCtx = currentContext else { return }
+
+        if loopCurrentTrack {
+            let nextTrack = currentCtx.track
+            let scTrack = currentCtx.soundCloudTrack
+            nextContext = MixTrackContext(track: nextTrack, soundCloudTrack: scTrack, queueIndex: currentCtx.queueIndex)
+
+            state = .prewarmingNext
+            isNextReady = false
+
+            emitEvent(.prewarmStart(
+                trackId: currentCtx.track.id,
+                nextTrackId: nextTrack.id,
+                crossfadeSeconds: crossfadeSeconds
+            ))
+
+            logInfo(.playback, "[MixEngine] mix_prewarm_start(loop): \(nextTrack.title)")
+
+            Task {
+                do {
+                    // Check for downloaded file first - instant offline playback
+                    if let localURL = await DownloadManager.shared.getLocalFileURL(trackId: nextTrack.id) {
+                        logInfo(.playback, "[MixEngine] Prewarming from local file: \(nextTrack.title)")
+                        let localStream = CachedStreamData(
+                            url: localURL.absoluteString,
+                            streamType: "local",
+                            accessToken: ""
+                        )
+                        prepareNextPlayer(with: localStream)
+                        return
+                    }
+
+                    // Determine if this is a Spotify track
+                    let spotifyUrl = scTrack?.permalink_url.flatMap { url in
+                        (url.contains("spotify.com") || url.contains("spotify:")) ? url : nil
+                    }
+
+                    // Fall back to streaming - check if we need to refresh
+                    let deadline = Date().addingTimeInterval(crossfadeSeconds + 15)
+                    let needsRefresh = await streamCache.isStreamExpiring(for: nextTrack.id, before: deadline)
+                    let streamData: CachedStreamData
+
+                    if needsRefresh {
+                        // Force refresh (pass spotifyUrl for Spotify tracks)
+                        guard let refreshed = await streamCache.forceRefresh(for: nextTrack.id, spotifyUrl: spotifyUrl) else {
+                            throw NSError(domain: "MixEngine", code: 1, userInfo: [NSLocalizedDescriptionKey: "Stream refresh failed"])
+                        }
+                        streamData = refreshed
+                    } else {
+                        // Get cached or fetch fresh
+                        streamData = try await streamCache.ensureStream(
+                            for: nextTrack.id,
+                            spotifyUrl: spotifyUrl,
+                            priority: .userInitiated
+                        )
+                    }
+
+                    prepareNextPlayer(with: streamData)
+                } catch {
+                    logError(.playback, "[MixEngine] Prewarm failed: \(error)")
+                    // Prewarm failures should not abruptly skip tracks; just cancel the transition.
+                    abortMixTransition(reason: "stream_refresh_failed", shouldFallbackToNext: false)
+                }
+            }
+            return
+        }
 
         // Get next track from queue - always queue.peek()
         // The current track is never in the queue (invariant)

@@ -65,6 +65,24 @@ final class PlaybackCoordinator: NSObject {
     /// Fade curve type for crossfade transitions
     var fadeCurve: FadeCurve = .equalPower
 
+    /// Repeat mode (off / all / one)
+    var repeatMode: PlayerState.RepeatMode = .off {
+        didSet {
+            mixEngine.allowAutoAdvance = repeatMode != .one
+            mixEngine.loopCurrentTrack = repeatMode == .one
+            if repeatMode == .one {
+                clearPreloadedNextItem()
+                if isUsingMixMode {
+                    mixEngine.handleQueueChanged()
+                }
+            } else if repeatMode == .all {
+                refreshRepeatAllOrder()
+            }
+        }
+    }
+
+    private var repeatAllOrder: [PlaybackContext] = []
+
     private let queueManager = QueueManager.shared
     private let keychain = KeychainManager.shared
     private let convexService = ConvexService.shared
@@ -380,7 +398,13 @@ final class PlaybackCoordinator: NSObject {
         // Pop the next track from queue BEFORE playing
         // This enforces the invariant: current track is never in the queue
         guard let nextItem = queueManager.popNext() else {
-            logWarning(.queue, "playNext: queue empty, nothing to play")
+            if repeatMode == .all, let current = currentContext ?? lastStartedContext,
+               let next = repeatAllNextContext(after: current) {
+                logInfo(.queue, "playNext: repeat-all -> '\(next.track.title)'")
+                play(track: next.track, soundCloudTrack: next.soundCloudTrack, queueIndex: nil)
+            } else {
+                logWarning(.queue, "playNext: queue empty, nothing to play")
+            }
             if manual {
                 HapticManager.selection()
             }
@@ -431,10 +455,16 @@ final class PlaybackCoordinator: NSObject {
         logDebug(.queue, "handleQueueChanged: mixMode=\(isUsingMixMode)")
         if isUsingMixMode {
             mixEngine.handleQueueChanged()
-            return
+        }
+        if repeatMode == .all {
+            refreshRepeatAllOrder()
         }
 
         // Non-mix: drop any stale preloaded "next" item so Next/autoplay always reflects the latest queue.
+        clearPreloadedNextItem()
+    }
+
+    private func clearPreloadedNextItem() {
         if let item = nextPreloadedItem {
             if player.items().contains(item) {
                 player.remove(item)
@@ -500,6 +530,9 @@ final class PlaybackCoordinator: NSObject {
     private func handleTrackStartedPlaying(context: PlaybackContext) {
         recordHistoryTransition(to: context)
         currentContext = context
+        if repeatMode == .all {
+            refreshRepeatAllOrder()
+        }
         Analytics.shared.track(
             "track_played",
             properties: [
@@ -509,6 +542,34 @@ final class PlaybackCoordinator: NSObject {
                 "duration_seconds": context.track.duration
             ]
         )
+    }
+
+    private func refreshRepeatAllOrder() {
+        var order: [PlaybackContext] = []
+        order.append(contentsOf: historyStack)
+        if let current = currentContext {
+            order.append(current)
+        }
+        for item in queueManager.queue.items {
+            order.append(
+                PlaybackContext(
+                    track: item.track,
+                    soundCloudTrack: item.soundCloudTrack,
+                    queueIndex: 0
+                )
+            )
+        }
+        repeatAllOrder = order
+    }
+
+    private func repeatAllNextContext(after context: PlaybackContext) -> PlaybackContext? {
+        if repeatAllOrder.isEmpty {
+            refreshRepeatAllOrder()
+        }
+        guard repeatAllOrder.count > 1 else { return nil }
+        guard let currentIndex = repeatAllOrder.lastIndex(where: { $0.track.id == context.track.id }) else { return nil }
+        let nextIndex = (currentIndex + 1) % repeatAllOrder.count
+        return repeatAllOrder[nextIndex]
     }
 
     private func startPlayback(with context: PlaybackContext, requestId: UUID, startTime: Double? = nil, forceRefreshURL: Bool = false) async {
@@ -989,7 +1050,8 @@ final class PlaybackCoordinator: NSObject {
                 }
 
                 // Preload at 50%
-                if !self.hasPreloadedForCurrentTrack,
+                if self.repeatMode != .one,
+                   !self.hasPreloadedForCurrentTrack,
                    currentTime.isFinite, duration.isFinite, duration > 0,
                    currentTime / duration >= self.preloadTriggerProgress,
                    let current = self.currentContext {
@@ -1019,6 +1081,15 @@ final class PlaybackCoordinator: NSObject {
         )
 
         itemContextMap.removeValue(forKey: finishedItem)
+
+        if repeatMode == .one {
+            restartRepeatOne(from: finishedContext)
+            return
+        }
+        if repeatMode == .all {
+            restartRepeatAll(from: finishedContext)
+            return
+        }
 
         if autoplayEnabled,
            let preloadedContext = nextPreloadedContext,
@@ -1077,6 +1148,20 @@ final class PlaybackCoordinator: NSObject {
         }
 
         adoptCurrentItemContext()
+    }
+
+    private func restartRepeatOne(from context: PlaybackContext) {
+        logInfo(.playback, "repeat_one: restarting '\(context.track.title)'")
+        play(track: context.track, soundCloudTrack: context.soundCloudTrack, queueIndex: nil)
+    }
+
+    private func restartRepeatAll(from context: PlaybackContext) {
+        if let next = repeatAllNextContext(after: context) {
+            logInfo(.playback, "repeat_all: advancing to '\(next.track.title)'")
+            play(track: next.track, soundCloudTrack: next.soundCloudTrack, queueIndex: nil)
+        } else {
+            restartRepeatOne(from: context)
+        }
     }
 
     private func adoptCurrentItemContext() {
@@ -1286,6 +1371,15 @@ extension PlaybackCoordinator: MixPlaybackEngineDelegate {
     func mixEngineDidFinishTrack(_ engine: MixPlaybackEngine, track: Track, context: PlaybackContext) {
         // End position tracking for finished track
         positionTracker.endSession()
+
+        if repeatMode == .one {
+            restartRepeatOne(from: context)
+            return
+        }
+        if repeatMode == .all {
+            restartRepeatAll(from: context)
+            return
+        }
 
         guard autoplayEnabled else {
             isIntendedToPlay = false

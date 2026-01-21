@@ -198,7 +198,6 @@ struct ExpandedPlayerView: View {
     @State private var lightHaptic = UIImpactFeedbackGenerator(style: .light)
     @State private var heavyHaptic = UIImpactFeedbackGenerator(style: .heavy)
     @State private var lastHapticThreshold: Int = 0
-    @State private var confirmDeleteQueue: Bool = false
     @Namespace private var toolbarUnionNamespace
 
     init(currentTrack: Track, currentQueueIndex: Int = -1, nextTrack: Track?, previousTrack: Track?, isPlaying: Bool, namespace: Namespace.ID, playbackPosition: Binding<Double>, duration: Double, volume: Binding<Double>, isDraggingProgress: Binding<Bool>, onPlayPause: @escaping () -> Void, onNext: @escaping () -> Void, onPrevious: @escaping () -> Void, onSeek: @escaping (Bool) -> Void, onDismiss: @escaping () -> Void, previewQueueTracks: [Track]? = nil, initialShowQueue: Bool = false) {
@@ -500,38 +499,26 @@ struct ExpandedPlayerView: View {
 
                     // 5. Bottom Toolbar (always visible)
                     HStack {
-                        // Clear queue button (only show if queue has items)
-                        if queueManager.hasQueue {
-                            Button {
-                                if confirmDeleteQueue {
-                                    // Reset state first, then clear queue
-                                    withAnimation(.smooth(duration: 0.3)) {
-                                        confirmDeleteQueue = false
-                                    }
-                                    Task {
-                                        try? await queueManager.clearQueueWithSync()
-                                        presentQueueClearedNotification()
-                                    }
-                                } else {
-                                    withAnimation(.smooth(duration: 0.3)) {
-                                        confirmDeleteQueue = true
-                                    }
-                                }
-                            } label: {
-                                Image(systemName: confirmDeleteQueue ? "checkmark" : "trash")
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundStyle(confirmDeleteQueue ? .white : .secondary)
-                                    .contentTransition(.symbolEffect(.replace))
-                                    .frame(width: 44, height: 44)
-                                    .background(confirmDeleteQueue ? Color.blue : Color.clear)
-                                    .clipShape(Circle())
-                            }
-                            .glassEffect(.clear, in: .circle)
+                        // Repeat button (left side)
+                        Button {
+                            playerState.cycleRepeatMode()
+                            HapticManager.selection()
+                        } label: {
+                            Image(systemName: playerState.repeatMode.symbolName)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(playerState.repeatMode.isEnabled ? .white : .secondary)
+                                .shadow(color: playerState.repeatMode.isEnabled ? .white.opacity(0.7) : .clear, radius: 6)
+                                .shadow(color: playerState.repeatMode.isEnabled ? .white.opacity(0.3) : .clear, radius: 12)
+                                .animation(.easeInOut(duration: 0.25), value: playerState.repeatMode)
+                                .contentTransition(.symbolEffect(.replace))
+                                .frame(width: 44, height: 44)
+                                .clipShape(Circle())
                         }
+                        .glassEffect(.clear, in: .circle)
 
                         Spacer()
 
-                        // Mix + Queue toolbar group (only show if queue has items)
+                        // Mix + Queue toolbar group
                         if queueManager.hasQueue {
                             GlassEffectContainer {
                                 HStack(spacing: 12) {
@@ -556,7 +543,6 @@ struct ExpandedPlayerView: View {
                                     // Queue button
                                     Button {
                                         HapticManager.selection()
-                                        confirmDeleteQueue = false
                                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                             showQueueSheet = true
                                             queueExpansion = 200
@@ -573,6 +559,16 @@ struct ExpandedPlayerView: View {
                                 }
                             }
                             .glassEffect(.clear, in: .capsule)
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    Task {
+                                        try? await queueManager.clearQueueWithSync()
+                                        presentQueueClearedNotification()
+                                    }
+                                } label: {
+                                    Label("Clear Queue", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                     .padding(.horizontal, horizontalPadding)
@@ -584,21 +580,12 @@ struct ExpandedPlayerView: View {
 
         // Setup the hero transition
         .navigationTransition(.zoom(sourceID: "MINIPLAYER", in: namespace))
-        .onChange(of: showQueueSheet) { _, newValue in
-            // Reset delete confirmation when queue sheet state changes
-            if newValue {
-                confirmDeleteQueue = false
-            }
-        }
         .onChange(of: queueManager.hasQueue) { _, hasQueue in
             if hasQueue {
                 // Auto-open queue sheet when queue loads with items
                 if !showQueueSheet {
                     showQueueSheet = true
                 }
-            } else {
-                // Reset confirmation state when queue becomes empty
-                confirmDeleteQueue = false
             }
         }
     }
