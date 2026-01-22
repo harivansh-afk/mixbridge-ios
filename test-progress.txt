@@ -116,7 +116,27 @@ Build verification: PASSED (xcodebuild build-for-testing succeeded)
 
 Build verification: PASSED (xcodebuild build-for-testing succeeded)
 
+4. mixbridgeTests/Services/PlaybackPositionTrackerTests.swift (MEDIUM priority)
+   - 45 test methods covering PlaybackPositionTracker functionality
+   - Created TestablePlaybackPositionTracker class for isolated testing with dependency injection
+   - Created MockPositionConvexService for tracking updatePlayPosition calls
+   - Initial state tests: no session, zero position
+   - Start session tests: unique session ID, queue index, duration, position reset
+   - Start session flush tests: flushes existing session, generates unique IDs
+   - Update position tests: stores position/duration, ignores without session
+   - Flush interval tests: does not flush before interval, flushes after interval
+   - Flush tests: sends correct session ID, user ID, position, duration
+   - Flush guard tests: no flush without session, with zero position, without user ID
+   - End session tests: clears session/queue/position/duration, flushes final position
+   - Percentage calculation tests: correct position/duration sent, zero duration handling
+   - Session lifecycle tests: complete lifecycle, multiple sessions, session switch without end
+   - Custom flush interval tests: configurable interval timing
+   - Edge cases: very small position, negative position, position beyond duration
+   - Rapid updates tests: handles frequent time observer updates
+   - Safety tests: endSession/flush/updatePosition before start do not crash
+
+Build verification: PASSED (xcodebuild build-for-testing succeeded)
+
 ### Remaining from prd-services.md:
-- [ ] PlaybackPositionTrackerTests.swift (MEDIUM)
 - [ ] TrackPrefetcherTests.swift (MEDIUM)
 - [ ] RecentSearchManagerTests.swift (LOW)
