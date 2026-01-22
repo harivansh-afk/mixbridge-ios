@@ -95,8 +95,7 @@ public actor DJFileAnalysisStore: DJAnalysisStore {
             let data = try encoder.encode(entry)
             try data.write(to: fileURL, options: .atomic)
         } catch {
-            // Cache write failure is non-fatal - log but continue
-            print("DJFileAnalysisStore: Failed to write cache for \(trackId): \(error)")
+            // Cache write failure is non-fatal.
         }
     }
 

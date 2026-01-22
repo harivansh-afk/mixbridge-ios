@@ -488,15 +488,6 @@ public final class DJMixerEngine {
         // Schedule incoming deck with offset to align downbeat (offset in file frames).
         let remainingFrames = max(0, audioFileIncoming.length - incomingStartOffsetFrames)
 
-        print("[DJMixerEngine] executeTransition: scheduling incoming deck \(incomingDeck)")
-        print("[DJMixerEngine]   - incomingStartOffsetFrames: \(incomingStartOffsetFrames)")
-        print("[DJMixerEngine]   - remainingFrames: \(remainingFrames)")
-        print("[DJMixerEngine]   - delaySeconds: \(delaySeconds)")
-        print("[DJMixerEngine]   - startTime: \(startTime != nil ? "host-time based" : "immediate")")
-        print("[DJMixerEngine]   - transitionStartSeconds: \(incomingStartTime)")
-        print("[DJMixerEngine]   - transitionDurationSeconds: \(validatedPlan.fadeDurationSeconds)")
-        print("[DJMixerEngine]   - current outgoing time: \(currentOutgoingTime)")
-
         incomingNode.scheduleSegment(
             audioFileIncoming,
             startingFrame: incomingStartOffsetFrames,
@@ -504,8 +495,6 @@ public final class DJMixerEngine {
             at: startTime
         )
         incomingNode.play()
-
-        print("[DJMixerEngine]   - incomingNode.isPlaying: \(incomingNode.isPlaying)")
 
         // Record transition timing for progress calculation (seconds on outgoing track timeline).
         transitionStartSeconds = incomingStartTime
@@ -619,13 +608,6 @@ public final class DJMixerEngine {
         let (outgoingGain, incomingGain) = plan.crossfadeGains(at: progress)
         mixerNode(for: outgoingDeck).outputVolume = Float(outgoingGain)
         mixerNode(for: incomingDeck).outputVolume = Float(incomingGain)
-
-        // Log every 10% progress
-        let progressPct = Int(progress * 100)
-        if progressPct % 10 == 0 && progressPct > 0 {
-            let incomingTime = currentTime(for: incomingDeck)
-            print("[DJMixerEngine] tick progress=\(progressPct)%: outVol=\(String(format: "%.2f", outgoingGain)), inVol=\(String(format: "%.2f", incomingGain)), incomingTime=\(String(format: "%.1f", incomingTime))s, incomingPlaying=\(playerNode(for: incomingDeck).isPlaying)")
-        }
 
         // Apply EQ curves
         eqController(for: outgoingDeck).applyEQCurves(plan.outgoingEQCurves, at: progress)

@@ -21,18 +21,6 @@ struct DJTransitionPlannerSettings: Sendable, Equatable {
 
     /// Confidence threshold required to enable beat sync / tempo matching.
     var confidenceThreshold: Double
-
-    static func fromPlayerState() -> DJTransitionPlannerSettings {
-        DJTransitionPlannerSettings(
-            crossfadeSeconds: PlayerState.shared.crossfadeSeconds,
-            fadeCurve: PlayerState.shared.fadeCurve,
-            beatSyncEnabled: true,
-            tempoMatchEnabled: true,
-            eqPolishEnabled: true,
-            preferBarSync: true,
-            confidenceThreshold: 0.6
-        )
-    }
 }
 
 enum DJTransitionPlanner {
@@ -170,4 +158,3 @@ enum DJTransitionPlanner {
         )
     }
 }
-
