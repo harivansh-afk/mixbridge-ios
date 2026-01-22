@@ -157,5 +157,23 @@ Build verification: PASSED (xcodebuild build-for-testing succeeded)
 
 Build verification: PASSED (xcodebuild build-for-testing succeeded)
 
-### Remaining from prd-services.md:
-- [ ] RecentSearchManagerTests.swift (LOW)
+6. mixbridgeTests/Services/RecentSearchManagerTests.swift (LOW priority)
+   - 45 test methods covering RecentSearchManager functionality
+   - Created TestableRecentSearchManager class for isolated testing with MockUserDefaults
+   - Created MockUserDefaults for dependency injection without affecting real UserDefaults
+   - Initial state tests: empty list, loads from storage, handles empty storage
+   - Add search tests: single query, inserts at beginning, trims whitespace/newlines/tabs
+   - Empty input tests: ignores empty string, whitespace-only, newline-only
+   - Case-insensitive deduplication tests: removes duplicates, moves existing to top
+   - Max limit tests: respects 10-item limit, keeps newest, exact limit behavior
+   - Remove search tests: exact match removal, case-sensitive, handles nonexistent
+   - Clear all tests: removes all searches, safe on empty, updates storage
+   - Persistence tests: saves to storage, correct order, storage key verification
+   - Round-trip persistence test: data survives new manager instance
+   - Edge cases: unicode, special characters, numbers, internal whitespace, very long queries
+   - Sequential operations tests: add/remove/add, clear then add, multiple operations
+   - Stress tests: 100 searches, rapid add/remove cycles
+
+Build verification: PASSED (xcodebuild build-for-testing succeeded)
+
+### Status: ALL SERVICES TESTS COMPLETE
