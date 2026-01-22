@@ -45,13 +45,19 @@ PROCESS:
    Prioritize: core services > auth > models > viewmodels > utils > sync
 4. READ the source file thoroughly before writing tests.
 5. Create the test file with comprehensive tests.
-6. Run feedback loops: check that Swift files compile (swift build or xcodebuild).
-7. UPDATE THE PRD FILE: Change [ ] to [x] for the task you completed.
-8. Append your progress to test-progress.txt with:
+6. VALIDATE - Build the project:
+   xcodebuild build-for-testing -scheme mixbridge -destination 'platform=iOS Simulator,name=iPhone 16'
+   If build fails, fix the errors and rebuild.
+7. VALIDATE - Run your new tests:
+   xcodebuild test-without-building -scheme mixbridge -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:mixbridgeTests/YourNewTestClass
+   If tests fail, fix them and rerun until they pass.
+8. UPDATE THE PRD FILE: Change [ ] to [x] for the task you completed.
+9. Append your progress to test-progress.txt with:
    - What you completed
    - Files created
+   - Test results (pass/fail count)
    - Any issues encountered
-9. Make a git commit of your changes (include both PRD and test files).
+10. Make a git commit ONLY after build passes and tests pass.
 
 CRITICAL RULES:
 - ONLY WORK ON A SINGLE TEST FILE PER ITERATION.

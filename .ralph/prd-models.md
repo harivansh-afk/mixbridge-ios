@@ -2,21 +2,25 @@
 
 ## Tasks (Priority Order)
 
-- [ ] mixbridgeTests/Models/TrackTests.swift
+- [x] mixbridgeTests/Models/TrackTests.swift
       HIGH: Track init, equality, Codable roundtrip.
       Source: mixbridge/Models/Track.swift
+      COMPLETED: 60 tests, tests REAL Track class
 
-- [ ] mixbridgeTests/Models/PlaylistTests.swift
+- [x] mixbridgeTests/Models/PlaylistTests.swift
       HIGH: Playlist operations, track ordering.
       Source: mixbridge/Models/Playlist.swift
+      COMPLETED: 60 tests, tests REAL Playlist class
 
-- [ ] mixbridgeTests/Models/PlaybackQueueTests.swift
+- [x] mixbridgeTests/Models/PlaybackQueueTests.swift
       HIGH: Queue operations, shuffle, repeat.
       Source: mixbridge/Models/PlaybackQueue.swift
+      COMPLETED: 60 tests, tests REAL PlaybackQueue class
 
-- [ ] mixbridgeTests/Models/PlayerStateTests.swift
+- [x] mixbridgeTests/Models/PlayerStateTests.swift
       MEDIUM: State transitions, persistence.
       Source: mixbridge/Models/PlayerState.swift
+      COMPLETED: tests REAL PlayerState class
 
 - [ ] mixbridgeTests/Models/MixSettingsTests.swift
       LOW: Settings validation, defaults.

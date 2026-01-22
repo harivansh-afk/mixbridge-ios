@@ -2,9 +2,10 @@
 
 ## Tasks (Priority Order)
 
-- [ ] mixbridgeTests/Services/QueueManagerTests.swift
+- [x] mixbridgeTests/Services/QueueManagerTests.swift
       CRITICAL: Core queue logic. Test add/remove/reorder, shuffle, repeat modes.
       Source: mixbridge/Services/QueueManager.swift
+      COMPLETED: 45 tests, tests REAL PlaybackQueue class
 
 - [ ] mixbridgeTests/Services/StreamURLCacheTests.swift
       HIGH: URL caching. Test cache hits, misses, expiration, invalidation.
