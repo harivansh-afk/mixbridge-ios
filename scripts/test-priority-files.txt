@@ -1,0 +1,35 @@
+# Priority test files for mixbridge-ios
+# Usage: ./ralph-test-batch.sh 3 --list test-priority-files.txt
+# Files are ordered by criticality - core business logic first
+
+# Tier 1: Core Services (most critical)
+mixbridge/Services/QueueManager.swift
+mixbridge/Services/StreamURLCache.swift
+mixbridge/Services/PlaybackPositionTracker.swift
+mixbridge/Services/DownloadManager.swift
+
+# Tier 2: Auth (security critical)
+mixbridge/Auth/AuthManager.swift
+mixbridge/Auth/KeychainManager.swift
+mixbridge/Auth/SessionTokenDecoder.swift
+
+# Tier 3: Models (data integrity)
+mixbridge/Models/Track.swift
+mixbridge/Models/Playlist.swift
+mixbridge/Models/PlaybackQueue.swift
+mixbridge/Models/PlayerState.swift
+
+# Tier 4: ViewModels (UI state management)
+mixbridge/ViewModels/PlaylistDetailViewModel.swift
+mixbridge/ViewModels/HomeViewModel.swift
+mixbridge/ViewModels/LikedViewModel.swift
+
+# Tier 5: Sync (data consistency)
+mixbridge/Sync/PlaylistSync.swift
+mixbridge/Sync/QueueSync.swift
+mixbridge/Sync/OperationQueue.swift
+
+# Tier 6: Utilities
+mixbridge/Utilities/ImageCacheManager.swift
+mixbridge/Utilities/LogManager.swift
+mixbridge/Utilities/RecentSearchManager.swift
