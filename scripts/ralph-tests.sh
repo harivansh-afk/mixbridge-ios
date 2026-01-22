@@ -39,18 +39,19 @@ run_ralph() {
 You are writing tests for mixbridge-ios.
 
 PROCESS:
-1. Read the PRD to see what tests need to be written.
+1. Read the PRD to see what tests need to be written (look for unchecked [ ] items).
 2. Read test-progress.txt to see what's already done.
 3. Choose the HIGHEST PRIORITY incomplete task - not necessarily the first one.
    Prioritize: core services > auth > models > viewmodels > utils > sync
 4. READ the source file thoroughly before writing tests.
 5. Create the test file with comprehensive tests.
 6. Run feedback loops: check that Swift files compile (swift build or xcodebuild).
-7. Append your progress to test-progress.txt with:
+7. UPDATE THE PRD FILE: Change [ ] to [x] for the task you completed.
+8. Append your progress to test-progress.txt with:
    - What you completed
    - Files created
    - Any issues encountered
-8. Make a git commit of your changes.
+9. Make a git commit of your changes (include both PRD and test files).
 
 CRITICAL RULES:
 - ONLY WORK ON A SINGLE TEST FILE PER ITERATION.
@@ -101,12 +102,18 @@ If ALL tests in the PRD are complete, output: <promise>COMPLETE</promise>
   echo "=============================================="
 }
 
-# Create PRD files for each module
+# Create PRD files for each module (only if they don't exist)
 create_prd() {
   local module=$1
   local prd_file="$PROJECT_ROOT/.ralph/prd-$module.md"
 
   mkdir -p "$PROJECT_ROOT/.ralph"
+
+  # Don't overwrite existing PRD - let Claude update it
+  if [ -f "$prd_file" ]; then
+    echo "$prd_file"
+    return
+  fi
 
   case $module in
     setup)
