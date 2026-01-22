@@ -27,12 +27,12 @@ run_ralph() {
     echo "=============================================="
     echo ""
 
-    # Run Claude in full agentic mode (no --print)
+    # Run Claude in full agentic mode
     # --dangerously-skip-permissions bypasses all permission prompts
-    # Capture output to check for completion signal
+    # --verbose shows tool calls as they happen
     output_file=$(mktemp)
 
-    claude --dangerously-skip-permissions "$prompt" 2>&1 | tee "$output_file"
+    claude --dangerously-skip-permissions --verbose "$prompt" 2>&1 | tee "$output_file"
 
     # Check if Claude signaled completion
     if grep -q "<promise>COMPLETE</promise>" "$output_file"; then
