@@ -361,20 +361,10 @@ case $MODULE in
     echo "=== Running Ralph for ALL modules ==="
     echo ""
 
-    # Module iteration counts based on task count
-    declare -A MODULES=(
-      ["setup"]=5
-      ["services"]=6
-      ["viewmodels"]=6
-      ["models"]=7
-      ["utils"]=5
-      ["auth"]=3
-      ["sync"]=5
-      ["db"]=7
-    )
-
-    for mod in setup services models auth viewmodels utils sync db; do
-      count=${MODULES[$mod]}
+    # Module:iterations pairs (bash 3.x compatible)
+    for entry in "setup:5" "services:6" "models:7" "auth:3" "viewmodels:6" "utils:5" "sync:5" "db:7"; do
+      mod="${entry%%:*}"
+      count="${entry##*:}"
       echo ""
       echo "########################################"
       echo "### MODULE: $mod ($count iterations max)"
