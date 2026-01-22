@@ -229,4 +229,33 @@ Build verification: PASSED (xcodebuild build-for-testing succeeded)
 
 Build verification: PASSED (xcodebuild build-for-testing succeeded)
 
-### Status: IN PROGRESS (2/7 complete)
+3. mixbridgeTests/Models/PlaybackQueueTests.swift (HIGH priority)
+   - 60 test methods covering PlaybackQueue and QueueItem functionality
+   - QueueItem tests: init with all parameters, nil serverId, nil soundCloudTrack
+   - QueueItem equality: based on id only, ignores other fields
+   - QueueItem Identifiable: id property verification
+   - Initial state tests: empty queue, peek/pop return nil
+   - Append tests: single item, multiple items, append contentsOf, empty array, to existing queue
+   - InsertNext tests: to empty queue, inserts at front, multiple times
+   - Peek tests: returns first item, does not remove
+   - Pop tests: removes and returns first, empty returns nil, pop all items
+   - Contains tests: existing trackId, nonexistent, empty queue, multiple items
+   - Item query tests: item(forTrackId:), index(ofTrackId:), track(at:), soundCloudTrack(at:)
+   - Remove by ID tests: existing id, nonexistent, empty queue
+   - Remove by trackId tests: existing, nonexistent
+   - Remove at index tests: valid index, first/last, negative, out of bounds, empty queue
+   - Move tests: forward, backward, same position, to first/last, invalid indices, clamping
+   - ReplaceAll tests: replaces all, with empty array, on empty queue
+   - Clear tests: removes all, on empty queue
+   - UpdateItem tests: existing id applies transform, nonexistent no change, preserves position
+   - Reinsert (rollback) tests: at original position, at start/end, beyond end clamps, negative clamps
+   - isEmpty and count tests: various states
+   - Edge cases: empty strings, special characters, complex operation sequences
+   - Stress tests: large queue (100 items), many sequential operations
+   - Sendable conformance tests: cross-actor usage
+   - Items property access tests: correct array, empty queue
+   - Integration with TestFixtures: SoundCloudTrack fixtures, multiple tracks
+
+Build verification: PASSED (xcodebuild build-for-testing succeeded)
+
+### Status: IN PROGRESS (3/7 complete)
