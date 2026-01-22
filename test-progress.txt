@@ -91,8 +91,32 @@ Build verification: PASSED (xcodebuild build-for-testing succeeded)
 
 Build verification: PASSED (xcodebuild build-for-testing succeeded)
 
+3. mixbridgeTests/Services/DownloadManagerTests.swift (HIGH priority)
+   - 60 test methods covering DownloadManager functionality
+   - Created TestableDownloadManager class for isolated testing without network/file system/database dependencies
+   - Initial state tests: no downloads, not downloading, not downloaded
+   - DownloadStatus tests: equality for all status types (notDownloaded, downloading, downloaded, failed)
+   - Download track tests: sets downloading status, skips if already downloading, handles invalid URL
+   - Batch download tests: enqueues multiple, skips already downloaded, skips already downloading
+   - Cancel download tests: stops active download, removes partial files, no-op for nonexistent
+   - Delete download tests: removes file, updates status, no-op for nonexistent
+   - Delete all downloads tests: removes all files, clears statuses, safe on empty
+   - isDownloaded tests: true for downloaded, false for downloading/failed/unknown
+   - isDownloading tests: true at any progress, false for downloaded/failed
+   - Local file URL tests: returns URL for downloaded, nil for non-downloaded, nil for missing file
+   - Storage used tests: zero for empty, sums file sizes correctly
+   - Playlist download status tests: fully downloaded detection, partial download handling
+   - Playlist progress tests: correct counts, updates after new download
+   - Progress updates tests: correct progress tracking, completion status update
+   - DownloadError tests: all error descriptions verified
+   - DownloadedTrackInfo tests: equality based on ID, ID matches track ID
+   - DownloadedPlaylistInfo tests: equality, isFullyDownloaded logic
+   - Concurrent operations tests: concurrent download requests, status updates, download and cancel
+   - Edge cases: Spotify track download, multiple operations sequence, redownload after failure/cancel
+
+Build verification: PASSED (xcodebuild build-for-testing succeeded)
+
 ### Remaining from prd-services.md:
-- [ ] DownloadManagerTests.swift (HIGH)
 - [ ] PlaybackPositionTrackerTests.swift (MEDIUM)
 - [ ] TrackPrefetcherTests.swift (MEDIUM)
 - [ ] RecentSearchManagerTests.swift (LOW)
