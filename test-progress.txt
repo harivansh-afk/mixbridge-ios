@@ -69,8 +69,29 @@ Build verification: PASSED (xcodebuild build-for-testing succeeded)
 
 Build verification: PASSED (xcodebuild build-for-testing succeeded)
 
+2. mixbridgeTests/Services/StreamURLCacheTests.swift (HIGH priority)
+   - 35 test methods covering StreamURLCache functionality
+   - Created TestableStreamURLCache actor for isolated testing without network dependencies
+   - Initial state tests: empty cache behavior
+   - Cache hit tests: single track, multiple tracks
+   - Cache miss tests: nonexistent track, after clear
+   - Expiration tests: expired entry returns nil, expired entry removed on access
+   - CleanupExpired tests: removes only expired entries
+   - Expiring soon tests: SoundCloud (60s buffer), Spotify (300s buffer)
+   - isStreamExpiring tests: deadline-based expiration checks
+   - Invalidation tests: single track, preserves other entries, nonexistent track
+   - ClearAll tests: removes all entries, safe on empty cache
+   - Prefetch queue tests: enqueue, skip cached, skip duplicate, batch prefetch
+   - prefetchUpcoming tests: lookAhead limiting
+   - prefetchTrackAndNeighbors tests: previous/current/next tracks, edge cases
+   - Prefetch max queue size test (50 limit)
+   - Edge cases: empty URL handling, field preservation
+   - Concurrent access tests: thread safety with TaskGroup
+   - StreamCacheError tests: error description
+
+Build verification: PASSED (xcodebuild build-for-testing succeeded)
+
 ### Remaining from prd-services.md:
-- [ ] StreamURLCacheTests.swift (HIGH)
 - [ ] DownloadManagerTests.swift (HIGH)
 - [ ] PlaybackPositionTrackerTests.swift (MEDIUM)
 - [ ] TrackPrefetcherTests.swift (MEDIUM)
