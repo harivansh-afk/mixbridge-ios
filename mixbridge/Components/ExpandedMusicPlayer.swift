@@ -193,6 +193,9 @@ struct ExpandedPlayerView: View {
     @State private var backgroundStableArtwork: String
     @State private var backgroundPendingArtwork: String? = nil
     @State private var backgroundPendingReady: Bool = false
+    @State private var backgroundCrossfadeStartProgress: Double? = nil
+    @State private var backgroundCrossfadeHold: Bool = false
+    @State private var backgroundCrossfadeHoldTask: Task<Void, Never>? = nil
 
     // Haptic generators (prepared for instant feedback)
     @State private var lightHaptic = UIImpactFeedbackGenerator(style: .light)
@@ -245,6 +248,17 @@ struct ExpandedPlayerView: View {
             let queueTopFadeHeight: CGFloat = 30
             let queueListTopInset: CGFloat = 1 
             let queueSectionVisualLift: CGFloat = 44
+            let backgroundCrossfadeActive = (playerState.isCrossfading || backgroundCrossfadeHold) && backgroundPendingReady && backgroundCrossfadeStartProgress != nil
+            let backgroundCrossfadeProgress: Double = {
+                guard backgroundCrossfadeActive else { return 0 }
+                if backgroundCrossfadeHold && !playerState.isCrossfading {
+                    return 1.0
+                }
+                let start = backgroundCrossfadeStartProgress ?? 0
+                let denom = max(0.0001, 1.0 - start)
+                let scaled = (playerState.crossfadeProgress - start) / denom
+                return min(1.0, max(0.0, scaled))
+            }()
             // If SwiftUI carousel state lags behind playback state, prefer playback-derived values
             // so we never briefly show the previous track at the end of a crossfade.
             let shouldPreferPlaybackTrack = !isDraggingArtwork && abs(dragOffset) < 0.5 && displayedTrack.id != currentTrack.id
@@ -265,8 +279,8 @@ struct ExpandedPlayerView: View {
                     stableArtwork: backgroundStableArtwork,
                     pendingArtwork: backgroundPendingArtwork,
                     pendingReady: backgroundPendingReady,
-                    isCrossfading: playerState.isCrossfading,
-                    crossfadeProgress: playerState.crossfadeProgress,
+                    isCrossfading: backgroundCrossfadeActive,
+                    crossfadeProgress: backgroundCrossfadeProgress,
                     dragOffset: dragOffset,
                     previousSwipeOpacity: previousSwipeOpacity,
                     nextSwipeOpacity: nextSwipeOpacity,
@@ -406,6 +420,8 @@ struct ExpandedPlayerView: View {
                                 // transition end; we commit/clear in the `isCrossfading` handoff below to avoid a
                                 // 1-frame fallback to the old stable background.
                                 guard let newArtwork, !newArtwork.isEmpty else { return }
+                                backgroundCrossfadeHoldTask?.cancel()
+                                backgroundCrossfadeHold = false
 
                                 backgroundPendingArtwork = newArtwork
                                 backgroundPendingReady = isArtworkReady(newArtwork)
@@ -443,9 +459,35 @@ struct ExpandedPlayerView: View {
                                     // any one-frame flash back to the previous stable artwork.
                                     if backgroundPendingReady, let pending = backgroundPendingArtwork {
                                         backgroundStableArtwork = pending
+                                        backgroundCrossfadeHoldTask?.cancel()
+                                        backgroundCrossfadeHold = true
+                                        backgroundCrossfadeHoldTask = Task { @MainActor in
+                                            try? await Task.sleep(nanoseconds: 150_000_000)
+                                            backgroundPendingArtwork = nil
+                                            backgroundPendingReady = false
+                                            backgroundCrossfadeStartProgress = nil
+                                            backgroundCrossfadeHold = false
+                                        }
+                                        return
                                     }
                                     backgroundPendingArtwork = nil
                                     backgroundPendingReady = false
+                                    backgroundCrossfadeStartProgress = nil
+                                    backgroundCrossfadeHold = false
+                                }
+                            }
+                            .onChange(of: backgroundPendingReady) { _, ready in
+                                guard ready else { return }
+                                guard playerState.isCrossfading else { return }
+                                if backgroundCrossfadeStartProgress == nil {
+                                    backgroundCrossfadeStartProgress = playerState.crossfadeProgress
+                                }
+                            }
+                            .onChange(of: playerState.crossfadeProgress) { _, progress in
+                                guard playerState.isCrossfading else { return }
+                                guard backgroundPendingReady else { return }
+                                if backgroundCrossfadeStartProgress == nil {
+                                    backgroundCrossfadeStartProgress = progress
                                 }
                             }
 
