@@ -2,8 +2,8 @@
 set -e
 
 # Ralph Test Generator for mixbridge-ios
+# Based on Matt Pocock's Ralph Wiggum pattern
 # Usage: ./ralph-tests.sh <iterations> [module]
-# Modules: setup, services, viewmodels, models, utils, auth, sync, db, all
 
 if [ -z "$1" ]; then
   echo "Usage: $0 <iterations> [module]"
@@ -16,46 +16,64 @@ MODULE=${2:-all}
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# Ensure progress file exists
+PROGRESS_FILE="$PROJECT_ROOT/test-progress.txt"
+touch "$PROGRESS_FILE"
+
 run_ralph() {
-  local prompt="$1"
+  local prd_file="$1"
   local max_iterations="$2"
+  local module_name="$3"
 
   for ((i=1; i<=$max_iterations; i++)); do
     echo ""
     echo "=============================================="
-    echo "=== RALPH ITERATION $i of $max_iterations ==="
+    echo "=== RALPH ITERATION $i of $max_iterations ($module_name) ==="
     echo "=============================================="
     echo ""
 
-    output_file=$(mktemp)
+    # Run Claude with PRD and progress context
+    result=$(claude --dangerously-skip-permissions -p \
+"@$prd_file @$PROGRESS_FILE
 
-    claude --dangerously-skip-permissions --verbose "$prompt" 2>&1 | tee "$output_file"
+You are writing tests for mixbridge-ios.
 
-    # Check if Claude signaled completion
-    if grep -q "<promise>COMPLETE</promise>" "$output_file"; then
+PROCESS:
+1. Read the PRD to see what tests need to be written.
+2. Read test-progress.txt to see what's already done.
+3. Choose the HIGHEST PRIORITY incomplete task - not necessarily the first one.
+   Prioritize: core services > auth > models > viewmodels > utils > sync
+4. READ the source file thoroughly before writing tests.
+5. Create the test file with comprehensive tests.
+6. Run feedback loops: check that Swift files compile (swift build or xcodebuild).
+7. Append your progress to test-progress.txt with:
+   - What you completed
+   - Files created
+   - Any issues encountered
+8. Make a git commit of your changes.
+
+IMPORTANT:
+- ONLY WORK ON A SINGLE TEST FILE PER ITERATION.
+- Write quality tests: happy path, error cases, edge cases.
+- Use mocks from mixbridgeTests/TestHelpers/ if they exist.
+
+If ALL tests in the PRD are complete, output: <promise>COMPLETE</promise>
+")
+
+    echo "$result"
+
+    # Check for completion
+    if [[ "$result" == *"<promise>COMPLETE</promise>"* ]]; then
       echo ""
       echo "=============================================="
-      echo "Ralph COMPLETE after $i iteration(s)"
+      echo "ALL TESTS COMPLETE after $i iteration(s)"
       echo "=============================================="
-      rm -f "$output_file"
       return 0
     fi
-
-    # Check if all work is done (alternate signal)
-    if grep -q "<promise>ALL_DONE</promise>" "$output_file"; then
-      echo ""
-      echo "=============================================="
-      echo "ALL WORK COMPLETE after $i iteration(s)"
-      echo "=============================================="
-      rm -f "$output_file"
-      return 0
-    fi
-
-    rm -f "$output_file"
 
     if [ $i -lt $max_iterations ]; then
       echo ""
-      echo "--- Iteration $i done, continuing to next ---"
+      echo "--- Iteration $i done, continuing ---"
       sleep 2
     fi
   done
@@ -66,246 +84,307 @@ run_ralph() {
   echo "=============================================="
 }
 
-# ============================================
-# MODULE PROMPTS - Incremental approach
-# Each iteration handles ONE file/component
-# ============================================
+# Create PRD files for each module
+create_prd() {
+  local module=$1
+  local prd_file="$PROJECT_ROOT/.ralph/prd-$module.md"
 
-SETUP_PROMPT="You are setting up test infrastructure for mixbridge-ios.
+  mkdir -p "$PROJECT_ROOT/.ralph"
 
-TASK: Create test infrastructure incrementally.
+  case $module in
+    setup)
+      cat > "$prd_file" << 'EOF'
+# Test Infrastructure PRD
 
-1. First, check what already exists in mixbridgeTests/
-2. Create the NEXT missing item from this list:
-   - mixbridgeTests/TestHelpers/MockConvexService.swift
-   - mixbridgeTests/TestHelpers/MockAuthManager.swift
-   - mixbridgeTests/TestHelpers/TestFixtures.swift
-   - mixbridgeTests/TestHelpers/XCTestCase+Async.swift
-   - mixbridgeTests/SampleTests.swift
+## Tasks
 
-3. Read the relevant source files to understand what to mock
-4. Create ONE file with complete, working code
+- [ ] Create mixbridgeTests/TestHelpers/MockConvexService.swift
+      Mock the ConvexService for testing. Read mixbridge/Services/ConvexService.swift first.
 
-OUTPUT RULES:
-- If you created a file, end with: <promise>COMPLETE</promise>
-- If ALL files already exist, end with: <promise>ALL_DONE</promise>"
+- [ ] Create mixbridgeTests/TestHelpers/MockAuthManager.swift
+      Mock auth state and token management. Read mixbridge/Auth/AuthManager.swift first.
 
-SERVICES_PROMPT="You are writing unit tests for Services in mixbridge-ios.
+- [ ] Create mixbridgeTests/TestHelpers/TestFixtures.swift
+      Reusable test data: sample tracks, playlists, users. Read the Models/ directory.
 
-TASK: Write tests for ONE service per session.
+- [ ] Create mixbridgeTests/TestHelpers/XCTestCase+Async.swift
+      Async testing utilities: waitForAsync, assertThrowsAsync, assertEventually.
 
-Services to test (in order):
-1. mixbridge/Services/QueueManager.swift
-2. mixbridge/Services/StreamURLCache.swift
-3. mixbridge/Services/DownloadManager.swift
-4. mixbridge/Services/PlaybackPositionTracker.swift
-5. mixbridge/Services/TrackPrefetcher.swift
-6. mixbridge/Models/RecentSearchManager.swift
+- [ ] Create mixbridgeTests/SampleTests.swift
+      Sample test demonstrating how to use mocks and fixtures.
 
-PROCESS:
-1. Check mixbridgeTests/Services/ for existing test files
-2. Find the FIRST service that doesn't have tests yet
-3. READ the source file thoroughly
-4. Create mixbridgeTests/Services/{ServiceName}Tests.swift
-5. Write comprehensive tests: happy path, errors, edge cases
+## Completion Criteria
+All 5 files created with working Swift code.
+EOF
+      ;;
 
-OUTPUT RULES:
-- After creating ONE test file, end with: <promise>COMPLETE</promise>
-- If ALL services have tests, end with: <promise>ALL_DONE</promise>"
+    services)
+      cat > "$prd_file" << 'EOF'
+# Services Tests PRD
 
-VIEWMODELS_PROMPT="You are writing unit tests for ViewModels in mixbridge-ios.
+## Tasks (Priority Order)
 
-TASK: Write tests for ONE ViewModel per session.
+- [ ] mixbridgeTests/Services/QueueManagerTests.swift
+      CRITICAL: Core queue logic. Test add/remove/reorder, shuffle, repeat modes.
+      Source: mixbridge/Services/QueueManager.swift
 
-ViewModels to test (in order):
-1. mixbridge/ViewModels/HomeViewModel.swift
-2. mixbridge/ViewModels/LibraryViewModel.swift
-3. mixbridge/ViewModels/PlaylistDetailViewModel.swift
-4. mixbridge/ViewModels/CreatePlaylistViewModel.swift
-5. mixbridge/ViewModels/EditPlaylistViewModel.swift
-6. mixbridge/ViewModels/LikedViewModel.swift
+- [ ] mixbridgeTests/Services/StreamURLCacheTests.swift
+      HIGH: URL caching. Test cache hits, misses, expiration, invalidation.
+      Source: mixbridge/Services/StreamURLCache.swift
 
-PROCESS:
-1. Check mixbridgeTests/ViewModels/ for existing test files
-2. Find the FIRST ViewModel that doesn't have tests yet
-3. READ the source file thoroughly
-4. Create mixbridgeTests/ViewModels/{Name}Tests.swift
-5. Test @Published properties, async loading, user actions
+- [ ] mixbridgeTests/Services/DownloadManagerTests.swift
+      HIGH: Download state machine. Test start/pause/resume/cancel, progress tracking.
+      Source: mixbridge/Services/DownloadManager.swift
 
-OUTPUT RULES:
-- After creating ONE test file, end with: <promise>COMPLETE</promise>
-- If ALL ViewModels have tests, end with: <promise>ALL_DONE</promise>"
+- [ ] mixbridgeTests/Services/PlaybackPositionTrackerTests.swift
+      MEDIUM: Position tracking accuracy, persistence.
+      Source: mixbridge/Services/PlaybackPositionTracker.swift
 
-MODELS_PROMPT="You are writing unit tests for Models in mixbridge-ios.
+- [ ] mixbridgeTests/Services/TrackPrefetcherTests.swift
+      MEDIUM: Prefetch logic, cancellation, priority.
+      Source: mixbridge/Services/TrackPrefetcher.swift
 
-TASK: Write tests for ONE model per session.
+- [ ] mixbridgeTests/Services/RecentSearchManagerTests.swift
+      LOW: Search history CRUD, limits.
+      Source: mixbridge/Models/RecentSearchManager.swift
 
-Models to test (in order):
-1. mixbridge/Models/Track.swift
-2. mixbridge/Models/Playlist.swift
-3. mixbridge/Models/PlayerState.swift
-4. mixbridge/Models/PlaybackQueue.swift
-5. mixbridge/Models/MixSettings.swift
-6. mixbridge/Models/SoundCloudModels.swift
-7. mixbridge/Models/ConvexDataModels.swift
+## Completion Criteria
+All 6 test files with comprehensive coverage of public APIs.
+EOF
+      ;;
 
-PROCESS:
-1. Check mixbridgeTests/Models/ for existing test files
-2. Find the FIRST model that doesn't have tests yet
-3. READ the source file thoroughly
-4. Create mixbridgeTests/Models/{Name}Tests.swift
-5. Test Codable roundtrips, Equatable, edge cases
+    viewmodels)
+      cat > "$prd_file" << 'EOF'
+# ViewModel Tests PRD
 
-OUTPUT RULES:
-- After creating ONE test file, end with: <promise>COMPLETE</promise>
-- If ALL models have tests, end with: <promise>ALL_DONE</promise>"
+## Tasks (Priority Order)
 
-UTILS_PROMPT="You are writing unit tests for Utilities in mixbridge-ios.
+- [ ] mixbridgeTests/ViewModels/PlaylistDetailViewModelTests.swift
+      HIGH: Playlist CRUD operations, track management.
+      Source: mixbridge/ViewModels/PlaylistDetailViewModel.swift
 
-TASK: Write tests for ONE utility per session.
+- [ ] mixbridgeTests/ViewModels/HomeViewModelTests.swift
+      MEDIUM: Play history loading, state management.
+      Source: mixbridge/ViewModels/HomeViewModel.swift
 
-Utilities to test (in order):
-1. mixbridge/Utilities/ImageCacheManager.swift
-2. mixbridge/Utilities/HapticManager.swift
-3. mixbridge/Utilities/LogManager.swift
-4. mixbridge/Utilities/BackgroundExecutor.swift
-5. mixbridge/Auth/KeychainManager.swift
+- [ ] mixbridgeTests/ViewModels/LikedViewModelTests.swift
+      MEDIUM: Like/unlike operations, sync state.
+      Source: mixbridge/ViewModels/LikedViewModel.swift
 
-PROCESS:
-1. Check mixbridgeTests/Utilities/ for existing test files
-2. Find the FIRST utility that doesn't have tests yet
-3. READ the source file thoroughly
-4. Create mixbridgeTests/Utilities/{Name}Tests.swift
+- [ ] mixbridgeTests/ViewModels/LibraryViewModelTests.swift
+      MEDIUM: Library data fetching, filtering.
+      Source: mixbridge/ViewModels/LibraryViewModel.swift
 
-OUTPUT RULES:
-- After creating ONE test file, end with: <promise>COMPLETE</promise>
-- If ALL utilities have tests, end with: <promise>ALL_DONE</promise>"
+- [ ] mixbridgeTests/ViewModels/CreatePlaylistViewModelTests.swift
+      LOW: Playlist creation validation.
+      Source: mixbridge/ViewModels/CreatePlaylistViewModel.swift
 
-AUTH_PROMPT="You are writing unit tests for Auth in mixbridge-ios.
+- [ ] mixbridgeTests/ViewModels/EditPlaylistViewModelTests.swift
+      LOW: Edit validation, save operations.
+      Source: mixbridge/ViewModels/EditPlaylistViewModel.swift
 
-TASK: Write tests for ONE auth class per session.
+## Completion Criteria
+All 6 test files testing @Published properties and async operations.
+EOF
+      ;;
 
-Auth classes to test (in order):
-1. mixbridge/Auth/AuthManager.swift
-2. mixbridge/Auth/SpotifyAuthManager.swift
-3. mixbridge/Auth/SessionTokenDecoder.swift
+    models)
+      cat > "$prd_file" << 'EOF'
+# Models Tests PRD
 
-PROCESS:
-1. Check mixbridgeTests/Auth/ for existing test files
-2. Find the FIRST auth class that doesn't have tests yet
-3. READ the source file thoroughly
-4. Create mixbridgeTests/Auth/{Name}Tests.swift
-5. Test state transitions, token handling, errors
+## Tasks (Priority Order)
 
-OUTPUT RULES:
-- After creating ONE test file, end with: <promise>COMPLETE</promise>
-- If ALL auth classes have tests, end with: <promise>ALL_DONE</promise>"
+- [ ] mixbridgeTests/Models/TrackTests.swift
+      HIGH: Track init, equality, Codable roundtrip.
+      Source: mixbridge/Models/Track.swift
 
-SYNC_PROMPT="You are writing unit tests for Sync modules in mixbridge-ios.
+- [ ] mixbridgeTests/Models/PlaylistTests.swift
+      HIGH: Playlist operations, track ordering.
+      Source: mixbridge/Models/Playlist.swift
 
-TASK: Write tests for ONE sync class per session.
+- [ ] mixbridgeTests/Models/PlaybackQueueTests.swift
+      HIGH: Queue operations, shuffle, repeat.
+      Source: mixbridge/Models/PlaybackQueue.swift
 
-Sync classes to test (in order):
-1. mixbridge/Sync/PlaylistSync.swift
-2. mixbridge/Sync/LikedSync.swift
-3. mixbridge/Sync/QueueSync.swift
-4. mixbridge/Sync/HistorySync.swift
-5. mixbridge/Sync/OperationQueue.swift
+- [ ] mixbridgeTests/Models/PlayerStateTests.swift
+      MEDIUM: State transitions, persistence.
+      Source: mixbridge/Models/PlayerState.swift
 
-PROCESS:
-1. Check mixbridgeTests/Sync/ for existing test files
-2. Find the FIRST sync class that doesn't have tests yet
-3. READ the source file thoroughly
-4. Create mixbridgeTests/Sync/{Name}Tests.swift
-5. Test sync states, conflict resolution, retries
+- [ ] mixbridgeTests/Models/MixSettingsTests.swift
+      LOW: Settings validation, defaults.
+      Source: mixbridge/Models/MixSettings.swift
 
-OUTPUT RULES:
-- After creating ONE test file, end with: <promise>COMPLETE</promise>
-- If ALL sync classes have tests, end with: <promise>ALL_DONE</promise>"
+- [ ] mixbridgeTests/Models/SoundCloudModelsTests.swift
+      LOW: API response parsing.
+      Source: mixbridge/Models/SoundCloudModels.swift
 
-DB_PROMPT="You are writing unit tests for MixBridgeDB package.
+- [ ] mixbridgeTests/Models/ConvexDataModelsTests.swift
+      LOW: Backend model mapping.
+      Source: mixbridge/Models/ConvexDataModels.swift
 
-TASK: Write tests for ONE database model per session.
+## Completion Criteria
+All 7 test files with Codable, Equatable, and edge case tests.
+EOF
+      ;;
 
-Models to test (in order):
-1. PersistedTrack
-2. PersistedPlaylist
-3. PersistedQueue + PersistedQueueTrack
-4. PlaylistTrack
-5. LikedTrack + LikedPlaylist
-6. DownloadedTrack
-7. PlayHistory
-8. PersistedUserProfile
+    utils)
+      cat > "$prd_file" << 'EOF'
+# Utilities Tests PRD
 
-PROCESS:
-1. Check Packages/MixBridgeDB/Tests/ for existing test files
-2. Find the FIRST model that doesn't have tests yet
-3. READ the GRDB model file thoroughly
-4. Create test file in Packages/MixBridgeDB/Tests/MixBridgeDBTests/
-5. Test CRUD operations, queries, relationships
+## Tasks
 
-OUTPUT RULES:
-- After creating ONE test file, end with: <promise>COMPLETE</promise>
-- If ALL models have tests, end with: <promise>ALL_DONE</promise>"
+- [ ] mixbridgeTests/Utilities/ImageCacheManagerTests.swift
+      Cache operations, memory limits, cleanup.
+      Source: mixbridge/Utilities/ImageCacheManager.swift
+
+- [ ] mixbridgeTests/Utilities/LogManagerTests.swift
+      Log levels, filtering.
+      Source: mixbridge/Utilities/LogManager.swift
+
+- [ ] mixbridgeTests/Utilities/KeychainManagerTests.swift
+      Secure storage CRUD.
+      Source: mixbridge/Auth/KeychainManager.swift
+
+- [ ] mixbridgeTests/Utilities/HapticManagerTests.swift
+      Haptic generation (mock UIKit).
+      Source: mixbridge/Utilities/HapticManager.swift
+
+- [ ] mixbridgeTests/Utilities/BackgroundExecutorTests.swift
+      Background task execution.
+      Source: mixbridge/Utilities/BackgroundExecutor.swift
+
+## Completion Criteria
+All 5 test files created.
+EOF
+      ;;
+
+    auth)
+      cat > "$prd_file" << 'EOF'
+# Auth Tests PRD
+
+## Tasks (Priority Order)
+
+- [ ] mixbridgeTests/Auth/AuthManagerTests.swift
+      CRITICAL: Auth state machine, token management, logout.
+      Source: mixbridge/Auth/AuthManager.swift
+
+- [ ] mixbridgeTests/Auth/SessionTokenDecoderTests.swift
+      HIGH: JWT decoding, expiration checking.
+      Source: mixbridge/Auth/SessionTokenDecoder.swift
+
+- [ ] mixbridgeTests/Auth/SpotifyAuthManagerTests.swift
+      MEDIUM: Spotify OAuth flow (mock network).
+      Source: mixbridge/Auth/SpotifyAuthManager.swift
+
+## Completion Criteria
+All 3 test files with state transition and error handling tests.
+EOF
+      ;;
+
+    sync)
+      cat > "$prd_file" << 'EOF'
+# Sync Tests PRD
+
+## Tasks (Priority Order)
+
+- [ ] mixbridgeTests/Sync/PlaylistSyncTests.swift
+      HIGH: Sync logic, conflict resolution.
+      Source: mixbridge/Sync/PlaylistSync.swift
+
+- [ ] mixbridgeTests/Sync/QueueSyncTests.swift
+      HIGH: Queue state sync.
+      Source: mixbridge/Sync/QueueSync.swift
+
+- [ ] mixbridgeTests/Sync/OperationQueueTests.swift
+      MEDIUM: Background operation scheduling, retry.
+      Source: mixbridge/Sync/OperationQueue.swift
+
+- [ ] mixbridgeTests/Sync/LikedSyncTests.swift
+      LOW: Liked tracks sync.
+      Source: mixbridge/Sync/LikedSync.swift
+
+- [ ] mixbridgeTests/Sync/HistorySyncTests.swift
+      LOW: Play history sync.
+      Source: mixbridge/Sync/HistorySync.swift
+
+## Completion Criteria
+All 5 test files with sync state machine tests.
+EOF
+      ;;
+
+    db)
+      cat > "$prd_file" << 'EOF'
+# Database Tests PRD
+
+## Tasks (Priority Order)
+
+- [ ] Packages/MixBridgeDB/Tests/MixBridgeDBTests/PersistedTrackTests.swift
+      HIGH: Track CRUD, queries.
+
+- [ ] Packages/MixBridgeDB/Tests/MixBridgeDBTests/PersistedPlaylistTests.swift
+      HIGH: Playlist CRUD, relationships.
+
+- [ ] Packages/MixBridgeDB/Tests/MixBridgeDBTests/PersistedQueueTests.swift
+      MEDIUM: Queue persistence.
+
+- [ ] Packages/MixBridgeDB/Tests/MixBridgeDBTests/LikedTrackTests.swift
+      MEDIUM: Liked tracks CRUD.
+
+- [ ] Packages/MixBridgeDB/Tests/MixBridgeDBTests/PlayHistoryTests.swift
+      LOW: History CRUD.
+
+- [ ] Packages/MixBridgeDB/Tests/MixBridgeDBTests/DownloadedTrackTests.swift
+      LOW: Download tracking.
+
+- [ ] Packages/MixBridgeDB/Tests/MixBridgeDBTests/MigrationTests.swift
+      LOW: Schema migration tests.
+
+## Completion Criteria
+All 7 test files with GRDB integration tests.
+EOF
+      ;;
+  esac
+
+  echo "$prd_file"
+}
 
 # Execute based on module
 case $MODULE in
-  setup)
-    echo "=== Setting up test infrastructure ==="
-    echo "=== (up to 5 files, 1 per iteration) ==="
-    run_ralph "$SETUP_PROMPT" "$ITERATIONS"
-    ;;
-  services)
-    echo "=== Writing service tests ==="
-    echo "=== (6 services, 1 per iteration) ==="
-    run_ralph "$SERVICES_PROMPT" "$ITERATIONS"
-    ;;
-  viewmodels)
-    echo "=== Writing ViewModel tests ==="
-    echo "=== (6 ViewModels, 1 per iteration) ==="
-    run_ralph "$VIEWMODELS_PROMPT" "$ITERATIONS"
-    ;;
-  models)
-    echo "=== Writing model tests ==="
-    echo "=== (7 models, 1 per iteration) ==="
-    run_ralph "$MODELS_PROMPT" "$ITERATIONS"
-    ;;
-  utils)
-    echo "=== Writing utility tests ==="
-    echo "=== (5 utilities, 1 per iteration) ==="
-    run_ralph "$UTILS_PROMPT" "$ITERATIONS"
-    ;;
-  auth)
-    echo "=== Writing auth tests ==="
-    echo "=== (3 auth classes, 1 per iteration) ==="
-    run_ralph "$AUTH_PROMPT" "$ITERATIONS"
-    ;;
-  sync)
-    echo "=== Writing sync tests ==="
-    echo "=== (5 sync classes, 1 per iteration) ==="
-    run_ralph "$SYNC_PROMPT" "$ITERATIONS"
-    ;;
-  db)
-    echo "=== Writing database tests ==="
-    echo "=== (8 models, 1 per iteration) ==="
-    run_ralph "$DB_PROMPT" "$ITERATIONS"
+  setup|services|viewmodels|models|utils|auth|sync|db)
+    prd=$(create_prd "$MODULE")
+    echo "=== Running Ralph for $MODULE ==="
+    echo "=== PRD: $prd ==="
+    echo "=== Progress: $PROGRESS_FILE ==="
+    run_ralph "$prd" "$ITERATIONS" "$MODULE"
     ;;
   all)
-    echo "=== Running all test generation modules ==="
+    echo "=== Running Ralph for ALL modules ==="
     echo ""
-    # Run each module with appropriate iteration counts
-    MODULES=("setup:5" "services:6" "viewmodels:6" "models:7" "utils:5" "auth:3" "sync:5" "db:8")
-    for entry in "${MODULES[@]}"; do
-      mod="${entry%%:*}"
-      count="${entry##*:}"
+
+    # Module iteration counts based on task count
+    declare -A MODULES=(
+      ["setup"]=5
+      ["services"]=6
+      ["viewmodels"]=6
+      ["models"]=7
+      ["utils"]=5
+      ["auth"]=3
+      ["sync"]=5
+      ["db"]=7
+    )
+
+    for mod in setup services models auth viewmodels utils sync db; do
+      count=${MODULES[$mod]}
       echo ""
       echo "########################################"
-      echo "### MODULE: $mod ($count iterations)"
+      echo "### MODULE: $mod ($count iterations max)"
       echo "########################################"
-      $0 "$count" "$mod"
+      prd=$(create_prd "$mod")
+      run_ralph "$prd" "$count" "$mod"
     done
+
     echo ""
-    echo "=== All test modules complete ==="
+    echo "=== All modules complete ==="
     ;;
   *)
     echo "Unknown module: $MODULE"
