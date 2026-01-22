@@ -1,0 +1,51 @@
+included:
+  - mixbridge
+  - Packages
+
+excluded:
+  - .build
+  - "**/.*"
+  - SourcePackages
+  - DerivedData
+  - .derived-data
+
+disabled_rules:
+  - blanket_disable_command
+  - block_based_kvo
+  - closure_parameter_position
+  - cyclomatic_complexity
+  - empty_enum_arguments
+  - file_length
+  - for_where
+  - force_try
+  - function_body_length
+  - function_parameter_count
+  - identifier_name
+  - large_tuple
+  - leading_whitespace
+  - legacy_constructor
+  - line_length
+  - multiple_closures_with_trailing_closure
+  - nesting
+  - opening_brace
+  - optional_data_string_conversion
+  - redundant_discardable_let
+  - redundant_optional_initialization
+  - redundant_sendable
+  - shorthand_operator
+  - statement_position
+  - todo
+  - trailing_comma
+  - trailing_whitespace
+  - type_body_length
+  - type_name
+  - unused_optional_binding
+  - void_function_in_ternary
+
+analyzer_rules:
+  - unused_import
+
+unused_import:
+  always_keep_imports:
+    - Foundation
+    - SwiftUI
