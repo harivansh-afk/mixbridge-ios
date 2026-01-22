@@ -44,3 +44,34 @@ All 5 files from prd-setup.md have been created and verified:
 Build verification: PASSED (xcodebuild build-for-testing succeeded)
 
 ### Status: COMPLETE
+
+---
+
+## Services Tests Progress
+
+### Completed: 2026-01-22
+
+1. mixbridgeTests/Services/QueueManagerTests.swift (CRITICAL priority)
+   - 45 test methods covering PlaybackQueue core functionality
+   - Initial state tests: empty queue behavior
+   - Append tests: single item, multiple items, append contentsOf
+   - InsertNext tests: play next functionality
+   - Peek/Pop tests: queue head operations
+   - Contains tests: trackId lookups
+   - Item query tests: item(forTrackId:), index(ofTrackId:), track(at:)
+   - Remove tests: by id, by trackId, at index (with edge cases)
+   - Move/Reorder tests: forward, backward, same position, invalid indices
+   - ReplaceAll tests: queue replacement scenarios
+   - Clear tests: queue clearing
+   - UpdateItem tests: server ID reconciliation
+   - Reinsert (rollback) tests: original position, boundaries, clamping
+   - Edge cases: QueueItem equality, operation sequences, stress test (100 items)
+
+Build verification: PASSED (xcodebuild build-for-testing succeeded)
+
+### Remaining from prd-services.md:
+- [ ] StreamURLCacheTests.swift (HIGH)
+- [ ] DownloadManagerTests.swift (HIGH)
+- [ ] PlaybackPositionTrackerTests.swift (MEDIUM)
+- [ ] TrackPrefetcherTests.swift (MEDIUM)
+- [ ] RecentSearchManagerTests.swift (LOW)
