@@ -1,0 +1,46 @@
+## Test Infrastructure Progress
+
+### Completed: 2025-01-22
+
+All 5 files from prd-setup.md have been created and verified:
+
+1. mixbridgeTests/TestHelpers/MockConvexService.swift
+   - Full mock with stubbed responses for all ConvexService methods
+   - Method call tracking with args recording
+   - Error injection support
+   - Covers: getLikedTracks, getPlaylists, search, queue ops, likes, custom playlists
+
+2. mixbridgeTests/TestHelpers/MockAuthManager.swift
+   - Auth state simulation (logged in/out)
+   - Call count tracking for login, logout, callbacks
+   - Provider support (SoundCloud, Spotify)
+   - Helper methods: simulateLoggedIn, simulateLoggedOut, reset
+
+3. mixbridgeTests/TestHelpers/TestFixtures.swift
+   - Sample data: testUser, secondaryUser, sampleTrack, secondaryTrack, minimalTrack
+   - Factory methods: makeTracks(count:), makePlaylists(count:), makeCustomPlaylists(count:)
+   - Playlists: samplePlaylist, emptyPlaylist
+   - Profiles: sampleProfile, minimalProfile
+   - Search results: sampleSearchResult, emptySearchResult
+   - Equatable/Hashable conformance for SoundCloudTrack, SoundCloudPlaylist, SoundCloudUser
+
+4. mixbridgeTests/TestHelpers/XCTestCase+Async.swift
+   - waitForAsync: async operation with timeout
+   - assertThrowsAsync: assert specific error thrown
+   - assertThrowsAnyAsync: assert any error thrown
+   - assertNoThrowAsync: assert no error
+   - waitUntil: poll for condition
+   - assertEventually: wait for value to equal expected
+   - runOnMainActor: MainActor isolation helper
+
+5. mixbridgeTests/SampleTests.swift
+   - 13 test methods demonstrating all mocks and fixtures
+   - Tests fixture availability, track generation, playlist generation
+   - Tests MockConvexService: stubbed data, call tracking, error throwing
+   - Tests MockAuthManager: login simulation, logout tracking
+   - Tests async helpers: waitUntil, assertNoThrowAsync
+   - Tests track conversion and search result fixtures
+
+Build verification: PASSED (xcodebuild build-for-testing succeeded)
+
+### Status: COMPLETE
