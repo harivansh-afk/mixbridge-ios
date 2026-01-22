@@ -137,6 +137,25 @@ Build verification: PASSED (xcodebuild build-for-testing succeeded)
 
 Build verification: PASSED (xcodebuild build-for-testing succeeded)
 
+5. mixbridgeTests/Services/TrackPrefetcherTests.swift (MEDIUM priority)
+   - 45 test methods covering TrackPrefetcher functionality
+   - Created TestableTrackPrefetcher actor for isolated testing without ImageCacheManager network calls
+   - Initial state tests: empty prefetched set, no current task
+   - prefetchForQueue tests: prefetches from current index, respects lookahead (5), middle of queue, near end
+   - Empty queue tests: handles empty queue, index beyond bounds, negative index (clamped to 0)
+   - Task cancellation tests: cancels previous task on new prefetch, rapid queue changes
+   - Deduplication tests: skips already prefetched tracks, handles overlapping ranges
+   - preloadTrackImmediately tests: loads artwork, marks track as prefetched
+   - Artwork URL validation tests: handles HTTPS, HTTP, non-http paths, system image names, invalid URLs
+   - Priority tests: current track gets high priority, upcoming tracks get utility priority
+   - Sleep between prefetches tests: verifies delay between non-current track prefetches
+   - Edge cases: single track queue, last index, mixed artwork types, preserve track ID
+   - Concurrent operations tests: concurrent prefetchForQueue calls, concurrent preloadImmediately
+   - Reset tests: clears prefetched IDs, clears image load history
+   - Stress tests: large queue (100 tracks), multiple prefetch cycles
+   - Lookahead boundary tests: exact match, fewer remaining tracks
+
+Build verification: PASSED (xcodebuild build-for-testing succeeded)
+
 ### Remaining from prd-services.md:
-- [ ] TrackPrefetcherTests.swift (MEDIUM)
 - [ ] RecentSearchManagerTests.swift (LOW)
