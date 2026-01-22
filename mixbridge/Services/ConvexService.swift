@@ -118,6 +118,26 @@ final class ConvexService {
         return convexResponse.value
     }
 
+    private func encodeArgs<T: Encodable>(_ value: T) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(value)
+        let object = try JSONSerialization.jsonObject(with: data)
+        guard let dict = object as? [String: Any] else {
+            throw ConvexError.invalidResponse
+        }
+        return dict
+    }
+
+    // MARK: - AI DJ
+
+    func planAIDJMix(request: AIDJMixPlanRequest) async throws -> AIDJMixPlanResponse {
+        let requestDict = try encodeArgs(request)
+        let result: AIDJMixPlanResponse = try await action(
+            "actions/aiDj:planMix",
+            args: ["request": requestDict]
+        )
+        return result
+    }
+
     // MARK: - Data Fetching (Convex Actions - Auto-fetch from SoundCloud if needed)
 
     /// Get user's liked tracks
@@ -677,6 +697,7 @@ enum ConvexError: LocalizedError {
     case actionFailed(String)
     case mutationFailed(String)
     case noData
+    case invalidResponse
     case alreadyInQueue
     case unauthorized
     case notAuthenticated
@@ -694,6 +715,8 @@ enum ConvexError: LocalizedError {
             return message
         case .noData:
             return "No data available"
+        case .invalidResponse:
+            return "Unexpected server response"
         case .alreadyInQueue:
             return "Track is already in your queue"
         case .unauthorized:
