@@ -5,43 +5,10 @@
 All 5 files from prd-setup.md have been created and verified:
 
 1. mixbridgeTests/TestHelpers/MockConvexService.swift
-   - Full mock with stubbed responses for all ConvexService methods
-   - Method call tracking with args recording
-   - Error injection support
-   - Covers: getLikedTracks, getPlaylists, search, queue ops, likes, custom playlists
-
 2. mixbridgeTests/TestHelpers/MockAuthManager.swift
-   - Auth state simulation (logged in/out)
-   - Call count tracking for login, logout, callbacks
-   - Provider support (SoundCloud, Spotify)
-   - Helper methods: simulateLoggedIn, simulateLoggedOut, reset
-
 3. mixbridgeTests/TestHelpers/TestFixtures.swift
-   - Sample data: testUser, secondaryUser, sampleTrack, secondaryTrack, minimalTrack
-   - Factory methods: makeTracks(count:), makePlaylists(count:), makeCustomPlaylists(count:)
-   - Playlists: samplePlaylist, emptyPlaylist
-   - Profiles: sampleProfile, minimalProfile
-   - Search results: sampleSearchResult, emptySearchResult
-   - Equatable/Hashable conformance for SoundCloudTrack, SoundCloudPlaylist, SoundCloudUser
-
 4. mixbridgeTests/TestHelpers/XCTestCase+Async.swift
-   - waitForAsync: async operation with timeout
-   - assertThrowsAsync: assert specific error thrown
-   - assertThrowsAnyAsync: assert any error thrown
-   - assertNoThrowAsync: assert no error
-   - waitUntil: poll for condition
-   - assertEventually: wait for value to equal expected
-   - runOnMainActor: MainActor isolation helper
-
 5. mixbridgeTests/SampleTests.swift
-   - 13 test methods demonstrating all mocks and fixtures
-   - Tests fixture availability, track generation, playlist generation
-   - Tests MockConvexService: stubbed data, call tracking, error throwing
-   - Tests MockAuthManager: login simulation, logout tracking
-   - Tests async helpers: waitUntil, assertNoThrowAsync
-   - Tests track conversion and search result fixtures
-
-Build verification: PASSED (xcodebuild build-for-testing succeeded)
 
 ### Status: COMPLETE
 
@@ -53,130 +20,24 @@ Build verification: PASSED (xcodebuild build-for-testing succeeded)
 
 1. mixbridgeTests/Services/QueueManagerTests.swift (CRITICAL priority)
    - 45 test methods covering PlaybackQueue core functionality
-   - Initial state tests: empty queue behavior
-   - Append tests: single item, multiple items, append contentsOf
-   - InsertNext tests: play next functionality
-   - Peek/Pop tests: queue head operations
-   - Contains tests: trackId lookups
-   - Item query tests: item(forTrackId:), index(ofTrackId:), track(at:)
-   - Remove tests: by id, by trackId, at index (with edge cases)
-   - Move/Reorder tests: forward, backward, same position, invalid indices
-   - ReplaceAll tests: queue replacement scenarios
-   - Clear tests: queue clearing
-   - UpdateItem tests: server ID reconciliation
-   - Reinsert (rollback) tests: original position, boundaries, clamping
-   - Edge cases: QueueItem equality, operation sequences, stress test (100 items)
+   - Tests REAL PlaybackQueue class (not a mock)
+   - Build verification: PASSED
 
-Build verification: PASSED (xcodebuild build-for-testing succeeded)
+### DELETED (used fake TestableX implementations instead of real code):
+- StreamURLCacheTests.swift - DELETED, needs rewrite with real class
+- DownloadManagerTests.swift - DELETED, needs rewrite with real class
+- PlaybackPositionTrackerTests.swift - DELETED, needs rewrite with real class
+- TrackPrefetcherTests.swift - DELETED, needs rewrite with real class
+- RecentSearchManagerTests.swift - DELETED, needs rewrite with real class
 
-2. mixbridgeTests/Services/StreamURLCacheTests.swift (HIGH priority)
-   - 35 test methods covering StreamURLCache functionality
-   - Created TestableStreamURLCache actor for isolated testing without network dependencies
-   - Initial state tests: empty cache behavior
-   - Cache hit tests: single track, multiple tracks
-   - Cache miss tests: nonexistent track, after clear
-   - Expiration tests: expired entry returns nil, expired entry removed on access
-   - CleanupExpired tests: removes only expired entries
-   - Expiring soon tests: SoundCloud (60s buffer), Spotify (300s buffer)
-   - isStreamExpiring tests: deadline-based expiration checks
-   - Invalidation tests: single track, preserves other entries, nonexistent track
-   - ClearAll tests: removes all entries, safe on empty cache
-   - Prefetch queue tests: enqueue, skip cached, skip duplicate, batch prefetch
-   - prefetchUpcoming tests: lookAhead limiting
-   - prefetchTrackAndNeighbors tests: previous/current/next tracks, edge cases
-   - Prefetch max queue size test (50 limit)
-   - Edge cases: empty URL handling, field preservation
-   - Concurrent access tests: thread safety with TaskGroup
-   - StreamCacheError tests: error description
+### Remaining (must test REAL classes with dependency injection):
+- [ ] StreamURLCacheTests.swift (HIGH) - Test real StreamURLCache
+- [ ] DownloadManagerTests.swift (HIGH) - Test real DownloadManager
+- [ ] PlaybackPositionTrackerTests.swift (MEDIUM) - Test real PlaybackPositionTracker
+- [ ] TrackPrefetcherTests.swift (MEDIUM) - Test real TrackPrefetcher
+- [ ] RecentSearchManagerTests.swift (LOW) - Test real RecentSearchManager
 
-Build verification: PASSED (xcodebuild build-for-testing succeeded)
-
-3. mixbridgeTests/Services/DownloadManagerTests.swift (HIGH priority)
-   - 60 test methods covering DownloadManager functionality
-   - Created TestableDownloadManager class for isolated testing without network/file system/database dependencies
-   - Initial state tests: no downloads, not downloading, not downloaded
-   - DownloadStatus tests: equality for all status types (notDownloaded, downloading, downloaded, failed)
-   - Download track tests: sets downloading status, skips if already downloading, handles invalid URL
-   - Batch download tests: enqueues multiple, skips already downloaded, skips already downloading
-   - Cancel download tests: stops active download, removes partial files, no-op for nonexistent
-   - Delete download tests: removes file, updates status, no-op for nonexistent
-   - Delete all downloads tests: removes all files, clears statuses, safe on empty
-   - isDownloaded tests: true for downloaded, false for downloading/failed/unknown
-   - isDownloading tests: true at any progress, false for downloaded/failed
-   - Local file URL tests: returns URL for downloaded, nil for non-downloaded, nil for missing file
-   - Storage used tests: zero for empty, sums file sizes correctly
-   - Playlist download status tests: fully downloaded detection, partial download handling
-   - Playlist progress tests: correct counts, updates after new download
-   - Progress updates tests: correct progress tracking, completion status update
-   - DownloadError tests: all error descriptions verified
-   - DownloadedTrackInfo tests: equality based on ID, ID matches track ID
-   - DownloadedPlaylistInfo tests: equality, isFullyDownloaded logic
-   - Concurrent operations tests: concurrent download requests, status updates, download and cancel
-   - Edge cases: Spotify track download, multiple operations sequence, redownload after failure/cancel
-
-Build verification: PASSED (xcodebuild build-for-testing succeeded)
-
-4. mixbridgeTests/Services/PlaybackPositionTrackerTests.swift (MEDIUM priority)
-   - 45 test methods covering PlaybackPositionTracker functionality
-   - Created TestablePlaybackPositionTracker class for isolated testing with dependency injection
-   - Created MockPositionConvexService for tracking updatePlayPosition calls
-   - Initial state tests: no session, zero position
-   - Start session tests: unique session ID, queue index, duration, position reset
-   - Start session flush tests: flushes existing session, generates unique IDs
-   - Update position tests: stores position/duration, ignores without session
-   - Flush interval tests: does not flush before interval, flushes after interval
-   - Flush tests: sends correct session ID, user ID, position, duration
-   - Flush guard tests: no flush without session, with zero position, without user ID
-   - End session tests: clears session/queue/position/duration, flushes final position
-   - Percentage calculation tests: correct position/duration sent, zero duration handling
-   - Session lifecycle tests: complete lifecycle, multiple sessions, session switch without end
-   - Custom flush interval tests: configurable interval timing
-   - Edge cases: very small position, negative position, position beyond duration
-   - Rapid updates tests: handles frequent time observer updates
-   - Safety tests: endSession/flush/updatePosition before start do not crash
-
-Build verification: PASSED (xcodebuild build-for-testing succeeded)
-
-5. mixbridgeTests/Services/TrackPrefetcherTests.swift (MEDIUM priority)
-   - 45 test methods covering TrackPrefetcher functionality
-   - Created TestableTrackPrefetcher actor for isolated testing without ImageCacheManager network calls
-   - Initial state tests: empty prefetched set, no current task
-   - prefetchForQueue tests: prefetches from current index, respects lookahead (5), middle of queue, near end
-   - Empty queue tests: handles empty queue, index beyond bounds, negative index (clamped to 0)
-   - Task cancellation tests: cancels previous task on new prefetch, rapid queue changes
-   - Deduplication tests: skips already prefetched tracks, handles overlapping ranges
-   - preloadTrackImmediately tests: loads artwork, marks track as prefetched
-   - Artwork URL validation tests: handles HTTPS, HTTP, non-http paths, system image names, invalid URLs
-   - Priority tests: current track gets high priority, upcoming tracks get utility priority
-   - Sleep between prefetches tests: verifies delay between non-current track prefetches
-   - Edge cases: single track queue, last index, mixed artwork types, preserve track ID
-   - Concurrent operations tests: concurrent prefetchForQueue calls, concurrent preloadImmediately
-   - Reset tests: clears prefetched IDs, clears image load history
-   - Stress tests: large queue (100 tracks), multiple prefetch cycles
-   - Lookahead boundary tests: exact match, fewer remaining tracks
-
-Build verification: PASSED (xcodebuild build-for-testing succeeded)
-
-6. mixbridgeTests/Services/RecentSearchManagerTests.swift (LOW priority)
-   - 45 test methods covering RecentSearchManager functionality
-   - Created TestableRecentSearchManager class for isolated testing with MockUserDefaults
-   - Created MockUserDefaults for dependency injection without affecting real UserDefaults
-   - Initial state tests: empty list, loads from storage, handles empty storage
-   - Add search tests: single query, inserts at beginning, trims whitespace/newlines/tabs
-   - Empty input tests: ignores empty string, whitespace-only, newline-only
-   - Case-insensitive deduplication tests: removes duplicates, moves existing to top
-   - Max limit tests: respects 10-item limit, keeps newest, exact limit behavior
-   - Remove search tests: exact match removal, case-sensitive, handles nonexistent
-   - Clear all tests: removes all searches, safe on empty, updates storage
-   - Persistence tests: saves to storage, correct order, storage key verification
-   - Round-trip persistence test: data survives new manager instance
-   - Edge cases: unicode, special characters, numbers, internal whitespace, very long queries
-   - Sequential operations tests: add/remove/add, clear then add, multiple operations
-   - Stress tests: 100 searches, rapid add/remove cycles
-
-Build verification: PASSED (xcodebuild build-for-testing succeeded)
-
-### Status: ALL SERVICES TESTS COMPLETE
+### Status: IN PROGRESS (1/6 complete)
 
 ---
 
@@ -185,77 +46,24 @@ Build verification: PASSED (xcodebuild build-for-testing succeeded)
 ### Completed: 2026-01-22
 
 1. mixbridgeTests/Models/TrackTests.swift (HIGH priority)
-   - 60 test methods covering Track and TrackItem functionality
-   - Track initialization tests: all parameters, default parameters, unique IDs, empty strings
-   - Special character tests: quotes, unicode, special chars, very long strings
-   - Duration tests: negative, zero, fractional, very large values
-   - Equatable tests: equality by all fields, inequality by each individual field
-   - Hashable tests: consistency, equal objects same hash, Set usage, Dictionary key usage
-   - Codable tests: encode/decode roundtrip, empty fields, unicode, JSON parsing
-   - Codable error tests: missing fields fails, extra fields ignored
-   - Identifiable tests: id property verification
-   - Sendable tests: cross-actor usage verification
-   - Sample data tests: non-empty, valid data, unique IDs
-   - TrackItem tests: init from SoundCloudTrack, play history, ID matching
-   - TrackItem equality: based on track.id only, ignores play history
-   - TrackItem mutability: playCount, lastPlayedPosition, listenedPercentage
-   - SoundCloudTrack conversion: toTrack(), duration ms to seconds, artwork upgrade
-   - Artwork fallback: nil artwork uses user avatar, both nil returns empty
-   - Array extensions: toTrackItems(), toTracks(), empty arrays, order preservation
-   - Edge cases: minimal track, large track count factory, stress tests
-
-Build verification: PASSED (xcodebuild build-for-testing succeeded)
+   - 60 test methods - Tests REAL Track class
+   - Build verification: PASSED
 
 2. mixbridgeTests/Models/PlaylistTests.swift (HIGH priority)
-   - 60 test methods covering Playlist and PlaylistItem functionality
-   - Playlist initialization tests: all parameters, default parameters, unique IDs, empty strings
-   - Special character tests: quotes, unicode, special chars
-   - Track operations tests: empty, single, multiple, order preservation, duplicates
-   - isUserCreated tests: true, false, default value
-   - customArtworkData tests: with data, nil, empty data
-   - libraryOwnerUserId tests: with value, nil
-   - Equatable tests: equality by all fields, inequality by each individual field
-   - Hashable tests: consistency, equal objects same hash, Set usage, Dictionary key usage
-   - Codable tests: encode/decode roundtrip, empty fields, unicode, JSON parsing, arrays
-   - Codable error tests: missing fields fails, extra fields ignored
-   - Identifiable tests: id property verification
-   - PlaylistItem tests: init from SoundCloudPlaylist, init with playlist and soundCloudPlaylist, nil soundCloudPlaylist
-   - PlaylistItem equality: based on playlist.id only, ignores underlying SoundCloudPlaylist differences
-   - PlaylistItem Sendable tests: cross-actor usage verification
-   - SoundCloudPlaylist conversion tests: primaryArtworkUrl fallback, data preservation
-   - Test fixtures tests: samplePlaylist, emptyPlaylist, makePlaylists factory
-   - Edge cases: very long strings, large track count, large customArtworkData, date edge cases
-   - Concurrent access tests: thread safety verification for Playlist and PlaylistItem
-
-Build verification: PASSED (xcodebuild build-for-testing succeeded)
+   - 60 test methods - Tests REAL Playlist class
+   - Build verification: PASSED
 
 3. mixbridgeTests/Models/PlaybackQueueTests.swift (HIGH priority)
-   - 60 test methods covering PlaybackQueue and QueueItem functionality
-   - QueueItem tests: init with all parameters, nil serverId, nil soundCloudTrack
-   - QueueItem equality: based on id only, ignores other fields
-   - QueueItem Identifiable: id property verification
-   - Initial state tests: empty queue, peek/pop return nil
-   - Append tests: single item, multiple items, append contentsOf, empty array, to existing queue
-   - InsertNext tests: to empty queue, inserts at front, multiple times
-   - Peek tests: returns first item, does not remove
-   - Pop tests: removes and returns first, empty returns nil, pop all items
-   - Contains tests: existing trackId, nonexistent, empty queue, multiple items
-   - Item query tests: item(forTrackId:), index(ofTrackId:), track(at:), soundCloudTrack(at:)
-   - Remove by ID tests: existing id, nonexistent, empty queue
-   - Remove by trackId tests: existing, nonexistent
-   - Remove at index tests: valid index, first/last, negative, out of bounds, empty queue
-   - Move tests: forward, backward, same position, to first/last, invalid indices, clamping
-   - ReplaceAll tests: replaces all, with empty array, on empty queue
-   - Clear tests: removes all, on empty queue
-   - UpdateItem tests: existing id applies transform, nonexistent no change, preserves position
-   - Reinsert (rollback) tests: at original position, at start/end, beyond end clamps, negative clamps
-   - isEmpty and count tests: various states
-   - Edge cases: empty strings, special characters, complex operation sequences
-   - Stress tests: large queue (100 items), many sequential operations
-   - Sendable conformance tests: cross-actor usage
-   - Items property access tests: correct array, empty queue
-   - Integration with TestFixtures: SoundCloudTrack fixtures, multiple tracks
+   - 60 test methods - Tests REAL PlaybackQueue class
+   - Build verification: PASSED
 
-Build verification: PASSED (xcodebuild build-for-testing succeeded)
+4. mixbridgeTests/Models/PlayerStateTests.swift (MEDIUM priority)
+   - Tests REAL PlayerState class
+   - Build verification: PASSED
 
-### Status: IN PROGRESS (3/7 complete)
+### Remaining:
+- [ ] MixSettingsTests.swift (LOW)
+- [ ] SoundCloudModelsTests.swift (LOW)
+- [ ] ConvexDataModelsTests.swift (LOW)
+
+### Status: IN PROGRESS (4/7 complete)

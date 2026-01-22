@@ -52,10 +52,27 @@ PROCESS:
    - Any issues encountered
 8. Make a git commit of your changes.
 
-IMPORTANT:
+CRITICAL RULES:
 - ONLY WORK ON A SINGLE TEST FILE PER ITERATION.
 - Write quality tests: happy path, error cases, edge cases.
 - Use mocks from mixbridgeTests/TestHelpers/ if they exist.
+
+TESTING REAL CODE - MANDATORY:
+- DO NOT create 'TestableX' or 'MockX' wrapper classes that reimplement the logic.
+- You MUST test the REAL class from the app (e.g., the real StreamURLCache, not a fake).
+- Import with @testable import mixbridge to access internal members.
+- If a class has dependencies, use dependency injection or protocol-based mocking.
+- If the class uses actors/singletons, test the real actor - don't recreate it.
+- Mock only EXTERNAL dependencies (network, database, file system) - not the class under test.
+
+WRONG (do not do this):
+  actor TestableStreamURLCache { ... }  // Fake reimplementation
+  let cache = TestableStreamURLCache()  // Testing fake, not real code
+
+RIGHT (do this):
+  let cache = StreamURLCache.shared     // Real class
+  // Or if it needs deps:
+  let cache = StreamURLCache(service: MockConvexService())  // Real class, mocked deps
 
 If ALL tests in the PRD are complete, output: <promise>COMPLETE</promise>
 ")

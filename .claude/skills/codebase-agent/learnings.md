@@ -1049,3 +1049,550 @@ ArtworkView(
 // Resolution: ArtworkView(placeholderIcon: "playlist")  // PR component + main's icon
 ```
 - **Session**: Rebasing PR#66 onto main (2026-01-14)
+
+---
+
+## Swift Testing Patterns
+
+### Test Data Structure Not Manager Class
+- **Context**: Writing unit tests for `QueueManager` which has many external dependencies (ConvexService, KeychainManager, QueueSync, PlaybackCoordinator)
+- **Learning**: When a manager class has heavy dependencies that are hard to mock, test the underlying data structure directly instead. `QueueManager` wraps `PlaybackQueue` - all queue logic (append, remove, move, peek, pop) lives in `PlaybackQueue`. Testing `PlaybackQueue` gives comprehensive coverage of queue behavior without needing to mock authentication, network services, or notification systems.
+- **Example**:
+```swift
+// Hard to test - requires mocking 5+ dependencies
+class QueueManager {
+    let queue = PlaybackQueue()
+    private let queueSync = QueueSync.shared
+    private func requireUserId() throws -> String { ... }  // Needs KeychainManager
+    func addTrack(...) async throws {
+        let userId = try requireUserId()  // Auth dependency
+        // ... ConvexService calls, HapticManager calls, etc.
+    }
+}
+
+// Easy to test - pure data structure
+class PlaybackQueue {
+    func append(_ item: QueueItem) { ... }
+    func pop() -> QueueItem? { ... }
+    func move(from: Int, to: Int) { ... }
+}
+
+// Test the data structure
+func testAppendAndPop() {
+    let queue = PlaybackQueue()
+    queue.append(makeQueueItem())
+    XCTAssertEqual(queue.count, 1)
+    let popped = queue.pop()
+    XCTAssertNotNil(popped)
+    XCTAssertEqual(queue.count, 0)
+}
+```
+- **When to apply**: Any manager class where the core logic is delegated to a contained data structure
+- **Session**: QueueManagerTests implementation (2026-01-22)
+
+### Create Test Fixtures Using Minimal Valid Objects
+- **Context**: Creating test data for Track and QueueItem types
+- **Learning**: Create factory functions that produce minimal valid instances of complex types. Use predictable IDs (track-0, track-1) for assertion clarity. Keep fixture creation separate from test logic.
+- **Example**:
+```swift
+// In test file or shared TestFixtures
+private func makeTrack(index: Int = 0) -> Track {
+    Track(
+        id: "track-\(index)",
+        title: "Track \(index)",
+        artistName: "Artist \(index)",
+        duration: 180,
+        artwork: nil,
+        artworkLowRes: nil
+    )
+}
+
+private func makeQueueItem(index: Int = 0) -> QueueItem {
+    QueueItem(
+        id: "item-\(index)",
+        serverId: "server-\(index)",
+        trackId: "track-\(index)",
+        track: makeTrack(index: index),
+        soundCloudTrack: nil
+    )
+}
+
+// Usage in tests - clear and predictable
+let item0 = makeQueueItem(index: 0)
+let item1 = makeQueueItem(index: 1)
+queue.append(item0)
+queue.append(item1)
+XCTAssertEqual(queue.items[0].id, "item-0")
+XCTAssertEqual(queue.items[1].id, "item-1")
+```
+- **Session**: QueueManagerTests implementation (2026-01-22)
+
+### Test Edge Cases Systematically
+- **Context**: Comprehensive queue testing requiring edge case coverage
+- **Learning**: For data structures, systematically test: empty state, single item, boundary indices (0, count-1, count), invalid indices (-1, count+1), operations that should no-op (move to same index), and operations that should clamp (reinsert beyond bounds).
+- **Test categories for queue-like structures**:
+  1. **Initial state**: isEmpty, count, peek returns nil, pop returns nil
+  2. **Single item**: append/pop round-trip, remove only item
+  3. **Boundaries**: remove at index 0, remove at last index, move from 0, move to 0
+  4. **Invalid inputs**: negative indices, indices beyond count
+  5. **Edge behaviors**: move to same index (no-op), contains non-existent ID
+  6. **Stress tests**: large number of items (100+) to verify no performance regression
+- **Session**: QueueManagerTests implementation (2026-01-22)
+
+### Build Verification for Swift Test Files
+- **Context**: Verifying test files compile before committing
+- **Learning**: Use `xcodebuild build-for-testing` to verify test files compile without running them. This catches syntax errors and import issues early. Specify destination and scheme explicitly.
+- **Command**:
+```bash
+xcodebuild build-for-testing \
+    -project mixbridge.xcodeproj \
+    -scheme mixbridge \
+    -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+    2>&1 | tail -20
+```
+- **Session**: QueueManagerTests implementation (2026-01-22)
+
+### Testable Actor Pattern for Network-Dependent Actors
+- **Context**: Testing Swift actors like `StreamURLCache` that have dependencies on network services (ConvexService, SpotifyStreamService)
+- **Learning**: Create a "testable" actor that mirrors the production actor's interface and logic but allows direct cache manipulation. This enables testing cache behavior (hits, misses, expiration, prefetch queue) without mocking network services.
+- **Key implementation details**:
+  - Mirror the production actor's private state (`cache`, `inFlight`, `pendingPrefetch`, `pendingPrefetchSet`)
+  - Expose methods for direct cache manipulation: `setCache(for:stream:expiresAt:)`, `simulatePrefetchEnqueue()`
+  - Keep the same expiration logic and buffer constants
+  - Test concurrent access patterns using `TaskGroup`
+- **Example**:
+```swift
+// TestableStreamURLCache - mirrors StreamURLCache but testable
+actor TestableStreamURLCache {
+    private var cache: [String: TestCachedStream] = [:]
+    private var pendingPrefetch: [(trackId: String, spotifyUrl: String?)] = []
+    private var pendingPrefetchSet: Set<String> = []
+    private let maxQueuedPrefetches = 50
+
+    // Direct cache manipulation for testing
+    func setCache(for trackId: String, stream: CachedStreamData, expiresAt: Date, isSpotify: Bool = false) {
+        cache[trackId] = TestCachedStream(
+            url: stream.url,
+            streamType: stream.streamType,
+            accessToken: stream.accessToken,
+            cachedAt: Date(),
+            expiresAt: expiresAt,
+            isSpotify: isSpotify,
+            spotifyUrl: nil
+        )
+    }
+
+    // Test production logic without network
+    func getCachedStream(for trackId: String) -> CachedStreamData? {
+        guard let cached = cache[trackId] else { return nil }
+        if cached.isExpired {
+            cache.removeValue(forKey: trackId)
+            return nil
+        }
+        return CachedStreamData(url: cached.url, streamType: cached.streamType, accessToken: cached.accessToken)
+    }
+}
+```
+- **Test categories enabled**:
+  1. Cache hits/misses
+  2. Expiration with different buffers (SoundCloud 60s, Spotify 300s)
+  3. Deadline-based expiration checks
+  4. Prefetch queue: enqueue, dedup, max size, batch operations
+  5. Concurrent access safety via TaskGroup
+- **Session**: StreamURLCacheTests implementation (2026-01-22)
+
+### Testable Class Pattern for @MainActor Singletons
+- **Context**: Testing `@MainActor` singleton classes like `DownloadManager` that depend on network, file system, and database
+- **Learning**: Create a `Testable[ClassName]` class that mirrors the production class's public API but replaces dependencies with in-memory state. Unlike the actor pattern (TestableStreamURLCache), this pattern is for `@MainActor` classes where you need to test state machine transitions (downloading/downloaded/failed) and simulated file operations.
+- **Key differences from actor pattern**:
+  - Use `class` not `actor` since production is `@MainActor`
+  - Replace file system operations with dictionary-based "simulated" files
+  - Replace network downloads with direct state manipulation via `simulateDownloadComplete()`
+  - Track download state transitions through the full lifecycle
+- **Example**:
+```swift
+@MainActor
+final class TestableDownloadManager {
+    private var downloadStatuses: [String: DownloadStatus] = [:]
+    private var simulatedFiles: [String: (url: URL, size: Int64)] = [:]  // trackId -> (localURL, fileSize)
+    private var activeDownloads: Set<String> = []
+
+    // Simulate download completion without network
+    func simulateDownloadComplete(for trackId: String, fileSize: Int64 = 1024) {
+        let localURL = URL(fileURLWithPath: "/simulated/\(trackId).m4a")
+        simulatedFiles[trackId] = (localURL, fileSize)
+        downloadStatuses[trackId] = .downloaded
+        activeDownloads.remove(trackId)
+    }
+
+    // Production logic can be tested
+    func storageUsed() -> Int64 {
+        simulatedFiles.values.reduce(0) { $0 + $1.size }
+    }
+}
+```
+- **Test categories enabled**:
+  1. State transitions: notDownloaded -> downloading -> downloaded/failed
+  2. Concurrent download requests (thread safety)
+  3. Storage calculations
+  4. Partial file cleanup on cancel
+  5. Batch operations
+- **Session**: DownloadManagerTests implementation (2026-01-22)
+
+### Test State Machine Transitions Exhaustively
+- **Context**: Testing enum-based state machines like `DownloadStatus` with associated values
+- **Learning**: Test every valid state transition, equality edge cases, and ensure invalid transitions are handled. For enums with associated values (like `downloading(progress: Double)` or `failed(Error)`), test equality with same/different values.
+- **Key test cases for state machines**:
+  1. **Equality by case**: Same case with same associated value
+  2. **Inequality by value**: Same case with different associated values
+  3. **Inequality by case**: Different cases
+  4. **Error equality**: `failed(Error)` should equal any `failed(_)` (error type agnostic)
+  5. **Valid transitions**: notDownloaded -> downloading -> downloaded
+  6. **Edge transitions**: downloaded -> notDownloaded (after delete)
+  7. **Failed state recovery**: failed -> downloading (retry scenario)
+- **Example**:
+```swift
+// Test DownloadStatus equality
+func testDownloadStatusEqualityDownloading() {
+    let status1 = DownloadStatus.downloading(progress: 0.5)
+    let status2 = DownloadStatus.downloading(progress: 0.5)
+    let status3 = DownloadStatus.downloading(progress: 0.7)
+    XCTAssertEqual(status1, status2)
+    XCTAssertNotEqual(status1, status3)
+}
+
+func testDownloadStatusEqualityFailedIgnoresErrorType() {
+    let error1 = NSError(domain: "test", code: 1)
+    let error2 = NSError(domain: "test", code: 2)
+    let status1 = DownloadStatus.failed(error1)
+    let status2 = DownloadStatus.failed(error2)
+    XCTAssertEqual(status1, status2)  // Same case, ignores error details
+}
+```
+- **Session**: DownloadManagerTests implementation (2026-01-22)
+
+### Concurrent Operations Testing with TaskGroup
+- **Context**: Verifying thread safety for managers handling concurrent requests
+- **Learning**: Use `withTaskGroup` to simulate concurrent operations (downloads, status updates, cancellations) and verify the manager handles them without crashes or data corruption. Focus on testing that concurrent requests to the same resource are handled idempotently.
+- **Key concurrent scenarios**:
+  1. Multiple simultaneous download requests for same track (should not duplicate)
+  2. Download and cancel racing
+  3. Status queries during active downloads
+  4. Batch operations with concurrent single operations
+- **Example**:
+```swift
+func testConcurrentDownloadRequests() async throws {
+    let manager = TestableDownloadManager()
+    let track = makeTrack()
+
+    // Simulate 10 concurrent download requests for same track
+    await withTaskGroup(of: Void.self) { group in
+        for _ in 0..<10 {
+            group.addTask { @MainActor in
+                await manager.downloadTrack(track)
+            }
+        }
+    }
+
+    // Should result in exactly one download, not 10
+    XCTAssertTrue(manager.isDownloading(trackId: track.id) || manager.isDownloaded(trackId: track.id))
+    // Download count should be 1, not 10
+}
+
+func testConcurrentDownloadAndCancel() async throws {
+    let manager = TestableDownloadManager()
+    let track = makeTrack()
+
+    await withTaskGroup(of: Void.self) { group in
+        group.addTask { @MainActor in
+            await manager.downloadTrack(track)
+        }
+        group.addTask { @MainActor in
+            await manager.cancelDownload(trackId: track.id)
+        }
+    }
+
+    // Final state should be consistent (either downloading or cancelled, not corrupted)
+    let status = manager.downloadStatus(for: track.id)
+    // Verify status is one of the valid states, not in an inconsistent state
+}
+```
+- **Session**: DownloadManagerTests implementation (2026-01-22)
+
+### Testable Class with Time Manipulation for Interval-Based Logic
+- **Context**: Testing `@MainActor` classes like `PlaybackPositionTracker` that have time-based behavior (flush every N seconds)
+- **Learning**: When testing classes with interval-based logic (timers, periodic flushes), create a testable version that:
+  1. Uses dependency injection for services (ConvexService, AuthManager)
+  2. Exposes private state via `forTesting` accessors (e.g., `lastPositionForTesting`)
+  3. Provides a `simulateTimePassedForTesting(seconds:)` method that manipulates `lastFlushTime` by subtracting time
+- **Example**:
+```swift
+@MainActor
+final class TestablePlaybackPositionTracker {
+    private var lastFlushTime: Date = Date()
+    private let flushInterval: TimeInterval
+
+    init(convexService: MockPositionConvexService, currentUserId: String?, flushInterval: TimeInterval = 10.0) {
+        self.convexService = convexService
+        self.currentUserId = currentUserId
+        self.flushInterval = flushInterval
+    }
+
+    func simulateTimePassedForTesting(seconds: TimeInterval) {
+        // Move lastFlushTime backwards to simulate time passing
+        lastFlushTime = lastFlushTime.addingTimeInterval(-seconds)
+    }
+
+    func updatePosition(_ position: Double, duration: Double) {
+        // ... existing logic ...
+        if Date().timeIntervalSince(lastFlushTime) >= flushInterval {
+            flush()  // Now triggers because "enough time has passed"
+        }
+    }
+}
+
+// Test usage
+func testCustomFlushInterval() {
+    let tracker = TestablePlaybackPositionTracker(flushInterval: 5.0)
+    tracker.simulateTimePassedForTesting(seconds: 6)  // Simulate 6 seconds
+    tracker.updatePosition(10.0, duration: 180.0)     // Should flush
+}
+```
+- **Why not use real delays**: Real `Task.sleep()` makes tests slow and flaky. Time manipulation is instant and deterministic.
+- **Session**: PlaybackPositionTrackerTests implementation (2026-01-22)
+
+### Mock Service with Minimal API Surface
+- **Context**: Creating mocks for services where only a few methods need testing
+- **Learning**: When the class under test only uses one or two methods from a large service (e.g., PlaybackPositionTracker only uses `updatePlayPosition` from ConvexService), create a minimal mock that only implements those methods. This avoids maintaining a large mock with methods that are never exercised by the tests.
+- **Example**:
+```swift
+// Instead of mocking all 20+ ConvexService methods:
+final class MockPositionConvexService: @unchecked Sendable {
+    private(set) var updatePlayPositionCallCount = 0
+    private(set) var lastSessionId: String?
+    private(set) var lastUserId: String?
+    private(set) var lastPlaybackPosition: Double?
+    private(set) var lastDuration: Double?
+    var errorToThrow: Error?
+
+    func updatePlayPosition(sessionId: String, userId: String, playbackPosition: Double, duration: Double) async throws {
+        updatePlayPositionCallCount += 1
+        lastSessionId = sessionId
+        lastUserId = userId
+        lastPlaybackPosition = playbackPosition
+        lastDuration = duration
+        if let error = errorToThrow { throw error }
+    }
+}
+```
+- **Benefits**: Simpler to maintain, clear test intent, faster to write
+- **Session**: PlaybackPositionTrackerTests implementation (2026-01-22)
+
+---
+
+## Xcode / iOS Simulator
+
+### iOS 26 Simulator Device Names
+- **Context**: Running xcodebuild with destination specifier
+- **Learning**: In iOS 26 / Xcode 17, simulator device names have changed. `iPhone 16 Pro` does not exist - use `iPhone 17 Pro`, `iPhone 17`, or `iPhone 17 Pro Max` instead. Always check available destinations if build fails with "device not found".
+- **Command to list available simulators**:
+```bash
+xcodebuild -scheme YourScheme -showdestinations
+```
+- **Common iOS 26.1 simulators**: iPhone 17, iPhone 17 Pro, iPhone 17 Pro Max, iPhone Air, iPhone 16e, iPad Pro 11-inch (M5), iPad Pro 13-inch (M5)
+- **Session**: PlaybackPositionTrackerTests build verification (2026-01-22)
+
+### MockUserDefaults Pattern for Persistence Testing
+- **Context**: Testing `@MainActor` classes that use `UserDefaults` for persistence (like `RecentSearchManager`)
+- **Learning**: Create a `MockUserDefaults` class with dictionary-based storage instead of using real `UserDefaults`. This avoids test pollution, enables isolation, and allows verification of what was saved.
+- **Example**:
+```swift
+// MockUserDefaults - dictionary-backed storage
+final class MockUserDefaults {
+    var storage: [String: Any] = [:]
+
+    func stringArray(forKey key: String) -> [String]? {
+        storage[key] as? [String]
+    }
+
+    func set(_ value: Any?, forKey key: String) {
+        if let value = value {
+            storage[key] = value
+        } else {
+            storage.removeValue(forKey: key)
+        }
+    }
+}
+
+// Testable version with DI
+@MainActor
+final class TestableRecentSearchManager {
+    private let userDefaults: MockUserDefaults
+
+    init(userDefaults: MockUserDefaults) {
+        self.userDefaults = userDefaults
+        loadSearches()
+    }
+}
+
+// Test verification
+func testAddSearchPersistsToStorage() {
+    manager.addSearch("swift")
+    let stored = mockDefaults.storage["storageKey"] as? [String]
+    XCTAssertEqual(stored, ["swift"])
+}
+```
+- **Key benefit**: Tests can pre-populate storage, verify saves, and run in complete isolation
+- **Session**: RecentSearchManagerTests implementation (2026-01-22)
+
+### Testing Wrapper Types with Custom Equality
+- **Context**: Testing types like `PlaylistItem` or `TrackItem` that wrap a model and add extra data (e.g., `soundCloudPlaylist`)
+- **Learning**: Wrapper types often have custom equality that only considers the inner model's ID, ignoring other fields. This is intentional (for deduplication in collections) but must be tested explicitly to document and verify the behavior.
+- **Example**:
+```swift
+// PlaylistItem equality is based ONLY on playlist.id
+func testPlaylistItemEqualityIgnoresSoundCloudPlaylist() {
+    let playlist = Playlist(id: "pl-1", name: "Test", creator: "User")
+    let item1 = PlaylistItem(playlist: playlist, soundCloudPlaylist: nil)
+    let item2 = PlaylistItem(playlist: playlist, soundCloudPlaylist: someSCPlaylist)
+    XCTAssertEqual(item1, item2)  // Equal despite different soundCloudPlaylist!
+}
+
+// This enables correct Set/Dictionary behavior
+func testPlaylistItemDeduplicationInSet() {
+    var set = Set<PlaylistItem>()
+    set.insert(PlaylistItem(playlist: playlist1, soundCloudPlaylist: nil))
+    set.insert(PlaylistItem(playlist: playlist1, soundCloudPlaylist: scPlaylist))  // Same playlist
+    XCTAssertEqual(set.count, 1)  // Deduplicated correctly
+}
+```
+- **Why it matters**: Surprising equality semantics can cause bugs if not understood. Tests serve as documentation.
+- **Session**: PlaylistTests model testing (2026-01-22)
+
+### Testing Swift Protocol Conformances Systematically
+- **Context**: Testing models that conform to Codable, Equatable, Hashable, Identifiable, and Sendable
+- **Learning**: For value types with multiple protocol conformances, test each conformance explicitly rather than assuming compiler-synthesized implementations work correctly. This catches issues with custom implementations and documents expected behavior.
+- **Test categories for protocol conformances**:
+  1. **Equatable**: Test equality with all fields matching, then test inequality by changing each field individually
+  2. **Hashable**: Test hash consistency (same object, same hash), equal objects have same hash, and Set/Dictionary usage
+  3. **Codable**: Test encode/decode roundtrip, empty/nil fields, unicode, and error cases (missing required fields)
+  4. **Identifiable**: Verify `id` property matches expected value
+  5. **Sendable**: Verify can be used across actor boundaries (compile-time check, but document expected usage)
+- **Example**:
+```swift
+// Equatable - test each field matters
+func testInequalityByTitleOnly() {
+    let track1 = Track(id: "same", title: "Title 1", artist: "Artist")
+    let track2 = Track(id: "same", title: "Title 2", artist: "Artist")
+    XCTAssertNotEqual(track1, track2)
+}
+
+// Hashable - Set usage
+func testHashableInSet() {
+    let track1 = Track(id: "1", title: "T1", artist: "A")
+    let track2 = Track(id: "1", title: "T1", artist: "A")  // Equal to track1
+    var set = Set([track1])
+    set.insert(track2)  // Should not add
+    XCTAssertEqual(set.count, 1)
+}
+
+// Codable - roundtrip
+func testCodableRoundtrip() throws {
+    let original = Track(id: "test", title: "Title", artist: "Artist")
+    let data = try JSONEncoder().encode(original)
+    let decoded = try JSONDecoder().decode(Track.self, from: data)
+    XCTAssertEqual(original, decoded)
+}
+```
+- **Session**: TrackTests comprehensive model testing (2026-01-22)
+
+### Testing Task Cancellation and Priority in Swift Actors
+- **Context**: Testing actors that spawn cancellable tasks with different priorities (like TrackPrefetcher which prefetches current track at high priority, upcoming at utility)
+- **Learning**: Create testable actor versions that track task cancellation and priority assignment. Expose methods to verify:
+  1. Previous tasks are cancelled when new ones start
+  2. Task priority varies by context (current vs upcoming items)
+  3. Rapid successive calls don't cause race conditions
+- **Key testable state to expose**:
+  - `hasCurrentPrefetchTask()` - whether a task is running
+  - `getLoadedPriorities()` - array of TaskPriority values in load order
+  - Counter for items processed (to verify cancellation stopped previous work)
+- **Example**:
+```swift
+// TestableTrackPrefetcher exposes task state for testing
+actor TestableTrackPrefetcher {
+    private var currentPrefetchTask: Task<Void, Never>?
+    private var loadedPriorities: [TaskPriority] = []
+
+    func hasCurrentPrefetchTask() -> Bool { currentPrefetchTask != nil }
+    func getLoadedPriorities() -> [TaskPriority] { loadedPriorities }
+
+    func prefetchForQueue(_ tracks: [Track], currentIndex: Int) {
+        currentPrefetchTask?.cancel()  // Cancel previous
+        currentPrefetchTask = Task(priority: .utility) {
+            for (i, track) in tracks[currentIndex...].prefix(6).enumerated() {
+                guard !Task.isCancelled else { break }
+                let priority: TaskPriority = (i == 0) ? .high : .utility
+                loadedPriorities.append(priority)
+                // ... prefetch logic
+            }
+        }
+    }
+}
+
+// Tests
+func testCancelsPreviousTask() async {
+    await prefetcher.prefetchForQueue(tracks, currentIndex: 0)
+    await prefetcher.prefetchForQueue(tracks, currentIndex: 10)  // Cancels first
+    try? await Task.sleep(nanoseconds: 200_000_000)
+    // Verify only second prefetch's items were processed
+    XCTAssertTrue(prefetchedIds.contains("track-10"))
+}
+
+func testCurrentTrackHasHighPriority() async {
+    await prefetcher.prefetchForQueue(tracks, currentIndex: 0)
+    let priorities = await prefetcher.getLoadedPriorities()
+    XCTAssertEqual(priorities.first, TaskPriority.high)
+}
+```
+- **Session**: TrackPrefetcherTests implementation (2026-01-22)
+
+### Model Test File Consistency Pattern
+- **Context**: Writing multiple test files for related model types (Track, Playlist, PlaybackQueue, etc.)
+- **Learning**: Maintain consistency across test files by following the same structure and test categories. Read an existing model test file before writing a new one to match: section organization, naming conventions, edge case categories, and fixture usage. This makes the test suite easier to navigate and maintain.
+- **Test structure pattern for model tests**:
+  1. Initialization tests (all params, defaults, unique IDs)
+  2. Special character/unicode tests
+  3. Field-specific behavior tests (tracks, dates, optionals)
+  4. Equatable tests (equality by all fields, inequality by each field)
+  5. Hashable tests (consistency, Set usage, Dictionary usage)
+  6. Codable tests (roundtrip, edge cases, error cases)
+  7. Identifiable tests
+  8. Wrapper type tests (e.g., PlaylistItem, TrackItem)
+  9. Edge cases (long strings, large counts, empty data)
+  10. Concurrent access tests (thread safety)
+- **Session**: PlaylistTests consistency with TrackTests (2026-01-22)
+
+### SoundCloud Model Artwork Fallback Chain
+- **Context**: Testing `SoundCloudPlaylist.primaryArtworkUrl` and similar computed properties
+- **Learning**: SoundCloud models have fallback chains for artwork URLs. Understanding these chains is critical for writing accurate tests:
+  - `SoundCloudPlaylist.primaryArtworkUrl`: `artworkUrl ?? user?.avatarUrl ?? ""`
+  - `SoundCloudTrack.toTrack()` artwork: `artworkUrl ?? user?.avatarUrl`
+- **Testing approach**: Test each branch of the fallback: primary present, primary nil but fallback present, all nil returns empty/default.
+- **Example**:
+```swift
+func testPrimaryArtworkUrlFallbackChain() {
+    // Primary artwork present
+    let playlist1 = SoundCloudPlaylist(artworkUrl: "https://art.jpg", user: nil)
+    XCTAssertEqual(playlist1.primaryArtworkUrl, "https://art.jpg")
+
+    // Fallback to user avatar
+    let user = SoundCloudUser(avatarUrl: "https://avatar.jpg")
+    let playlist2 = SoundCloudPlaylist(artworkUrl: nil, user: user)
+    XCTAssertEqual(playlist2.primaryArtworkUrl, "https://avatar.jpg")
+
+    // All nil returns empty
+    let playlist3 = SoundCloudPlaylist(artworkUrl: nil, user: nil)
+    XCTAssertEqual(playlist3.primaryArtworkUrl, "")
+}
+```
+- **Session**: PlaylistTests SoundCloudPlaylist conversion (2026-01-22)
