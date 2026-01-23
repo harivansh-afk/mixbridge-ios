@@ -6,6 +6,7 @@
 import Foundation
 import UIKit
 import MixBridgeDB
+import MixBridgeDJ
 
 extension PlayerState {
     // MARK: - Persistence
@@ -25,7 +26,7 @@ extension PlayerState {
             prewarmSeconds = max(5, min(60, defaults.double(forKey: kPrewarmSeconds)))
         }
         if let curveRaw = defaults.string(forKey: kFadeCurve),
-           let curve = FadeCurve(rawValue: curveRaw) {
+           let curve = DJCrossfadeCurve(rawValue: curveRaw) {
             fadeCurve = curve
         }
 

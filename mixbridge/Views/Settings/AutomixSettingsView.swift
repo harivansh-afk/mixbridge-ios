@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import MixBridgeDJ
 
 struct AutomixSettingsView: View {
     @Environment(PlayerState.self) private var playerState
@@ -177,14 +178,14 @@ struct AutomixSettingsView: View {
 // MARK: - Fade Curve Picker
 
 struct FadeCurvePicker: View {
-    @Binding var selection: FadeCurve
+    @Binding var selection: DJCrossfadeCurve
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         List {
             // Selection rows
             Section {
-                ForEach(FadeCurve.allCases, id: \.self) { curve in
+                ForEach(DJCrossfadeCurve.allCases, id: \.self) { curve in
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             selection = curve
