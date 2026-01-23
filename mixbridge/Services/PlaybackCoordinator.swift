@@ -53,7 +53,6 @@ final class PlaybackCoordinator: NSObject {
             if !mixEnabled && isUsingMixMode {
                 stopActiveMixEngine()
                 isUsingMixMode = false
-                mixBackend = .avPlayer
             }
         }
     }
@@ -76,37 +75,19 @@ final class PlaybackCoordinator: NSObject {
 
     // MARK: - Mix Mode Engine
 
-    /// Lazy-initialized mix engine for crossfade playback
-    private lazy var mixEngine: MixPlaybackEngine = {
-        let engine = MixPlaybackEngine()
+    /// Lazy-initialized unified mix engine for crossfade playback
+    private lazy var mixEngine: UnifiedMixEngine = {
+        let engine = UnifiedMixEngine()
         engine.delegate = self
         return engine
     }()
-
-    /// Lazy-initialized DJ mix engine for beat-matched mixing (downloaded tracks only)
-    private lazy var djMixEngine: DJMixPlaybackEngine = {
-        let engine = DJMixPlaybackEngine()
-        engine.delegate = self
-        return engine
-    }()
-
-    private enum MixBackend: Sendable {
-        case avPlayer
-        case dj
-    }
 
     /// Whether we're currently using mix mode for playback
     private var isUsingMixMode: Bool = false
-    private var mixBackend: MixBackend = .avPlayer
 
     private func stopActiveMixEngine() {
         guard isUsingMixMode else { return }
-        switch mixBackend {
-        case .avPlayer:
-            mixEngine.stop()
-        case .dj:
-            djMixEngine.stop()
-        }
+        mixEngine.stop()
     }
 
     private let player = AVQueuePlayer()
@@ -213,12 +194,7 @@ final class PlaybackCoordinator: NSObject {
 
     var hasLoadedItems: Bool {
         if isUsingMixMode {
-            switch mixBackend {
-            case .avPlayer:
-                return mixEngine.duration > 0
-            case .dj:
-                return djMixEngine.duration > 0
-            }
+            return mixEngine.duration > 0
         }
         return !player.items().isEmpty
     }
@@ -234,7 +210,6 @@ final class PlaybackCoordinator: NSObject {
         if isUsingMixMode {
             stopActiveMixEngine()
             isUsingMixMode = false
-            mixBackend = .avPlayer
         } else {
             player.pause()
         }
@@ -279,12 +254,7 @@ final class PlaybackCoordinator: NSObject {
 
     func togglePlayback() {
         if isUsingMixMode {
-            switch mixBackend {
-            case .avPlayer:
-                if mixEngine.isPlaying { pause() } else { resume() }
-            case .dj:
-                if djMixEngine.isPlaying { pause() } else { resume() }
-            }
+            if mixEngine.isPlaying { pause() } else { resume() }
         } else {
             if player.timeControlStatus == .playing {
                 pause()
@@ -299,12 +269,7 @@ final class PlaybackCoordinator: NSObject {
         playbackTask = nil
         isIntendedToPlay = false
         if isUsingMixMode {
-            switch mixBackend {
-            case .avPlayer:
-                mixEngine.pause()
-            case .dj:
-                djMixEngine.pause()
-            }
+            mixEngine.pause()
         } else {
             player.pause()
         }
@@ -315,12 +280,7 @@ final class PlaybackCoordinator: NSObject {
     func resume() {
         if isUsingMixMode {
             isIntendedToPlay = true
-            switch mixBackend {
-            case .avPlayer:
-                mixEngine.resume()
-            case .dj:
-                djMixEngine.resume()
-            }
+            mixEngine.resume()
             status = .playing
         } else {
             guard !player.items().isEmpty else { return }
@@ -332,12 +292,7 @@ final class PlaybackCoordinator: NSObject {
 
     func seek(to time: Double) {
         if isUsingMixMode {
-            switch mixBackend {
-            case .avPlayer:
-                mixEngine.seek(to: time)
-            case .dj:
-                djMixEngine.seek(to: time)
-            }
+            mixEngine.seek(to: time)
             publishSnapshot()
         } else {
             let wasPlaying = player.timeControlStatus == .playing
@@ -357,12 +312,7 @@ final class PlaybackCoordinator: NSObject {
 
     func setVolume(_ value: Double) {
         if isUsingMixMode {
-            switch mixBackend {
-            case .avPlayer:
-                mixEngine.setVolume(value)
-            case .dj:
-                djMixEngine.setVolume(value)
-            }
+            mixEngine.setVolume(value)
         } else {
             player.volume = Float(value)
         }
@@ -373,19 +323,10 @@ final class PlaybackCoordinator: NSObject {
 
         // If manual forward in mix mode, trigger instant mix instead of normal skip
         if manual && mixEnabled && isUsingMixMode {
-            switch mixBackend {
-            case .avPlayer:
-                if mixEngine.triggerInstantMix() {
-                    logInfo(.queue, "playNext: triggered instant mix")
-                    HapticManager.selection()
-                    return
-                }
-            case .dj:
-                if djMixEngine.triggerInstantMix() {
-                    logInfo(.queue, "playNext: triggered instant mix (DJ)")
-                    HapticManager.selection()
-                    return
-                }
+            if mixEngine.triggerInstantMix() {
+                logInfo(.queue, "playNext: triggered instant mix")
+                HapticManager.selection()
+                return
             }
             // Fall through to normal skip if instant mix failed
         }
@@ -405,7 +346,6 @@ final class PlaybackCoordinator: NSObject {
         if isUsingMixMode {
             stopActiveMixEngine()
             isUsingMixMode = false
-            mixBackend = .avPlayer
         }
 
         play(track: nextItem.track, soundCloudTrack: nextItem.soundCloudTrack, queueIndex: nil)
@@ -437,12 +377,7 @@ final class PlaybackCoordinator: NSObject {
         DJPrepService.shared.prepNextTracks()
 
         if isUsingMixMode {
-            switch mixBackend {
-            case .avPlayer:
-                mixEngine.handleQueueChanged()
-            case .dj:
-                djMixEngine.handleQueueChanged()
-            }
+            mixEngine.handleQueueChanged()
             return
         }
 
@@ -479,7 +414,6 @@ final class PlaybackCoordinator: NSObject {
         if isUsingMixMode {
             stopActiveMixEngine()
             isUsingMixMode = false
-            mixBackend = .avPlayer
         }
 
         let pendingContext = context
@@ -607,18 +541,23 @@ final class PlaybackCoordinator: NSObject {
                         player.removeAllItems()
                         itemContextMap.removeAll()
 
-                        djMixEngine.crossfadeSeconds = crossfadeSeconds
-                        djMixEngine.prewarmSeconds = prewarmSeconds
-                        djMixEngine.fadeCurve = fadeCurve
+                        mixEngine.crossfadeSeconds = crossfadeSeconds
+                        mixEngine.prewarmSeconds = prewarmSeconds
+                        mixEngine.fadeCurve = fadeCurve
 
                         guard isIntendedToPlay else {
                             status = .paused
                             return
                         }
 
-                        djMixEngine.play(context: context, fileURL: localURL, analysis: analysis, startTime: startTime)
+                        mixEngine.play(
+                            context: context,
+                            streamData: nil,
+                            fileURL: localURL,
+                            analysis: analysis,
+                            startTime: startTime
+                        )
                         isUsingMixMode = true
-                        mixBackend = .dj
                         currentContext = context
                         handleTrackStartedPlaying(context: context)
                         retryAttempts.removeValue(forKey: context.track.id)
@@ -680,9 +619,14 @@ final class PlaybackCoordinator: NSObject {
                     return
                 }
 
-                mixEngine.play(context: context, streamData: localStream, startTime: startTime)
+                mixEngine.play(
+                    context: context,
+                    streamData: localStream,
+                    fileURL: nil,
+                    analysis: nil,
+                    startTime: startTime
+                )
                 isUsingMixMode = true
-                mixBackend = .avPlayer
                 currentContext = context
                 handleTrackStartedPlaying(context: context)
                 retryAttempts.removeValue(forKey: context.track.id)
@@ -765,9 +709,14 @@ final class PlaybackCoordinator: NSObject {
             }
 
             // Start mix playback
-            mixEngine.play(context: context, streamData: stream, startTime: startTime)
+            mixEngine.play(
+                context: context,
+                streamData: stream,
+                fileURL: nil,
+                analysis: nil,
+                startTime: startTime
+            )
             isUsingMixMode = true
-            mixBackend = .avPlayer
 
             currentContext = context
             handleTrackStartedPlaying(context: context)
@@ -1098,14 +1047,8 @@ final class PlaybackCoordinator: NSObject {
         let duration: Double
 
         if isUsingMixMode {
-            switch mixBackend {
-            case .avPlayer:
-                currentTime = mixEngine.currentTime
-                duration = mixEngine.duration
-            case .dj:
-                currentTime = djMixEngine.currentTime
-                duration = djMixEngine.duration
-            }
+            currentTime = mixEngine.currentTime
+            duration = mixEngine.duration
         } else {
             currentTime = CMTimeGetSeconds(player.currentTime())
             duration = CMTimeGetSeconds(player.currentItem?.duration ?? .invalid)
@@ -1124,12 +1067,7 @@ final class PlaybackCoordinator: NSObject {
             if case .failed = status { return status }
 
             if isUsingMixMode {
-                switch mixBackend {
-                case .avPlayer:
-                    return mixEngine.isPlaying ? .playing : (isIntendedToPlay ? .loading : .paused)
-                case .dj:
-                    return djMixEngine.isPlaying ? .playing : (isIntendedToPlay ? .loading : .paused)
-                }
+                return mixEngine.isPlaying ? .playing : (isIntendedToPlay ? .loading : .paused)
             }
 
             switch player.timeControlStatus {
@@ -1185,39 +1123,42 @@ final class PlaybackCoordinator: NSObject {
     }
 }
 
-// MARK: - MixPlaybackEngineDelegate
+// MARK: - UnifiedMixEngineDelegate
 
-extension PlaybackCoordinator: MixPlaybackEngineDelegate {
-    func mixEngine(_ engine: MixPlaybackEngine, didEmit event: MixObservabilityEvent) {
-        // Log observability events
+extension PlaybackCoordinator: UnifiedMixEngineDelegate {
+    func unifiedMixEngine(_ engine: UnifiedMixEngine, didEmit event: UnifiedMixObservabilityEvent) {
+        let isDJ = eventBackend(event) == .dj
+        let logCategory: LogCategory = isDJ ? .dj : .playback
+        let prefix = isDJ ? "DJObservability" : "MixObservability"
+        let mode = isDJ ? "dj" : "mix"
+
         switch event {
-        case .prewarmStart(let trackId, let nextTrackId, let crossfade):
-            logInfo(.playback, "[MixObservability] mix_prewarm_start: \(trackId) -> \(nextTrackId), crossfade=\(crossfade)s")
-        case .prewarmReady(let trackId, let nextTrackId, let crossfade):
-            logInfo(.playback, "[MixObservability] mix_prewarm_ready: \(trackId) -> \(nextTrackId), crossfade=\(crossfade)s")
-        case .fadeStart(let trackId, let nextTrackId, let crossfade):
-            logInfo(.playback, "[MixObservability] mix_fade_start: \(trackId) -> \(nextTrackId), crossfade=\(crossfade)s")
-        case .fadeComplete(let trackId, let nextTrackId, let crossfade):
-            logInfo(.playback, "[MixObservability] mix_fade_complete: \(trackId) -> \(nextTrackId), crossfade=\(crossfade)s")
-        case .fadeAbort(let trackId, let nextTrackId, let crossfade, let reason):
-            logWarning(.playback, "[MixObservability] mix_fade_abort(\(reason)): \(trackId) -> \(nextTrackId ?? "nil"), crossfade=\(crossfade)s")
+        case .prewarmStart(_, let trackId, let nextTrackId, let crossfadeSeconds):
+            logInfo(logCategory, "[\(prefix)] \(mode)_prewarm_start: \(trackId) -> \(nextTrackId), crossfade=\(crossfadeSeconds)s")
+        case .prewarmReady(_, let trackId, let nextTrackId, let crossfadeSeconds):
+            logInfo(logCategory, "[\(prefix)] \(mode)_prewarm_ready: \(trackId) -> \(nextTrackId), crossfade=\(crossfadeSeconds)s")
+        case .fadeScheduled(_, let trackId, let nextTrackId, let crossfadeSeconds):
+            logInfo(logCategory, "[\(prefix)] \(mode)_fade_scheduled: \(trackId) -> \(nextTrackId), crossfade=\(crossfadeSeconds)s")
+        case .fadeStart(_, let trackId, let nextTrackId, let crossfadeSeconds):
+            logInfo(logCategory, "[\(prefix)] \(mode)_fade_start: \(trackId) -> \(nextTrackId), crossfade=\(crossfadeSeconds)s")
+        case .fadeComplete(_, let trackId, let nextTrackId, let crossfadeSeconds):
+            logInfo(logCategory, "[\(prefix)] \(mode)_fade_complete: \(trackId) -> \(nextTrackId), crossfade=\(crossfadeSeconds)s")
+        case .fadeAbort(_, let trackId, let nextTrackId, let crossfadeSeconds, let reason):
+            logWarning(logCategory, "[\(prefix)] \(mode)_fade_abort(\(reason)): \(trackId) -> \(nextTrackId ?? "nil"), crossfade=\(crossfadeSeconds)s")
         }
     }
 
-    func mixEngine(_ engine: MixPlaybackEngine, didCompleteTransitionTo track: Track, context: PlaybackContext) {
-        // End position tracking for previous track
+    func unifiedMixEngine(_ engine: UnifiedMixEngine, didCompleteTransitionTo track: Track, context: PlaybackContext) {
         positionTracker.endSession()
-
-        // Pop from queue since this track is now playing
         queueManager.popNext()
-
-        // Update current context
         currentContext = context
         handleTrackStartedPlaying(context: context)
 
-        logInfo(.playback, "[MixMode] Transition complete: now playing \(track.title)")
+        let isDJ = engine.backend == .dj
+        let logCategory: LogCategory = isDJ ? .dj : .playback
+        let label = isDJ ? "DJMixMode" : "MixMode"
+        logInfo(logCategory, "[\(label)] Transition complete: now playing \(track.title)")
 
-        // Start position tracking and add to history (optimistic update)
         if let userId = AuthManager.shared.currentUserId,
            autoplayEnabled,
            let scTrack = context.soundCloudTrack {
@@ -1238,8 +1179,6 @@ extension PlaybackCoordinator: MixPlaybackEngineDelegate {
 
         publishSnapshot()
 
-        // Reset crossfade visual state AFTER PlayerState.currentTrack updates via snapshot.
-        // This prevents a 1-frame flicker back to the old artwork when the Metal overlay is removed.
         PlayerState.shared.crossfadeFromArtwork = ""
         PlayerState.shared.crossfadeProgress = 0
         PlayerState.shared.isCrossfading = false
@@ -1248,174 +1187,40 @@ extension PlaybackCoordinator: MixPlaybackEngineDelegate {
         PlayerState.shared.crossfadeNextDuration = 0
     }
 
-    func mixEngine(_ engine: MixPlaybackEngine, didAbortWithFallback track: Track?, context: PlaybackContext?) {
-        // Mix transition aborted - fallback to normal playback
-        logWarning(.playback, "[MixMode] Transition aborted, falling back to normal playback")
+    func unifiedMixEngine(_ engine: UnifiedMixEngine, didAbortWithFallback track: Track?, context: PlaybackContext?) {
+        let isDJ = engine.backend == .dj
+        let logCategory: LogCategory = isDJ ? .dj : .playback
+        let label = isDJ ? "DJMixMode" : "MixMode"
 
-        // Stop mix audio immediately before starting AVQueuePlayer playback to avoid overlap.
-        engine.stop()
-
-        // Reset crossfade visual state
-        PlayerState.shared.crossfadeFromArtwork = ""
-        PlayerState.shared.crossfadeProgress = 0
-        PlayerState.shared.isCrossfading = false
-        PlayerState.shared.crossfadeNextTrack = nil
-        PlayerState.shared.crossfadeNextPosition = 0
-        PlayerState.shared.crossfadeNextDuration = 0
-
-        // If we have a next track context, try normal playback
-        if let context = context {
-            let requestId = activeRequestId
-            Task {
-                // Switch back to non-mix mode for fallback
-                isUsingMixMode = false
-                await startPlayback(with: context, requestId: requestId)
-            }
+        if isDJ {
+            logWarning(logCategory, "[\(label)] Transition aborted (fallback=\(context != nil))")
+        } else {
+            logWarning(logCategory, "[\(label)] Transition aborted, falling back to normal playback")
         }
-    }
 
-    func mixEngineDidFinishTrack(_ engine: MixPlaybackEngine, track: Track, context: PlaybackContext) {
-        // End position tracking for finished track
-        positionTracker.endSession()
+        PlayerState.shared.crossfadeFromArtwork = ""
+        PlayerState.shared.crossfadeProgress = 0
+        PlayerState.shared.isCrossfading = false
+        PlayerState.shared.crossfadeNextTrack = nil
+        PlayerState.shared.crossfadeNextPosition = 0
+        PlayerState.shared.crossfadeNextDuration = 0
 
-        guard autoplayEnabled else {
-            isIntendedToPlay = false
-            status = .ready
-            publishSnapshot()
+        guard let context else {
+            if !isDJ {
+                engine.stop()
+            }
             return
         }
 
-        // Advance using the same "top of cue" logic as manual Next.
-        playNext(manual: false)
-    }
-
-    func mixEngineDidUpdateTime(_ engine: MixPlaybackEngine, currentTime: Double, duration: Double) {
-        // Track position for periodic flush
-        if currentTime.isFinite && duration.isFinite {
-            positionTracker.updatePosition(currentTime, duration: duration)
-        }
-
-        // Publish snapshot to update UI
-        publishSnapshot()
-    }
-
-    func mixEngineDidUpdateCrossfadeProgress(_ engine: MixPlaybackEngine, progress: Double, nextTrack: Track?) {
-        // Capture and prefetch crossfade artwork at the very start so visuals never
-        // briefly render with a missing `nextTrack` or a changing `from` artwork.
-        if progress <= 0.0001 {
-            if let nextTrack {
-                if PlayerState.shared.crossfadeFromArtwork.isEmpty {
-                    PlayerState.shared.crossfadeFromArtwork = PlayerState.shared.currentTrack.artwork
-                }
-                Task(priority: .utility) {
-                    await preloadCrossfadeArtwork(from: PlayerState.shared.crossfadeFromArtwork, to: nextTrack.artwork)
-                }
-            } else {
-                PlayerState.shared.crossfadeFromArtwork = ""
-            }
-        }
-
-        // Update PlayerState for visual transitions (order matters to avoid transient flicker):
-        // set nextTrack first, then progress, then isCrossfading last.
-        PlayerState.shared.crossfadeNextTrack = nextTrack
-        PlayerState.shared.crossfadeNextPosition = engine.nextTime
-        PlayerState.shared.crossfadeNextDuration = engine.nextDuration
-        PlayerState.shared.crossfadeProgress = progress
-
-        // Keep isCrossfading true at progress=1.0 to prevent flicker; we reset after track swap.
-        PlayerState.shared.isCrossfading = progress > 0 && progress <= 1.0
-    }
-}
-
-// MARK: - DJMixPlaybackEngineDelegate
-
-extension PlaybackCoordinator: DJMixPlaybackEngineDelegate {
-    func djEngine(_ engine: DJMixPlaybackEngine, didEmit event: DJMixObservabilityEvent) {
-        switch event {
-        case .prewarmStart(let trackId, let nextTrackId, let crossfadeSeconds):
-            logInfo(.dj, "[DJObservability] dj_prewarm_start: \(trackId) -> \(nextTrackId), crossfade=\(crossfadeSeconds)s")
-        case .prewarmReady(let trackId, let nextTrackId, let crossfadeSeconds):
-            logInfo(.dj, "[DJObservability] dj_prewarm_ready: \(trackId) -> \(nextTrackId), crossfade=\(crossfadeSeconds)s")
-        case .fadeScheduled(let trackId, let nextTrackId, let crossfadeSeconds):
-            logInfo(.dj, "[DJObservability] dj_fade_scheduled: \(trackId) -> \(nextTrackId), crossfade=\(crossfadeSeconds)s")
-        case .fadeStart(let trackId, let nextTrackId, let crossfadeSeconds):
-            logInfo(.dj, "[DJObservability] dj_fade_start: \(trackId) -> \(nextTrackId), crossfade=\(crossfadeSeconds)s")
-        case .fadeComplete(let trackId, let nextTrackId, let crossfadeSeconds):
-            logInfo(.dj, "[DJObservability] dj_fade_complete: \(trackId) -> \(nextTrackId), crossfade=\(crossfadeSeconds)s")
-        case .fadeAbort(let trackId, let nextTrackId, let crossfadeSeconds, let reason):
-            logWarning(.dj, "[DJObservability] dj_fade_abort(\(reason)): \(trackId) -> \(nextTrackId ?? "nil"), crossfade=\(crossfadeSeconds)s")
-        }
-    }
-
-    func djEngine(_ engine: DJMixPlaybackEngine, didCompleteTransitionTo track: Track, context: PlaybackContext) {
-        // End position tracking for previous track.
-        positionTracker.endSession()
-
-        // Pop from queue since this track is now playing.
-        queueManager.popNext()
-
-        // Update current context.
-        currentContext = context
-        handleTrackStartedPlaying(context: context)
-
-        logInfo(.dj, "[DJMixMode] Transition complete: now playing \(track.title)")
-
-        // Start position tracking and add to history (optimistic update).
-        if let userId = AuthManager.shared.currentUserId,
-           autoplayEnabled,
-           let scTrack = context.soundCloudTrack {
-            let sessionId = positionTracker.startSession(
-                trackId: context.track.id,
-                queueIndex: context.queueIndex,
-                duration: Double(scTrack.duration) / 1000.0
-            )
-            Task(priority: .utility) {
-                try? await HistorySync.shared.addToHistory(
-                    scTrack,
-                    userId: userId,
-                    sessionId: sessionId,
-                    queueIndex: context.queueIndex
-                )
-            }
-        }
-
-        publishSnapshot()
-
-        // Reset crossfade visual state AFTER PlayerState.currentTrack updates via snapshot.
-        PlayerState.shared.crossfadeFromArtwork = ""
-        PlayerState.shared.crossfadeProgress = 0
-        PlayerState.shared.isCrossfading = false
-        PlayerState.shared.crossfadeNextTrack = nil
-        PlayerState.shared.crossfadeNextPosition = 0
-        PlayerState.shared.crossfadeNextDuration = 0
-    }
-
-    func djEngine(_ engine: DJMixPlaybackEngine, didAbortWithFallback track: Track?, context: PlaybackContext?) {
-        // Abort may simply mean "couldn't prewarm/mix" while continuing current DJ playback.
-        logWarning(.dj, "[DJMixMode] Transition aborted (fallback=\(context != nil))")
-
-        // Reset crossfade visual state.
-        PlayerState.shared.crossfadeFromArtwork = ""
-        PlayerState.shared.crossfadeProgress = 0
-        PlayerState.shared.isCrossfading = false
-        PlayerState.shared.crossfadeNextTrack = nil
-        PlayerState.shared.crossfadeNextPosition = 0
-        PlayerState.shared.crossfadeNextDuration = 0
-
-        guard let context else { return }
-
-        // If we have a fallback context, stop DJ audio immediately before starting AVQueuePlayer playback.
         engine.stop()
-
         let requestId = activeRequestId
         Task {
             isUsingMixMode = false
-            mixBackend = .avPlayer
             await startPlayback(with: context, requestId: requestId)
         }
     }
 
-    func djEngineDidFinishTrack(_ engine: DJMixPlaybackEngine, track: Track, context: PlaybackContext) {
+    func unifiedMixEngineDidFinishTrack(_ engine: UnifiedMixEngine, track: Track, context: PlaybackContext) {
         positionTracker.endSession()
 
         guard autoplayEnabled else {
@@ -1428,16 +1233,14 @@ extension PlaybackCoordinator: DJMixPlaybackEngineDelegate {
         playNext(manual: false)
     }
 
-    func djEngineDidUpdateTime(_ engine: DJMixPlaybackEngine, currentTime: Double, duration: Double) {
+    func unifiedMixEngineDidUpdateTime(_ engine: UnifiedMixEngine, currentTime: Double, duration: Double) {
         if currentTime.isFinite && duration.isFinite {
             positionTracker.updatePosition(currentTime, duration: duration)
         }
         publishSnapshot()
     }
 
-    func djEngineDidUpdateCrossfadeProgress(_ engine: DJMixPlaybackEngine, progress: Double, nextTrack: Track?) {
-        // Capture and prefetch crossfade artwork at the very start so visuals never
-        // briefly render with a missing `nextTrack` or a changing `from` artwork.
+    func unifiedMixEngineDidUpdateCrossfadeProgress(_ engine: UnifiedMixEngine, progress: Double, nextTrack: Track?) {
         if progress <= 0.0001 {
             if let nextTrack {
                 if PlayerState.shared.crossfadeFromArtwork.isEmpty {
@@ -1456,6 +1259,18 @@ extension PlaybackCoordinator: DJMixPlaybackEngineDelegate {
         PlayerState.shared.crossfadeNextDuration = engine.nextDuration
         PlayerState.shared.crossfadeProgress = progress
         PlayerState.shared.isCrossfading = progress > 0 && progress <= 1.0
+    }
+}
+
+private func eventBackend(_ event: UnifiedMixObservabilityEvent) -> UnifiedMixBackend {
+    switch event {
+    case .prewarmStart(let backend, _, _, _),
+         .prewarmReady(let backend, _, _, _),
+         .fadeScheduled(let backend, _, _, _),
+         .fadeStart(let backend, _, _, _),
+         .fadeComplete(let backend, _, _, _),
+         .fadeAbort(let backend, _, _, _, _):
+        return backend
     }
 }
 

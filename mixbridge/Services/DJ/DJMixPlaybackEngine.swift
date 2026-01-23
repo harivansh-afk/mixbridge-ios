@@ -450,12 +450,7 @@ final class DJMixPlaybackEngine {
         )
 
         // Validate and clamp the plan to current schedule
-        let clampedPlan = cachedPlan.plan.clamped(
-            outgoingDuration: currentDurationSeconds,
-            incomingDuration: nextDurationSeconds
-        )
-
-        let djPlan = clampedPlan.toDJTransitionPlan()
+        let djPlan = cachedPlan.plan.clamped(outgoingDuration: currentDurationSeconds)
 
         logInfo(.dj, "DJMixPlaybackEngine: using \(cachedPlan.isFallback ? "fallback" : "AI") plan, age=\(String(format: "%.1f", cachedPlan.age))s")
 

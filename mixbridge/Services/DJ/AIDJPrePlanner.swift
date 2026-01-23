@@ -10,7 +10,7 @@ final class AIDJPrePlanner {
     // MARK: - Types
 
     struct CachedPlan {
-        let plan: AIDJMixPlan
+        let plan: DJTransitionPlan
         let createdAt: Date
         let isFallback: Bool
 
@@ -46,7 +46,7 @@ final class AIDJPrePlanner {
     func configure(fadeDuration: Double, curve: DJCrossfadeCurve?) {
         settings = AIDJMixSettings(
             preferredFadeDurationSeconds: fadeDuration,
-            preferredCurve: curve.map { AIDJCrossfadeCurve.fromDJ($0) },
+            preferredCurve: curve,
             allowTempoMatch: settings.allowTempoMatch,
             allowBeatSync: settings.allowBeatSync,
             allowEQPolish: settings.allowEQPolish
@@ -89,13 +89,10 @@ final class AIDJPrePlanner {
         )
 
         do {
-            let response = try await AIDJRemotePlanner().plan(request: request)
+            let plan = try await AIDJRemotePlanner().plan(request: request)
 
             // Validate the plan before caching
-            let validatedPlan = try response.plan.validated(
-                outgoingDuration: outgoing.duration,
-                incomingDuration: incoming.duration
-            )
+            let validatedPlan = try plan.validated(outgoingDuration: outgoing.duration)
 
             cache[key] = CachedPlan(plan: validatedPlan, createdAt: Date(), isFallback: false)
             logInfo(.dj, "AIDJPrePlanner: cached AI plan for \(key.outgoingId) → \(key.incomingId)")
@@ -104,11 +101,10 @@ final class AIDJPrePlanner {
             logWarning(.dj, "AIDJPrePlanner: AI plan failed, caching fallback: \(error)")
 
             // Cache a local fallback plan
-            let fallbackPlan = AIDJMixPlan.localFallback(
+            let fallbackPlan = makeFallbackPlan(
                 outgoingDuration: outgoing.duration,
                 outgoingAnalysis: outgoingAnalysis,
-                incomingAnalysis: incomingAnalysis,
-                settings: settings
+                incomingAnalysis: incomingAnalysis
             )
 
             cache[key] = CachedPlan(plan: fallbackPlan, createdAt: Date(), isFallback: true)
@@ -155,14 +151,53 @@ final class AIDJPrePlanner {
 
         // Generate fallback
         logDebug(.dj, "AIDJPrePlanner: generating fallback for \(outgoingId) → \(incomingId)")
-        let fallbackPlan = AIDJMixPlan.localFallback(
+        let fallbackPlan = makeFallbackPlan(
             outgoingDuration: outgoingDuration,
             outgoingAnalysis: outgoingAnalysis,
-            incomingAnalysis: incomingAnalysis,
-            settings: settings
+            incomingAnalysis: incomingAnalysis
         )
 
         return CachedPlan(plan: fallbackPlan, createdAt: Date(), isFallback: true)
+    }
+
+    // MARK: - Fallback Planning
+
+    private func makeFallbackPlan(
+        outgoingDuration: Double,
+        outgoingAnalysis: DJAnalysisResult,
+        incomingAnalysis: DJAnalysisResult
+    ) -> DJTransitionPlan {
+        let fadeDuration = min(settings.preferredFadeDurationSeconds, outgoingDuration * 0.5)
+        let fadeStart = max(0, outgoingDuration - fadeDuration)
+
+        let plannerSettings = DJTransitionPlannerSettings(
+            crossfadeSeconds: fadeDuration,
+            fadeCurve: settings.preferredCurve ?? .equalPower,
+            beatSyncEnabled: settings.allowBeatSync,
+            tempoMatchEnabled: settings.allowTempoMatch,
+            eqPolishEnabled: settings.allowEQPolish,
+            preferBarSync: true,
+            confidenceThreshold: 0.6
+        )
+
+        let plan = DJTransitionPlanner.makePlan(
+            outgoing: outgoingAnalysis,
+            incoming: incomingAnalysis,
+            fadeStartSeconds: fadeStart,
+            fadeDurationSeconds: fadeDuration,
+            settings: plannerSettings
+        )
+
+        return DJTransitionPlan(
+            fadeDurationSeconds: plan.fadeDurationSeconds,
+            fadeStartSeconds: plan.fadeStartSeconds,
+            crossfadeCurve: plan.crossfadeCurve,
+            outgoingEQCurves: plan.outgoingEQCurves,
+            incomingEQCurves: plan.incomingEQCurves,
+            tempoMatch: plan.tempoMatch,
+            beatAlignment: plan.beatAlignment,
+            isFallback: true
+        )
     }
 
     // MARK: - Cache Management
@@ -204,5 +239,139 @@ final class AIDJPrePlanner {
         let total = cache.count
         let fallbacks = cache.values.filter { $0.isFallback }.count
         return (total, fallbacks)
+    }
+}
+
+// MARK: - Planner Internals
+
+enum AIDJPlannerError: Error, LocalizedError {
+    case requestFailed(statusCode: Int?)
+    case decodeFailed
+    case networkError(Error)
+
+    var errorDescription: String? {
+        switch self {
+        case let .requestFailed(code):
+            return "Request failed with status \(code ?? -1)"
+        case .decodeFailed:
+            return "Failed to decode response"
+        case let .networkError(error):
+            return "Network error: \(error.localizedDescription)"
+        }
+    }
+}
+
+@MainActor
+private struct AIDJRemotePlanner {
+    private static let endpoint = URL(string: "https://mixbridge.app/api/dj/plan")!
+    private static let timeout: TimeInterval = 50 // 50 seconds
+
+    func plan(request: AIDJPlanRequest) async throws -> DJTransitionPlan {
+        let backendRequest = request.toBackendRequest()
+
+        logInfo(.dj, "AIDJ request: \(formatRequest(request))")
+
+        let data = try await sendRequest(backendRequest)
+        let decoded = try decodeResponse(data)
+        let plan = decoded.toTransitionPlan()
+
+        logInfo(.dj, "AIDJ response: \(formatResponse(plan, confidence: decoded.confidence))")
+
+        return plan
+    }
+
+    private func sendRequest(_ request: AIDJBackendRequest) async throws -> Data {
+        var httpRequest = URLRequest(url: Self.endpoint)
+        httpRequest.httpMethod = "POST"
+        httpRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        httpRequest.timeoutInterval = Self.timeout
+
+        let encoder = JSONEncoder()
+        let requestBody = try encoder.encode(request)
+        httpRequest.httpBody = requestBody
+
+        if let jsonString = String(data: requestBody, encoding: .utf8) {
+            logDebug(.dj, "AIDJ request body: \(truncate(jsonString, max: 2000))")
+        }
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: httpRequest)
+        } catch {
+            throw AIDJPlannerError.networkError(error)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AIDJPlannerError.requestFailed(statusCode: nil)
+        }
+
+        guard (200 ... 299).contains(httpResponse.statusCode) else {
+            if let errorBody = String(data: data, encoding: .utf8) {
+                logWarning(.dj, "AIDJ request failed: status=\(httpResponse.statusCode), body=\(truncate(errorBody, max: 500))")
+            } else {
+                logWarning(.dj, "AIDJ request failed: status=\(httpResponse.statusCode)")
+            }
+            throw AIDJPlannerError.requestFailed(statusCode: httpResponse.statusCode)
+        }
+
+        logDebug(.dj, "AIDJ raw response: \(truncate(String(data: data, encoding: .utf8) ?? ""))")
+
+        return data
+    }
+
+    private func decodeResponse(_ data: Data) throws -> AIDJBackendResponse {
+        do {
+            return try JSONDecoder().decode(AIDJBackendResponse.self, from: data)
+        } catch {
+            logWarning(.dj, "AIDJ decode failed: \(error)")
+            throw AIDJPlannerError.decodeFailed
+        }
+    }
+
+    private func formatRequest(_ req: AIDJPlanRequest) -> String {
+        let out = req.outgoingTrack
+        let inc = req.incomingTrack
+
+        var parts = [
+            "out=\(out.trackId)",
+            "in=\(inc.trackId)",
+            "bpm=\(formatOptional(out.bpm))/\(formatOptional(inc.bpm))",
+            "dur=\(String(format: "%.0f", out.durationSeconds))/\(String(format: "%.0f", inc.durationSeconds))s",
+            "fade=\(String(format: "%.1f", req.settings.preferredFadeDurationSeconds))s",
+        ]
+
+        if let curve = req.settings.preferredCurve {
+            parts.append("curve=\(curve.rawValue)")
+        }
+
+        return parts.joined(separator: ", ")
+    }
+
+    private func formatResponse(_ plan: DJTransitionPlan, confidence: Double?) -> String {
+        var parts = [
+            "fadeStart=\(String(format: "%.2f", plan.fadeStartSeconds))s",
+            "duration=\(String(format: "%.2f", plan.fadeDurationSeconds))s",
+            "curve=\(plan.crossfadeCurve)",
+            "beat=\(plan.beatAlignment)",
+            "tempo=\(plan.tempoMatch.enabled ? "on" : "off")",
+        ]
+
+        if !plan.outgoingEQCurves.isEmpty || !plan.incomingEQCurves.isEmpty {
+            parts.append("eq=\(plan.outgoingEQCurves.count)/\(plan.incomingEQCurves.count)")
+        }
+
+        if let confidence {
+            parts.append("conf=\(String(format: "%.2f", confidence))")
+        }
+
+        return parts.joined(separator: ", ")
+    }
+
+    private func formatOptional(_ value: Double?) -> String {
+        value.map { String(format: "%.1f", $0) } ?? "-"
+    }
+
+    private func truncate(_ value: String, max: Int = 500) -> String {
+        value.count <= max ? value : String(value.prefix(max)) + "…"
     }
 }
