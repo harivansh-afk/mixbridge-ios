@@ -18,10 +18,6 @@ let package = Package(
         .target(
             name: "MixBridgeDJ",
             dependencies: []
-        ),
-        .testTarget(
-            name: "MixBridgeDJTests",
-            dependencies: ["MixBridgeDJ"]
         )
     ]
 )
