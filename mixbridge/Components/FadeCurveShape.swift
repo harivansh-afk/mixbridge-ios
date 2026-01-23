@@ -6,13 +6,14 @@
 //
 
 import SwiftUI
+import MixBridgeDJ
 
 struct FadeCurveShape: Shape {
-    let curve: FadeCurve
+    let curve: DJCrossfadeCurve
     let showFadeIn: Bool
     let showFadeOut: Bool
     
-    init(curve: FadeCurve, showFadeIn: Bool = true, showFadeOut: Bool = true) {
+    init(curve: DJCrossfadeCurve, showFadeIn: Bool = true, showFadeOut: Bool = true) {
         self.curve = curve
         self.showFadeIn = showFadeIn
         self.showFadeOut = showFadeOut
@@ -56,7 +57,7 @@ struct FadeCurveShape: Shape {
     }
     
     struct FadeCurvePreview: View {
-        let curve: FadeCurve
+        let curve: DJCrossfadeCurve
         
         var body: some View {
             VStack(spacing: 12) {
@@ -135,7 +136,7 @@ struct FadeCurveShape: Shape {
     
     #Preview {
         VStack(spacing: 20) {
-            ForEach(FadeCurve.allCases, id: \.self) { curve in
+            ForEach(DJCrossfadeCurve.allCases, id: \.self) { curve in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(curve.displayName)
                         .font(.headline)
@@ -149,4 +150,3 @@ struct FadeCurveShape: Shape {
         .padding()
     }
 }
-

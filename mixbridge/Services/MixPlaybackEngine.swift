@@ -8,6 +8,7 @@
 
 import AVFoundation
 import Foundation
+import MixBridgeDJ
 
 // Import MixCore types from the local package
 // Note: When integrated, these will be imported from MixbridgeMixCore
@@ -46,7 +47,7 @@ final class MixPlaybackEngine {
 
     var crossfadeSeconds: Double = 6
     var prewarmSeconds: Double = 15
-    var fadeCurve: FadeCurve = .equalPower
+    var fadeCurve: DJCrossfadeCurve = .equalPower
 
     var isPlaying: Bool {
         currentPlayer.timeControlStatus == .playing
@@ -580,8 +581,8 @@ final class MixPlaybackEngine {
         delegate?.mixEngineDidUpdateCrossfadeProgress(self, progress: progress, nextTrack: nextContext?.track)
 
         // Apply selected fade curve
-        let currentGain = fadeCurve.fadeOutGain(progress: progress)
-        let nextGain = fadeCurve.fadeInGain(progress: progress)
+        let currentGain = Float(fadeCurve.fadeOutGain(progress: progress))
+        let nextGain = Float(fadeCurve.fadeInGain(progress: progress))
 
         currentPlayer.volume = currentGain
         nextPlayer.volume = nextGain

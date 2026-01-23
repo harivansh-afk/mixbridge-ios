@@ -10,6 +10,7 @@ import AVFoundation
 import MediaPlayer
 import SwiftUI
 import Combine
+import MixBridgeDJ
 
 @MainActor
 protocol PlaybackCoordinatorDelegate: AnyObject {
@@ -64,7 +65,7 @@ final class PlaybackCoordinator: NSObject {
     var prewarmSeconds: Double = 15
 
     /// Fade curve type for crossfade transitions
-    var fadeCurve: FadeCurve = .equalPower
+    var fadeCurve: DJCrossfadeCurve = .equalPower
 
     private let queueManager = QueueManager.shared
     private let keychain = KeychainManager.shared

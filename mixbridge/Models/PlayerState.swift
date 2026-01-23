@@ -10,6 +10,7 @@ import AVFoundation
 import MediaPlayer
 import UIKit
 import MixBridgeDB
+import MixBridgeDJ
 
 @Observable
 @MainActor
@@ -166,7 +167,7 @@ final class PlayerState: NSObject {
     }
 
     /// Fade curve type for crossfade transitions (default: equalPower)
-    var fadeCurve: FadeCurve = .equalPower {
+    var fadeCurve: DJCrossfadeCurve = .equalPower {
         didSet {
             UserDefaults.standard.set(fadeCurve.rawValue, forKey: kFadeCurve)
             playbackCoordinator.fadeCurve = fadeCurve

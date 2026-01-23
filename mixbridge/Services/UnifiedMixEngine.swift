@@ -43,7 +43,7 @@ final class UnifiedMixEngine {
         }
     }
 
-    var fadeCurve: FadeCurve = .equalPower {
+    var fadeCurve: DJCrossfadeCurve = .equalPower {
         didSet {
             streamingEngine.fadeCurve = fadeCurve
             djEngine.fadeCurve = fadeCurve

@@ -41,7 +41,7 @@ final class DJMixPlaybackEngine {
     }
 
     var prewarmSeconds: Double = 15
-    var fadeCurve: FadeCurve = .equalPower {
+    var fadeCurve: DJCrossfadeCurve = .equalPower {
         didSet { updatePrePlannerSettings() }
     }
 
@@ -247,7 +247,7 @@ final class DJMixPlaybackEngine {
     private func updatePrePlannerSettings() {
         prePlanner.configure(
             fadeDuration: crossfadeSeconds,
-            curve: fadeCurve.toDJCrossfadeCurve()
+            curve: fadeCurve
         )
     }
 
