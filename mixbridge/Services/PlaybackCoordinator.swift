@@ -592,7 +592,7 @@ final class PlaybackCoordinator: NSObject {
                             throw error
                         } else {
                             logWarning(.playback, "[DJMixMode] Failed to start DJ mix, falling back to AVPlayer mix: \(error)")
-                            // Fall back to MixPlaybackEngine local-file path below.
+                            // Fall back to streaming mix path below.
                         }
                     }
                 }
@@ -800,7 +800,7 @@ final class PlaybackCoordinator: NSObject {
             stream = freshStream
         } else {
             // Check if cached stream is expiring soon (within 30 seconds)
-            // This mirrors what MixPlaybackEngine does for prewarm
+            // This mirrors what the unified mix engine does for prewarm
             let deadline = Date().addingTimeInterval(30)
             let needsRefresh = await streamCache.isStreamExpiring(for: context.track.id, before: deadline)
 
