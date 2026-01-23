@@ -163,14 +163,7 @@ struct AIDJLocalPlanner {
     func plan(request: AIDJPlanRequest) -> AIDJMixPlan {
         let settings = DJTransitionPlannerSettings(
             crossfadeSeconds: request.settings.preferredFadeDurationSeconds,
-            fadeCurve: request.settings.preferredCurve.map { curve -> FadeCurve in
-                switch curve {
-                case .equalPower: return .equalPower
-                case .linear: return .linear
-                case .sCurve: return .sCurve
-                case .logarithmic: return .exponential
-                }
-            } ?? .equalPower,
+            fadeCurve: request.settings.preferredCurve?.toDJ() ?? .equalPower,
             beatSyncEnabled: request.settings.allowBeatSync,
             tempoMatchEnabled: request.settings.allowTempoMatch,
             eqPolishEnabled: request.settings.allowEQPolish,

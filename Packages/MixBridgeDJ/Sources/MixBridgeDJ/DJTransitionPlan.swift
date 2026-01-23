@@ -1,27 +1,84 @@
 import Foundation
 
 /// Crossfade curve type for volume transitions.
-public enum DJCrossfadeCurve: Sendable, Equatable {
+/// This is the single source of truth for fade curves across streaming and DJ mixing.
+public enum DJCrossfadeCurve: String, Sendable, Equatable, Codable, CaseIterable {
+    /// Linear crossfade (simple volume ramp).
+    case linear
+
     /// Equal-power crossfade using sine/cosine curves.
     /// Maintains perceived loudness throughout the transition.
     case equalPower
 
-    /// Linear crossfade (simple volume ramp).
-    case linear
+    /// Smooth S-curve using smoothstep - gradual start and end.
+    case sCurve
 
-    /// Constant power with slight overlap for fuller sound.
-    case constantPower
+    /// Exponential curve - aggressive quick drop then long tail.
+    case exponential
+
+    /// Display name for UI.
+    public var displayName: String {
+        switch self {
+        case .linear: return "Linear"
+        case .equalPower: return "Equal Power"
+        case .sCurve: return "S-Curve"
+        case .exponential: return "Exponential"
+        }
+    }
+
+    /// Calculate fade-out gain (1 -> 0) for the outgoing track.
+    /// - Parameter progress: 0.0 (start) to 1.0 (end)
+    /// - Returns: Volume multiplier 0.0 to 1.0
+    public func fadeOutGain(progress: Double) -> Double {
+        let p = min(1.0, max(0.0, progress))
+
+        switch self {
+        case .linear:
+            return 1.0 - p
+
+        case .equalPower:
+            return cos(p * .pi / 2)
+
+        case .sCurve:
+            let smoothed = p * p * (3.0 - 2.0 * p)
+            return 1.0 - smoothed
+
+        case .exponential:
+            return pow(1.0 - p, 3)
+        }
+    }
+
+    /// Calculate fade-in gain (0 -> 1) for the incoming track.
+    /// - Parameter progress: 0.0 (start) to 1.0 (end)
+    /// - Returns: Volume multiplier 0.0 to 1.0
+    public func fadeInGain(progress: Double) -> Double {
+        let p = min(1.0, max(0.0, progress))
+
+        switch self {
+        case .linear:
+            return p
+
+        case .equalPower:
+            return sin(p * .pi / 2)
+
+        case .sCurve:
+            return p * p * (3.0 - 2.0 * p)
+
+        case .exponential:
+            return pow(p, 3)
+        }
+    }
 }
 
 /// EQ band identifiers for 3-band equalizer.
-public enum DJEQBand: Sendable, CaseIterable {
+public enum DJEQBand: String, Sendable, Equatable, Codable, CaseIterable {
     case low
     case mid
     case high
 }
 
 /// Time-varying EQ gain value at a specific point in the transition.
-public struct DJEQKeyframe: Sendable, Equatable {
+public struct DJEQKeyframe: Sendable, Equatable, Codable {
     /// Progress through the transition (0.0 = start, 1.0 = end).
     public let progress: Double
 
@@ -35,7 +92,7 @@ public struct DJEQKeyframe: Sendable, Equatable {
 }
 
 /// EQ curve for a single band during a transition.
-public struct DJEQCurve: Sendable, Equatable {
+public struct DJEQCurve: Sendable, Equatable, Codable {
     public let band: DJEQBand
     public let keyframes: [DJEQKeyframe]
 
@@ -96,7 +153,7 @@ public struct DJEQCurve: Sendable, Equatable {
 }
 
 /// Tempo matching configuration for a transition.
-public struct DJTempoMatchConfig: Sendable, Equatable {
+public struct DJTempoMatchConfig: Sendable, Equatable, Codable {
     /// Whether tempo matching is enabled.
     public let enabled: Bool
 
@@ -146,7 +203,7 @@ public struct DJTempoMatchConfig: Sendable, Equatable {
 }
 
 /// Beat alignment mode for starting the incoming track.
-public enum DJBeatAlignmentMode: Sendable, Equatable {
+public enum DJBeatAlignmentMode: String, Sendable, Equatable, Codable {
     /// Align to the next beat boundary.
     case beat
 
@@ -158,7 +215,7 @@ public enum DJBeatAlignmentMode: Sendable, Equatable {
 }
 
 /// Complete transition plan for mixing from deck A to deck B.
-public struct DJTransitionPlan: Sendable, Equatable {
+public struct DJTransitionPlan: Sendable, Equatable, Codable {
     /// Duration of the crossfade in seconds.
     public let fadeDurationSeconds: Double
 
@@ -207,26 +264,7 @@ public struct DJTransitionPlan: Sendable, Equatable {
     /// - Parameter progress: Transition progress (0.0 = start, 1.0 = end).
     /// - Returns: Tuple of (outgoingGain, incomingGain) as linear values.
     public func crossfadeGains(at progress: Double) -> (outgoing: Double, incoming: Double) {
-        let t = max(0.0, min(1.0, progress))
-
-        switch crossfadeCurve {
-        case .equalPower:
-            // Equal-power: uses cosine/sine to maintain constant perceived loudness
-            let outgoing = cos(t * .pi / 2)
-            let incoming = sin(t * .pi / 2)
-            return (outgoing, incoming)
-
-        case .linear:
-            let outgoing = 1.0 - t
-            let incoming = t
-            return (outgoing, incoming)
-
-        case .constantPower:
-            // Slight overlap for fuller sound
-            let outgoing = sqrt(1.0 - t)
-            let incoming = sqrt(t)
-            return (outgoing, incoming)
-        }
+        (crossfadeCurve.fadeOutGain(progress: progress), crossfadeCurve.fadeInGain(progress: progress))
     }
 
     /// Computes the scheduled start time for the incoming track

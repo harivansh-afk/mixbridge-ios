@@ -247,7 +247,7 @@ final class DJMixPlaybackEngine {
     private func updatePrePlannerSettings() {
         prePlanner.configure(
             fadeDuration: crossfadeSeconds,
-            curve: AIDJCrossfadeCurve(from: fadeCurve)
+            curve: fadeCurve.toDJCrossfadeCurve()
         )
     }
 

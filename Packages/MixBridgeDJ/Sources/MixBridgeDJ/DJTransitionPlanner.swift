@@ -1,30 +1,50 @@
 //
 //  DJTransitionPlanner.swift
-//  mixbridge
+//  MixBridgeDJ
 //
-//  Deterministic planner that converts analysis + user settings into a MixBridgeDJ transition plan.
+//  Deterministic planner that converts analysis + user settings into a transition plan.
 //
 
 import Foundation
-import MixBridgeDJ
 
-struct DJTransitionPlannerSettings: Sendable, Equatable {
-    var crossfadeSeconds: Double
-    var fadeCurve: FadeCurve
+/// Settings for the transition planner.
+public struct DJTransitionPlannerSettings: Sendable, Equatable {
+    public var crossfadeSeconds: Double
+    public var fadeCurve: DJCrossfadeCurve
 
-    var beatSyncEnabled: Bool
-    var tempoMatchEnabled: Bool
-    var eqPolishEnabled: Bool
+    public var beatSyncEnabled: Bool
+    public var tempoMatchEnabled: Bool
+    public var eqPolishEnabled: Bool
 
     /// If true, prefer aligning to bar boundaries (downbeat). Otherwise align to beats.
-    var preferBarSync: Bool
+    public var preferBarSync: Bool
 
     /// Confidence threshold required to enable beat sync / tempo matching.
-    var confidenceThreshold: Double
+    public var confidenceThreshold: Double
+
+    public init(
+        crossfadeSeconds: Double,
+        fadeCurve: DJCrossfadeCurve,
+        beatSyncEnabled: Bool,
+        tempoMatchEnabled: Bool,
+        eqPolishEnabled: Bool,
+        preferBarSync: Bool,
+        confidenceThreshold: Double
+    ) {
+        self.crossfadeSeconds = crossfadeSeconds
+        self.fadeCurve = fadeCurve
+        self.beatSyncEnabled = beatSyncEnabled
+        self.tempoMatchEnabled = tempoMatchEnabled
+        self.eqPolishEnabled = eqPolishEnabled
+        self.preferBarSync = preferBarSync
+        self.confidenceThreshold = confidenceThreshold
+    }
 }
 
-enum DJTransitionPlanner {
-    static func makePlan(
+/// Deterministic planner that creates transition plans from analysis results.
+public enum DJTransitionPlanner {
+    /// Create a transition plan from analysis results and settings.
+    public static func makePlan(
         outgoing: DJAnalysisResult,
         incoming: DJAnalysisResult,
         fadeStartSeconds: Double,
@@ -53,17 +73,7 @@ enum DJTransitionPlanner {
             preservePitch: true
         )
 
-        let crossfadeCurve: DJCrossfadeCurve
-        switch settings.fadeCurve {
-        case .linear:
-            crossfadeCurve = .linear
-        case .equalPower:
-            crossfadeCurve = .equalPower
-        case .sCurve:
-            crossfadeCurve = .constantPower
-        case .exponential:
-            crossfadeCurve = .linear
-        }
+        let crossfadeCurve = settings.fadeCurve
 
         let outgoingEQ: [DJEQCurve]
         let incomingEQ: [DJEQCurve]

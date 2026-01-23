@@ -219,7 +219,8 @@ enum AIDJCrossfadeCurve: String, Codable, Sendable {
         switch self {
         case .equalPower: return .equalPower
         case .linear: return .linear
-        case .sCurve, .logarithmic: return .constantPower
+        case .sCurve: return .sCurve
+        case .logarithmic: return .exponential
         }
     }
 
@@ -230,15 +231,6 @@ enum AIDJCrossfadeCurve: String, Codable, Sendable {
         case "scurve": return .sCurve
         case "logarithmic": return .logarithmic
         default: return .equalPower
-        }
-    }
-
-    init(from fadeCurve: FadeCurve) {
-        switch fadeCurve {
-        case .linear: self = .linear
-        case .equalPower: self = .equalPower
-        case .sCurve: self = .sCurve
-        case .exponential: self = .logarithmic
         }
     }
 }
@@ -493,14 +485,7 @@ extension AIDJMixPlan {
 
         let plannerSettings = DJTransitionPlannerSettings(
             crossfadeSeconds: fadeDuration,
-            fadeCurve: settings.preferredCurve.map { curve -> FadeCurve in
-                switch curve {
-                case .equalPower: return .equalPower
-                case .linear: return .linear
-                case .sCurve: return .sCurve
-                case .logarithmic: return .exponential
-                }
-            } ?? .equalPower,
+            fadeCurve: settings.preferredCurve?.toDJ() ?? .equalPower,
             beatSyncEnabled: settings.allowBeatSync,
             tempoMatchEnabled: settings.allowTempoMatch,
             eqPolishEnabled: settings.allowEQPolish,
@@ -552,7 +537,8 @@ extension AIDJCrossfadeCurve {
         switch curve {
         case .equalPower: return .equalPower
         case .linear: return .linear
-        case .constantPower: return .sCurve
+        case .sCurve: return .sCurve
+        case .exponential: return .logarithmic
         }
     }
 }

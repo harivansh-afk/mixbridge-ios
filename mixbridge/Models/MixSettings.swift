@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import MixBridgeDJ
 
 // MARK: - Fade Curve Types
 
@@ -84,6 +85,16 @@ enum FadeCurve: String, CaseIterable, Codable {
         case .exponential:
             // Exponential rise - slow start, quick finish
             return Float(pow(p, 3))
+        }
+    }
+
+    /// Convert to the unified DJCrossfadeCurve type from MixBridgeDJ package.
+    func toDJCrossfadeCurve() -> DJCrossfadeCurve {
+        switch self {
+        case .linear: return .linear
+        case .equalPower: return .equalPower
+        case .sCurve: return .sCurve
+        case .exponential: return .exponential
         }
     }
 }

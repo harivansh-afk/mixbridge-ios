@@ -43,10 +43,10 @@ final class AIDJPrePlanner {
         self.settings = settings
     }
 
-    func configure(fadeDuration: Double, curve: AIDJCrossfadeCurve?) {
+    func configure(fadeDuration: Double, curve: DJCrossfadeCurve?) {
         settings = AIDJMixSettings(
             preferredFadeDurationSeconds: fadeDuration,
-            preferredCurve: curve,
+            preferredCurve: curve.map { AIDJCrossfadeCurve.fromDJ($0) },
             allowTempoMatch: settings.allowTempoMatch,
             allowBeatSync: settings.allowBeatSync,
             allowEQPolish: settings.allowEQPolish
