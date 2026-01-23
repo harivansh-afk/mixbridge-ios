@@ -22,7 +22,7 @@ final class ConvexService {
         let body: [String: Any] = [
             "path": path,
             "args": args,
-            "format": "json"
+            "format": "json",
         ]
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -30,7 +30,8 @@ final class ConvexService {
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+              (200 ... 299).contains(httpResponse.statusCode)
+        else {
             throw ConvexError.requestFailed
         }
 
@@ -56,7 +57,7 @@ final class ConvexService {
         let body: [String: Any] = [
             "path": path,
             "args": args,
-            "format": "json"
+            "format": "json",
         ]
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -64,7 +65,8 @@ final class ConvexService {
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+              (200 ... 299).contains(httpResponse.statusCode)
+        else {
             throw ConvexError.requestFailed
         }
 
@@ -97,7 +99,7 @@ final class ConvexService {
         let body: [String: Any] = [
             "path": path,
             "args": args,
-            "format": "json"
+            "format": "json",
         ]
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -105,7 +107,8 @@ final class ConvexService {
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+              (200 ... 299).contains(httpResponse.statusCode)
+        else {
             throw ConvexError.requestFailed
         }
 
@@ -116,26 +119,6 @@ final class ConvexService {
         }
 
         return convexResponse.value
-    }
-
-    private func encodeArgs<T: Encodable>(_ value: T) throws -> [String: Any] {
-        let data = try JSONEncoder().encode(value)
-        let object = try JSONSerialization.jsonObject(with: data)
-        guard let dict = object as? [String: Any] else {
-            throw ConvexError.invalidResponse
-        }
-        return dict
-    }
-
-    // MARK: - AI DJ
-
-    func planAIDJMix(request: AIDJMixPlanRequest) async throws -> AIDJMixPlanResponse {
-        let requestDict = try encodeArgs(request)
-        let result: AIDJMixPlanResponse = try await action(
-            "actions/aiDj:planMix",
-            args: ["request": requestDict]
-        )
-        return result
     }
 
     // MARK: - Data Fetching (Convex Actions - Auto-fetch from SoundCloud if needed)
@@ -257,8 +240,8 @@ final class ConvexService {
                 "userId": userId,
                 "paginationOpts": [
                     "numItems": 1000,
-                    "cursor": NSNull()
-                ] as [String: Any]
+                    "cursor": NSNull(),
+                ] as [String: Any],
             ]
         )
     }
@@ -301,13 +284,14 @@ final class ConvexService {
             throw ConvexError.unauthorized
         }
 
-        guard (200...299).contains(httpResponse.statusCode) else {
+        guard (200 ... 299).contains(httpResponse.statusCode) else {
             throw ConvexError.requestFailed
         }
 
         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let trackResponse = json["track"] as? [String: Any],
-           let queueTrackId = trackResponse["id"] as? String {
+           let queueTrackId = trackResponse["id"] as? String
+        {
             return queueTrackId
         }
 
@@ -328,7 +312,8 @@ final class ConvexService {
         let (_, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+              (200 ... 299).contains(httpResponse.statusCode)
+        else {
             throw ConvexError.requestFailed
         }
     }
@@ -351,7 +336,8 @@ final class ConvexService {
         let (_, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+              (200 ... 299).contains(httpResponse.statusCode)
+        else {
             throw ConvexError.requestFailed
         }
     }
@@ -382,14 +368,14 @@ final class ConvexService {
                 "artist": track.user.username,
                 "duration": track.duration,
                 "artworkUrl": track.artwork_url as Any,
-                "trackData": dict
+                "trackData": dict,
             ]
         }
 
         let results: [QueueBatchResult]? = try await mutationGeneric("queues:addTracksBatch", args: [
             "queueId": queueId,
             "tracks": trackData,
-            "startPosition": 0
+            "startPosition": 0,
         ])
 
         return results ?? []
@@ -424,14 +410,14 @@ final class ConvexService {
                 "artist": track.user.username,
                 "duration": track.duration,
                 "artworkUrl": track.artwork_url as Any,
-                "trackData": dict
+                "trackData": dict,
             ]
         }
 
         let results: [QueueBatchResult]? = try await mutationGeneric("queues:addTracksBatch", args: [
             "queueId": queueId,
             "tracks": trackData,
-            "startPosition": startPosition
+            "startPosition": startPosition,
         ])
 
         return results ?? []
@@ -481,7 +467,7 @@ final class ConvexService {
             "source": "soundcloud",
             "trackData": trackDict,
             "sessionId": sessionId,
-            "duration": Double(track.duration) / 1000.0  // Convert ms to seconds
+            "duration": Double(track.duration) / 1000.0, // Convert ms to seconds
         ]
 
         if let queueIndex = queueIndex {
@@ -502,7 +488,7 @@ final class ConvexService {
                 "sessionId": sessionId,
                 "userId": userId,
                 "playbackPosition": playbackPosition,
-                "duration": duration
+                "duration": duration,
             ]
         )
     }
@@ -575,7 +561,7 @@ final class ConvexService {
         var args: [String: Any] = [
             "userId": userId,
             "playlistId": playlistId,
-            "name": name
+            "name": name,
         ]
         if let description = description {
             args["description"] = description
@@ -587,7 +573,7 @@ final class ConvexService {
     func deleteCustomPlaylist(userId: String, playlistId: String) async throws {
         try await mutation("customPlaylists:remove", args: [
             "userId": userId,
-            "playlistId": playlistId
+            "playlistId": playlistId,
         ])
     }
 
@@ -598,13 +584,13 @@ final class ConvexService {
             "title": track.title,
             "artist": track.artist,
             "artwork_url": track.artwork,
-            "duration": track.duration
+            "duration": track.duration,
         ]
         try await mutation("customPlaylists:addTrack", args: [
             "userId": userId,
             "playlistId": playlistId,
             "trackId": track.id,
-            "trackData": trackData
+            "trackData": trackData,
         ])
     }
 
@@ -613,7 +599,7 @@ final class ConvexService {
         try await mutation("customPlaylists:removeTrack", args: [
             "userId": userId,
             "playlistId": playlistId,
-            "trackId": trackId
+            "trackId": trackId,
         ])
     }
 
@@ -628,10 +614,9 @@ final class ConvexService {
 
         return try await action("actions/stream:getStreamUrl", args: [
             "userId": userId,
-            "trackId": trackId
+            "trackId": trackId,
         ])
     }
-
 }
 
 // MARK: - Response Types
@@ -670,9 +655,9 @@ struct SearchResult: Codable {
 
 /// Result from addTracksBatch mutation - contains Convex IDs for each inserted track
 struct QueueBatchResult: Codable {
-    let _id: String      // Convex queueTracks document ID
-    let trackId: String  // SoundCloud track ID
-    let position: Int    // Position in queue
+    let _id: String // Convex queueTracks document ID
+    let trackId: String // SoundCloud track ID
+    let position: Int // Position in queue
 }
 
 struct LikeResponse: Codable {
@@ -697,7 +682,6 @@ enum ConvexError: LocalizedError {
     case actionFailed(String)
     case mutationFailed(String)
     case noData
-    case invalidResponse
     case alreadyInQueue
     case unauthorized
     case notAuthenticated
@@ -707,16 +691,14 @@ enum ConvexError: LocalizedError {
         switch self {
         case .requestFailed:
             return "Unable to connect. Please check your internet connection."
-        case .queryFailed(let message):
+        case let .queryFailed(message):
             return message
-        case .actionFailed(let message):
+        case let .actionFailed(message):
             return message
-        case .mutationFailed(let message):
+        case let .mutationFailed(message):
             return message
         case .noData:
             return "No data available"
-        case .invalidResponse:
-            return "Unexpected server response"
         case .alreadyInQueue:
             return "Track is already in your queue"
         case .unauthorized:

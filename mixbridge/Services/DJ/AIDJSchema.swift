@@ -1,373 +1,578 @@
 import Foundation
 import MixBridgeDJ
 
+// MARK: - Schema Version
+
 enum AIDJSchemaVersion: Int, Codable, Sendable {
     case v1 = 1
+    case v2 = 2 // Simplified absolute-only time semantics
 }
 
-enum AIDJJSONValue: Codable, Sendable, Equatable {
-    case string(String)
-    case number(Double)
-    case bool(Bool)
-    case object([String: AIDJJSONValue])
-    case array([AIDJJSONValue])
-    case null
+// MARK: - Track Info (Simplified)
 
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if container.decodeNil() {
-            self = .null
-            return
-        }
-        if let value = try? container.decode(Bool.self) {
-            self = .bool(value)
-            return
-        }
-        if let value = try? container.decode(Double.self) {
-            self = .number(value)
-            return
-        }
-        if let value = try? container.decode(String.self) {
-            self = .string(value)
-            return
-        }
-        if let value = try? container.decode([String: AIDJJSONValue].self) {
-            self = .object(value)
-            return
-        }
-        if let value = try? container.decode([AIDJJSONValue].self) {
-            self = .array(value)
-            return
-        }
-        throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unsupported JSON value")
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .string(let value):
-            try container.encode(value)
-        case .number(let value):
-            try container.encode(value)
-        case .bool(let value):
-            try container.encode(value)
-        case .object(let value):
-            try container.encode(value)
-        case .array(let value):
-            try container.encode(value)
-        case .null:
-            try container.encodeNil()
-        }
-    }
-}
-
-struct AIDJAnalysis: Codable, Sendable, Equatable {
-    let bpm: Double
-    let beatOffsetSeconds: Double
-    let timeSignatureNumerator: Int?
-    let timeSignatureDenominator: Int?
-    let confidence: Double
-    let analysisVersion: String?
-    let analysisDurationMs: Int?
-    let features: [String: AIDJJSONValue]?
-
-    init(
-        bpm: Double,
-        beatOffsetSeconds: Double,
-        timeSignatureNumerator: Int? = nil,
-        timeSignatureDenominator: Int? = nil,
-        confidence: Double,
-        analysisVersion: String? = nil,
-        analysisDurationMs: Int? = nil,
-        features: [String: AIDJJSONValue]? = nil
-    ) {
-        self.bpm = bpm
-        self.beatOffsetSeconds = beatOffsetSeconds
-        self.timeSignatureNumerator = timeSignatureNumerator
-        self.timeSignatureDenominator = timeSignatureDenominator
-        self.confidence = confidence
-        self.analysisVersion = analysisVersion
-        self.analysisDurationMs = analysisDurationMs
-        self.features = features
-    }
-}
-
-struct AIDJTrackContext: Codable, Sendable, Equatable {
-    let id: String
+/// Track information for AI DJ planning. All times are absolute (seconds from track start).
+struct AIDJTrackInfo: Codable, Sendable, Equatable {
+    let trackId: String
     let title: String?
     let artist: String?
-    let album: String?
-    let durationSeconds: Double?
-    let genre: String?
-    let tags: [String]?
-    let analysis: AIDJAnalysis?
-    let metadata: [String: AIDJJSONValue]?
-
-    init(
-        id: String,
-        title: String? = nil,
-        artist: String? = nil,
-        album: String? = nil,
-        durationSeconds: Double? = nil,
-        genre: String? = nil,
-        tags: [String]? = nil,
-        analysis: AIDJAnalysis? = nil,
-        metadata: [String: AIDJJSONValue]? = nil
-    ) {
-        self.id = id
-        self.title = title
-        self.artist = artist
-        self.album = album
-        self.durationSeconds = durationSeconds
-        self.genre = genre
-        self.tags = tags
-        self.analysis = analysis
-        self.metadata = metadata
-    }
+    let durationSeconds: Double
+    let bpm: Double?
+    let beatOffsetSeconds: Double?
+    let timingConfidence: Double?
 }
 
-struct AIDJMixContext: Codable, Sendable, Equatable {
-    let currentTimeSeconds: Double?
-    let remainingTimeSeconds: Double?
-    let userCrossfadeSeconds: Double?
-    let suggestedFadeStartSeconds: Double?
-    let suggestedFadeDurationSeconds: Double?
-    let fadeCurve: AIDJCrossfadeCurve?
-    let preferBarSync: Bool?
-    let allowBeatSync: Bool?
-    let allowTempoMatch: Bool?
-    let allowEQPolish: Bool?
-    let isManualSkip: Bool?
-    let autoplayEnabled: Bool?
-    let metadata: [String: AIDJJSONValue]?
+// MARK: - Mix Settings
+
+/// User preferences for the mix. No playback-position-dependent fields.
+struct AIDJMixSettings: Codable, Sendable, Equatable {
+    let preferredFadeDurationSeconds: Double
+    let preferredCurve: AIDJCrossfadeCurve?
+    let allowTempoMatch: Bool
+    let allowBeatSync: Bool
+    let allowEQPolish: Bool
+
+    static let `default` = AIDJMixSettings(
+        preferredFadeDurationSeconds: 6.0,
+        preferredCurve: .equalPower,
+        allowTempoMatch: true,
+        allowBeatSync: true,
+        allowEQPolish: true
+    )
 }
 
-struct AIDJMixConstraints: Codable, Sendable, Equatable {
-    let minFadeSeconds: Double?
-    let maxFadeSeconds: Double?
-    let maxTempoAdjustment: Double?
-    let minTimingConfidence: Double?
-    let minEqGainDb: Double?
-    let maxEqGainDb: Double?
-    let metadata: [String: AIDJJSONValue]?
+// MARK: - Plan Request (Simplified)
 
-    static func fromValidator(_ validator: DJPlanValidator) -> AIDJMixConstraints {
-        AIDJMixConstraints(
-            minFadeSeconds: validator.minFadeDuration,
-            maxFadeSeconds: validator.maxFadeDuration,
-            maxTempoAdjustment: validator.maxTempoRate - 1.0,
-            minTimingConfidence: validator.minTimingConfidence,
-            minEqGainDb: validator.minEQGainDB,
-            maxEqGainDb: validator.maxEQGainDB,
-            metadata: nil
+/// Request for AI DJ mix planning. No current time or remaining time - planning is position-independent.
+struct AIDJPlanRequest: Codable, Sendable, Equatable {
+    let outgoingTrack: AIDJTrackInfo
+    let incomingTrack: AIDJTrackInfo
+    let settings: AIDJMixSettings
+
+    /// Create a plan request from tracks and analysis results.
+    static func from(
+        outgoing: Track,
+        outgoingAnalysis: DJAnalysisResult,
+        incoming: Track,
+        incomingAnalysis: DJAnalysisResult,
+        settings: AIDJMixSettings
+    ) -> AIDJPlanRequest {
+        AIDJPlanRequest(
+            outgoingTrack: AIDJTrackInfo(
+                trackId: outgoing.id,
+                title: outgoing.title,
+                artist: outgoing.artist,
+                durationSeconds: outgoing.duration,
+                bpm: outgoingAnalysis.bpm,
+                beatOffsetSeconds: outgoingAnalysis.beatOffsetSeconds,
+                timingConfidence: outgoingAnalysis.confidence
+            ),
+            incomingTrack: AIDJTrackInfo(
+                trackId: incoming.id,
+                title: incoming.title,
+                artist: incoming.artist,
+                durationSeconds: incoming.duration,
+                bpm: incomingAnalysis.bpm,
+                beatOffsetSeconds: incomingAnalysis.beatOffsetSeconds,
+                timingConfidence: incomingAnalysis.confidence
+            ),
+            settings: settings
         )
     }
 }
 
-struct AIDJMixPreferences: Codable, Sendable, Equatable {
-    let preferEqualPower: Bool?
-    let preferBassSwap: Bool?
-    let avoidVocalOverlap: Bool?
-    let styleTags: [String]?
-    let metadata: [String: AIDJJSONValue]?
+// MARK: - Plan Response
+
+struct AIDJPlanResponse: Codable, Sendable, Equatable {
+    let plan: AIDJMixPlan
+    let confidence: Double?
+    let reasoning: String?
+    let warnings: [String]?
 }
 
-struct AIDJMixPlanRequest: Codable, Sendable, Equatable {
-    let schemaVersion: AIDJSchemaVersion
-    let outgoing: AIDJTrackContext
-    let incoming: AIDJTrackContext
-    let context: AIDJMixContext?
-    let constraints: AIDJMixConstraints?
-    let preferences: AIDJMixPreferences?
-    let extensions: [String: AIDJJSONValue]?
+// MARK: - Mix Plan (All Absolute Times)
 
-    init(
-        schemaVersion: AIDJSchemaVersion = .v1,
-        outgoing: AIDJTrackContext,
-        incoming: AIDJTrackContext,
-        context: AIDJMixContext? = nil,
-        constraints: AIDJMixConstraints? = nil,
-        preferences: AIDJMixPreferences? = nil,
-        extensions: [String: AIDJJSONValue]? = nil
-    ) {
-        self.schemaVersion = schemaVersion
-        self.outgoing = outgoing
-        self.incoming = incoming
-        self.context = context
-        self.constraints = constraints
-        self.preferences = preferences
-        self.extensions = extensions
+/// The mix plan with all absolute time values (seconds from track start).
+struct AIDJMixPlan: Codable, Sendable, Equatable {
+    /// When to start fading out the outgoing track (seconds from outgoing track start)
+    let outgoingFadeStartSeconds: Double
+
+    /// Duration of the crossfade in seconds
+    let fadeDurationSeconds: Double
+
+    /// Crossfade curve type
+    let crossfadeCurve: AIDJCrossfadeCurve
+
+    /// When to start the incoming track relative to fade start (0 = at fade start)
+    let incomingStartOffsetSeconds: Double
+
+    /// Beat alignment mode
+    let beatAlignment: AIDJBeatAlignmentMode
+
+    /// Tempo matching configuration
+    let tempoMatch: AIDJTempoMatch
+
+    /// EQ curves for outgoing track (progress 0-1 through fade)
+    let outgoingEQCurves: [AIDJEQCurve]
+
+    /// EQ curves for incoming track (progress 0-1 through fade)
+    let incomingEQCurves: [AIDJEQCurve]
+
+    /// Whether this is a fallback plan (local, not AI-generated)
+    let isFallback: Bool
+
+    /// Convert to DJTransitionPlan for the mixer engine
+    func toDJTransitionPlan() -> DJTransitionPlan {
+        DJTransitionPlan(
+            fadeDurationSeconds: fadeDurationSeconds,
+            fadeStartSeconds: outgoingFadeStartSeconds,
+            crossfadeCurve: crossfadeCurve.toDJ(),
+            outgoingEQCurves: outgoingEQCurves.map { $0.toDJEQCurve() },
+            incomingEQCurves: incomingEQCurves.map { $0.toDJEQCurve() },
+            tempoMatch: tempoMatch.toDJConfig(),
+            beatAlignment: beatAlignment.toDJ(),
+            isFallback: isFallback
+        )
     }
 }
+
+// MARK: - Validation Error
+
+enum AIDJValidationError: Error, LocalizedError {
+    case fadeExceedsTrackDuration(fadeEnd: Double, trackDuration: Double)
+    case invalidFadeStart(value: Double)
+    case invalidFadeDuration(value: Double)
+    case invalidIncomingOffset(value: Double)
+
+    var errorDescription: String? {
+        switch self {
+        case let .fadeExceedsTrackDuration(fadeEnd, duration):
+            return "Fade end (\(String(format: "%.2f", fadeEnd))s) exceeds track duration (\(String(format: "%.2f", duration))s)"
+        case let .invalidFadeStart(value):
+            return "Invalid fade start: \(String(format: "%.2f", value))s"
+        case let .invalidFadeDuration(value):
+            return "Invalid fade duration: \(String(format: "%.2f", value))s"
+        case let .invalidIncomingOffset(value):
+            return "Invalid incoming offset: \(String(format: "%.2f", value))s"
+        }
+    }
+}
+
+// MARK: - Plan Validation
+
+extension AIDJMixPlan {
+    /// Validate the plan against track durations. Returns validated plan or throws.
+    func validated(outgoingDuration: Double, incomingDuration _: Double) throws -> AIDJMixPlan {
+        // Validate fade start
+        guard outgoingFadeStartSeconds >= 0 else {
+            throw AIDJValidationError.invalidFadeStart(value: outgoingFadeStartSeconds)
+        }
+
+        // Validate fade duration
+        guard fadeDurationSeconds > 0 else {
+            throw AIDJValidationError.invalidFadeDuration(value: fadeDurationSeconds)
+        }
+
+        // Validate fade fits within outgoing track
+        let fadeEnd = outgoingFadeStartSeconds + fadeDurationSeconds
+        guard fadeEnd <= outgoingDuration else {
+            throw AIDJValidationError.fadeExceedsTrackDuration(fadeEnd: fadeEnd, trackDuration: outgoingDuration)
+        }
+
+        // Validate incoming offset
+        guard incomingStartOffsetSeconds >= 0 else {
+            throw AIDJValidationError.invalidIncomingOffset(value: incomingStartOffsetSeconds)
+        }
+
+        return self
+    }
+
+    /// Clamp the plan to valid bounds, returning a corrected plan.
+    func clamped(outgoingDuration: Double, incomingDuration _: Double) -> AIDJMixPlan {
+        let clampedFadeStart = max(0, min(outgoingFadeStartSeconds, outgoingDuration - 1))
+        let maxFadeDuration = outgoingDuration - clampedFadeStart
+        let clampedFadeDuration = max(0.5, min(fadeDurationSeconds, maxFadeDuration))
+        let clampedIncomingOffset = max(0, incomingStartOffsetSeconds)
+
+        return AIDJMixPlan(
+            outgoingFadeStartSeconds: clampedFadeStart,
+            fadeDurationSeconds: clampedFadeDuration,
+            crossfadeCurve: crossfadeCurve,
+            incomingStartOffsetSeconds: clampedIncomingOffset,
+            beatAlignment: beatAlignment,
+            tempoMatch: tempoMatch,
+            outgoingEQCurves: outgoingEQCurves,
+            incomingEQCurves: incomingEQCurves,
+            isFallback: isFallback
+        )
+    }
+}
+
+// MARK: - Enums
 
 enum AIDJCrossfadeCurve: String, Codable, Sendable {
     case equalPower
     case linear
-    case constantPower
+    case sCurve
+    case logarithmic
+
+    func toDJ() -> DJCrossfadeCurve {
+        switch self {
+        case .equalPower: return .equalPower
+        case .linear: return .linear
+        case .sCurve, .logarithmic: return .constantPower
+        }
+    }
+
+    static func fromBackend(_ value: String?) -> AIDJCrossfadeCurve {
+        switch value?.lowercased() {
+        case "equalpower": return .equalPower
+        case "linear": return .linear
+        case "scurve": return .sCurve
+        case "logarithmic": return .logarithmic
+        default: return .equalPower
+        }
+    }
+
+    init(from fadeCurve: FadeCurve) {
+        switch fadeCurve {
+        case .linear: self = .linear
+        case .equalPower: self = .equalPower
+        case .sCurve: self = .sCurve
+        case .exponential: self = .logarithmic
+        }
+    }
 }
 
 enum AIDJBeatAlignmentMode: String, Codable, Sendable {
     case beat
     case bar
     case none
+
+    func toDJ() -> DJBeatAlignmentMode {
+        switch self {
+        case .beat: return .beat
+        case .bar: return .bar
+        case .none: return .none
+        }
+    }
+
+    static func fromBackend(_ value: String?) -> AIDJBeatAlignmentMode {
+        switch value?.lowercased() {
+        case "beat": return .beat
+        case "bar": return .bar
+        default: return .none
+        }
+    }
 }
 
 enum AIDJEQBand: String, Codable, Sendable {
     case low
     case mid
     case high
+
+    func toDJ() -> DJEQBand {
+        switch self {
+        case .low: return .low
+        case .mid: return .mid
+        case .high: return .high
+        }
+    }
+
+    static func fromBackend(_ value: String?) -> AIDJEQBand {
+        switch value?.lowercased() {
+        case "low": return .low
+        case "mid": return .mid
+        case "high": return .high
+        default: return .mid
+        }
+    }
 }
 
+// MARK: - EQ Types
+
 struct AIDJEQKeyframe: Codable, Sendable, Equatable {
+    /// Progress through the fade (0.0 to 1.0)
     let progress: Double
+    /// Gain in decibels
     let gainDB: Double
 }
 
 struct AIDJEQCurve: Codable, Sendable, Equatable {
     let band: AIDJEQBand
     let keyframes: [AIDJEQKeyframe]
+
+    func toDJEQCurve() -> DJEQCurve {
+        DJEQCurve(
+            band: band.toDJ(),
+            keyframes: keyframes.map { DJEQKeyframe(progress: $0.progress, gainDB: $0.gainDB) }
+        )
+    }
 }
+
+// MARK: - Tempo Match
 
 struct AIDJTempoMatch: Codable, Sendable, Equatable {
     let enabled: Bool
     let targetBPM: Double?
     let maxRateAdjustment: Double?
     let preservePitch: Bool?
-}
 
-struct AIDJMixPlan: Codable, Sendable, Equatable {
-    let fadeDurationSeconds: Double
-    let fadeStartSeconds: Double
-    let crossfadeCurve: AIDJCrossfadeCurve
-    let outgoingEQCurves: [AIDJEQCurve]
-    let incomingEQCurves: [AIDJEQCurve]
-    let tempoMatch: AIDJTempoMatch
-    let beatAlignment: AIDJBeatAlignmentMode
-    let isFallback: Bool?
+    static let disabled = AIDJTempoMatch(enabled: false, targetBPM: nil, maxRateAdjustment: nil, preservePitch: nil)
 
-    func toDJTransitionPlan() -> DJTransitionPlan {
-        let djCurve: DJCrossfadeCurve
-        switch crossfadeCurve {
-        case .equalPower:
-            djCurve = .equalPower
-        case .linear:
-            djCurve = .linear
-        case .constantPower:
-            djCurve = .constantPower
-        }
-
-        let djBeatAlignment: DJBeatAlignmentMode
-        switch beatAlignment {
-        case .beat:
-            djBeatAlignment = .beat
-        case .bar:
-            djBeatAlignment = .bar
-        case .none:
-            djBeatAlignment = .none
-        }
-
-        let tempoConfig = DJTempoMatchConfig(
-            enabled: tempoMatch.enabled,
-            targetBPM: tempoMatch.targetBPM ?? 0,
-            maxRateAdjustment: tempoMatch.maxRateAdjustment ?? 0.08,
-            preservePitch: tempoMatch.preservePitch ?? true
-        )
-
-        return DJTransitionPlan(
-            fadeDurationSeconds: fadeDurationSeconds,
-            fadeStartSeconds: fadeStartSeconds,
-            crossfadeCurve: djCurve,
-            outgoingEQCurves: outgoingEQCurves.map { $0.toDJEQCurve() },
-            incomingEQCurves: incomingEQCurves.map { $0.toDJEQCurve() },
-            tempoMatch: tempoConfig,
-            beatAlignment: djBeatAlignment,
-            isFallback: isFallback ?? false
-        )
-    }
-
-    func validated(
-        outgoingTiming: DJTrackTiming?,
-        incomingTiming: DJTrackTiming?,
-        validator: DJPlanValidator = .default
-    ) -> DJPlanValidationResult {
-        validator.validate(
-            plan: toDJTransitionPlan(),
-            outgoingTiming: outgoingTiming,
-            incomingTiming: incomingTiming
+    func toDJConfig() -> DJTempoMatchConfig {
+        DJTempoMatchConfig(
+            enabled: enabled,
+            targetBPM: targetBPM ?? 0,
+            maxRateAdjustment: maxRateAdjustment ?? 0.08,
+            preservePitch: preservePitch ?? true
         )
     }
 }
 
-struct AIDJMixPlanResponse: Codable, Sendable, Equatable {
-    let schemaVersion: AIDJSchemaVersion
-    let plan: AIDJMixPlan
+// MARK: - Backend API Types
+
+/// Backend request format for mixbridge.app/api/dj/plan
+struct AIDJBackendRequest: Codable, Sendable, Equatable {
+    let outgoingTrack: AIDJBackendTrackInfo
+    let incomingTrack: AIDJBackendTrackInfo
+    let settings: AIDJBackendSettings
+}
+
+struct AIDJBackendTrackInfo: Codable, Sendable, Equatable {
+    let trackId: String
+    let title: String?
+    let artist: String?
+    let durationMs: Int
+    let bpm: Double?
+    let beatOffsetMs: Int?
+    let timingConfidence: Double?
+}
+
+struct AIDJBackendSettings: Codable, Sendable, Equatable {
+    let preferredFadeDurationMs: Int
+    let preferredCurve: String?
+    let allowTempoMatch: Bool
+    let allowBeatSync: Bool
+    let allowEQPolish: Bool
+}
+
+/// Backend response format
+struct AIDJBackendResponse: Codable, Sendable, Equatable {
+    let plan: AIDJBackendPlan
     let confidence: Double?
+    let reasoning: String?
     let warnings: [String]?
-    let debug: [String: AIDJJSONValue]?
 }
 
-extension AIDJEQCurve {
-    func toDJEQCurve() -> DJEQCurve {
-        let band: DJEQBand
-        switch self.band {
-        case .low:
-            band = .low
-        case .mid:
-            band = .mid
-        case .high:
-            band = .high
-        }
-
-        let keyframes = keyframes.map { DJEQKeyframe(progress: $0.progress, gainDB: $0.gainDB) }
-        return DJEQCurve(band: band, keyframes: keyframes)
-    }
+struct AIDJBackendPlan: Codable, Sendable, Equatable {
+    let fadeStartSeconds: Double
+    let fadeDurationSeconds: Double
+    let crossfadeCurve: String?
+    let incomingStartOffsetSeconds: Double?
+    let beatAlignment: String?
+    let tempoMatch: AIDJBackendTempoMatch?
+    let outgoingEQCurves: [AIDJBackendEQCurve]?
+    let incomingEQCurves: [AIDJBackendEQCurve]?
 }
 
-extension AIDJAnalysis {
-    init(_ result: DJAnalysisResult) {
-        self.init(
-            bpm: result.bpm,
-            beatOffsetSeconds: result.beatOffsetSeconds,
-            timeSignatureNumerator: result.timeSignatureNumerator,
-            timeSignatureDenominator: result.timeSignatureDenominator,
-            confidence: result.confidence,
-            analysisVersion: result.metadata.analysisVersion,
-            analysisDurationMs: result.metadata.analysisDurationMs
-        )
-    }
+struct AIDJBackendTempoMatch: Codable, Sendable, Equatable {
+    let enabled: Bool
+    let targetBpm: Double?
+    let maxRateAdjustment: Double?
+}
 
-    func toDJAnalysisResult() -> DJAnalysisResult {
-        DJAnalysisResult(
-            bpm: bpm,
-            beatOffsetSeconds: beatOffsetSeconds,
-            timeSignatureNumerator: timeSignatureNumerator,
-            timeSignatureDenominator: timeSignatureDenominator,
-            confidence: confidence,
-            metadata: AnalysisMetadata(
-                analysisVersion: analysisVersion ?? AnalysisMetadata.currentVersion,
-                analysisDurationMs: analysisDurationMs ?? 0,
-                failureReason: nil
+struct AIDJBackendEQCurve: Codable, Sendable, Equatable {
+    let band: String?
+    let keyframes: [AIDJBackendEQKeyframe]
+}
+
+struct AIDJBackendEQKeyframe: Codable, Sendable, Equatable {
+    /// Progress through the fade (0.0 to 1.0) - consistent with app-side
+    let progress: Double
+    let gainDB: Double
+}
+
+// MARK: - Request/Response Conversions
+
+extension AIDJPlanRequest {
+    /// Convert to backend request format
+    func toBackendRequest() -> AIDJBackendRequest {
+        AIDJBackendRequest(
+            outgoingTrack: AIDJBackendTrackInfo(
+                trackId: outgoingTrack.trackId,
+                title: outgoingTrack.title,
+                artist: outgoingTrack.artist,
+                durationMs: Int(outgoingTrack.durationSeconds * 1000),
+                bpm: outgoingTrack.bpm,
+                beatOffsetMs: outgoingTrack.beatOffsetSeconds.map { Int($0 * 1000) },
+                timingConfidence: outgoingTrack.timingConfidence
+            ),
+            incomingTrack: AIDJBackendTrackInfo(
+                trackId: incomingTrack.trackId,
+                title: incomingTrack.title,
+                artist: incomingTrack.artist,
+                durationMs: Int(incomingTrack.durationSeconds * 1000),
+                bpm: incomingTrack.bpm,
+                beatOffsetMs: incomingTrack.beatOffsetSeconds.map { Int($0 * 1000) },
+                timingConfidence: incomingTrack.timingConfidence
+            ),
+            settings: AIDJBackendSettings(
+                preferredFadeDurationMs: Int(settings.preferredFadeDurationSeconds * 1000),
+                preferredCurve: settings.preferredCurve?.rawValue,
+                allowTempoMatch: settings.allowTempoMatch,
+                allowBeatSync: settings.allowBeatSync,
+                allowEQPolish: settings.allowEQPolish
             )
         )
     }
 }
 
-extension AIDJTrackContext {
-    static func from(
-        track: Track,
-        soundCloudTrack: SoundCloudTrack? = nil,
-        analysis: DJAnalysisResult? = nil
-    ) -> AIDJTrackContext {
-        AIDJTrackContext(
-            id: track.id,
-            title: track.title,
-            artist: track.artist,
-            album: track.album,
-            durationSeconds: track.duration,
-            genre: soundCloudTrack?.genre ?? track.album,
-            tags: nil,
-            analysis: analysis.map { AIDJAnalysis($0) },
-            metadata: nil
+extension AIDJBackendResponse {
+    /// Convert backend response to app-side plan response
+    func toPlanResponse() -> AIDJPlanResponse {
+        let curve = AIDJCrossfadeCurve.fromBackend(plan.crossfadeCurve)
+        let alignment = AIDJBeatAlignmentMode.fromBackend(plan.beatAlignment)
+
+        let tempoMatch: AIDJTempoMatch
+        if let tm = plan.tempoMatch {
+            tempoMatch = AIDJTempoMatch(
+                enabled: tm.enabled,
+                targetBPM: tm.targetBpm,
+                maxRateAdjustment: tm.maxRateAdjustment,
+                preservePitch: true
+            )
+        } else {
+            tempoMatch = .disabled
+        }
+
+        let outgoingEQ = plan.outgoingEQCurves?.map { curve in
+            AIDJEQCurve(
+                band: AIDJEQBand.fromBackend(curve.band),
+                keyframes: curve.keyframes.map { AIDJEQKeyframe(progress: $0.progress, gainDB: $0.gainDB) }
+            )
+        } ?? []
+
+        let incomingEQ = plan.incomingEQCurves?.map { curve in
+            AIDJEQCurve(
+                band: AIDJEQBand.fromBackend(curve.band),
+                keyframes: curve.keyframes.map { AIDJEQKeyframe(progress: $0.progress, gainDB: $0.gainDB) }
+            )
+        } ?? []
+
+        return AIDJPlanResponse(
+            plan: AIDJMixPlan(
+                outgoingFadeStartSeconds: plan.fadeStartSeconds,
+                fadeDurationSeconds: plan.fadeDurationSeconds,
+                crossfadeCurve: curve,
+                incomingStartOffsetSeconds: plan.incomingStartOffsetSeconds ?? 0,
+                beatAlignment: alignment,
+                tempoMatch: tempoMatch,
+                outgoingEQCurves: outgoingEQ,
+                incomingEQCurves: incomingEQ,
+                isFallback: false
+            ),
+            confidence: confidence,
+            reasoning: reasoning,
+            warnings: warnings
         )
+    }
+}
+
+// MARK: - Local Fallback Plan Builder
+
+extension AIDJMixPlan {
+    /// Create a fallback plan using local analysis (no AI)
+    static func localFallback(
+        outgoingDuration: Double,
+        outgoingAnalysis: DJAnalysisResult,
+        incomingAnalysis: DJAnalysisResult,
+        settings: AIDJMixSettings
+    ) -> AIDJMixPlan {
+        let fadeDuration = min(settings.preferredFadeDurationSeconds, outgoingDuration * 0.5)
+        let fadeStart = max(0, outgoingDuration - fadeDuration)
+
+        let plannerSettings = DJTransitionPlannerSettings(
+            crossfadeSeconds: fadeDuration,
+            fadeCurve: settings.preferredCurve.map { curve -> FadeCurve in
+                switch curve {
+                case .equalPower: return .equalPower
+                case .linear: return .linear
+                case .sCurve: return .sCurve
+                case .logarithmic: return .exponential
+                }
+            } ?? .equalPower,
+            beatSyncEnabled: settings.allowBeatSync,
+            tempoMatchEnabled: settings.allowTempoMatch,
+            eqPolishEnabled: settings.allowEQPolish,
+            preferBarSync: true,
+            confidenceThreshold: 0.6
+        )
+
+        let djPlan = DJTransitionPlanner.makePlan(
+            outgoing: outgoingAnalysis,
+            incoming: incomingAnalysis,
+            fadeStartSeconds: fadeStart,
+            fadeDurationSeconds: fadeDuration,
+            settings: plannerSettings
+        )
+
+        return AIDJMixPlan(
+            outgoingFadeStartSeconds: djPlan.fadeStartSeconds,
+            fadeDurationSeconds: djPlan.fadeDurationSeconds,
+            crossfadeCurve: AIDJCrossfadeCurve.fromDJ(djPlan.crossfadeCurve),
+            incomingStartOffsetSeconds: 0,
+            beatAlignment: AIDJBeatAlignmentMode.fromDJ(djPlan.beatAlignment),
+            tempoMatch: AIDJTempoMatch(
+                enabled: djPlan.tempoMatch.enabled,
+                targetBPM: djPlan.tempoMatch.targetBPM,
+                maxRateAdjustment: djPlan.tempoMatch.maxRateAdjustment,
+                preservePitch: djPlan.tempoMatch.preservePitch
+            ),
+            outgoingEQCurves: djPlan.outgoingEQCurves.map { curve in
+                AIDJEQCurve(
+                    band: AIDJEQBand.fromDJ(curve.band),
+                    keyframes: curve.keyframes.map { AIDJEQKeyframe(progress: $0.progress, gainDB: $0.gainDB) }
+                )
+            },
+            incomingEQCurves: djPlan.incomingEQCurves.map { curve in
+                AIDJEQCurve(
+                    band: AIDJEQBand.fromDJ(curve.band),
+                    keyframes: curve.keyframes.map { AIDJEQKeyframe(progress: $0.progress, gainDB: $0.gainDB) }
+                )
+            },
+            isFallback: true
+        )
+    }
+}
+
+// MARK: - DJ Type Conversions
+
+extension AIDJCrossfadeCurve {
+    static func fromDJ(_ curve: DJCrossfadeCurve) -> AIDJCrossfadeCurve {
+        switch curve {
+        case .equalPower: return .equalPower
+        case .linear: return .linear
+        case .constantPower: return .sCurve
+        }
+    }
+}
+
+extension AIDJBeatAlignmentMode {
+    static func fromDJ(_ mode: DJBeatAlignmentMode) -> AIDJBeatAlignmentMode {
+        switch mode {
+        case .beat: return .beat
+        case .bar: return .bar
+        case .none: return .none
+        }
+    }
+}
+
+extension AIDJEQBand {
+    static func fromDJ(_ band: DJEQBand) -> AIDJEQBand {
+        switch band {
+        case .low: return .low
+        case .mid: return .mid
+        case .high: return .high
+        }
     }
 }

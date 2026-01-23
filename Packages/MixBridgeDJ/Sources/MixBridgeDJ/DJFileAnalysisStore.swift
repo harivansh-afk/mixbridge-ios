@@ -1,9 +1,9 @@
+import CryptoKit
 import Foundation
 
 /// File-based persistent cache for analysis results.
 /// Stores JSON files in a specified directory, keyed by track ID.
 public actor DJFileAnalysisStore: DJAnalysisStore {
-
     /// Directory where cache files are stored.
     private let cacheDirectory: URL
 
@@ -26,10 +26,10 @@ public actor DJFileAnalysisStore: DJAnalysisStore {
     /// - Parameter cacheDirectory: Directory to store cache files. Created if it doesn't exist.
     public init(cacheDirectory: URL) throws {
         self.cacheDirectory = cacheDirectory
-        self.encoder = JSONEncoder()
-        self.encoder.dateEncodingStrategy = .iso8601
-        self.decoder = JSONDecoder()
-        self.decoder.dateDecodingStrategy = .iso8601
+        encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
 
         // Ensure cache directory exists
         try FileManager.default.createDirectory(
@@ -133,22 +133,34 @@ public actor DJFileAnalysisStore: DJAnalysisStore {
     // MARK: - Private Helpers
 
     /// Generates a safe filename from a track ID.
+    /// Uses SHA256 for long track IDs to ensure deterministic filenames across app launches.
     private func cacheFileURL(for trackId: String) -> URL {
-        // Create a safe filename by hashing the track ID
+        // Create a safe filename by replacing filesystem-unsafe characters
         let safeFilename = trackId
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: ":", with: "_")
             .replacingOccurrences(of: " ", with: "_")
 
-        // Use a hash to handle very long track IDs
+        // Use SHA256 hash for very long track IDs to keep filenames manageable
+        // Note: We use SHA256 instead of Swift's hashValue because hashValue is
+        // randomly seeded per process and not deterministic across app launches.
         let filename: String
         if safeFilename.count > 200 {
-            let hash = safeFilename.hashValue
-            filename = "track_\(abs(hash))"
+            let hash = sha256Hash(of: trackId)
+            filename = "track_\(hash)"
         } else {
             filename = safeFilename
         }
 
         return cacheDirectory.appendingPathComponent("\(filename).json")
+    }
+
+    /// Computes a deterministic SHA256 hash of a string, returning a hex string prefix.
+    /// Uses first 16 characters (64 bits) which is sufficient for cache key uniqueness.
+    private func sha256Hash(of string: String) -> String {
+        let data = Data(string.utf8)
+        let hash = SHA256.hash(data: data)
+        // Take first 8 bytes (16 hex chars) for a reasonably short but unique filename
+        return hash.prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 }

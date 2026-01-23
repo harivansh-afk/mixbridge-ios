@@ -5,6 +5,9 @@
 //  Downloaded-track DJ automix engine using MixBridgeDJ (AVAudioEngine).
 //  Provides beat-synced, BPM-matched transitions with EQ + crossfade control.
 //
+//  Uses pre-planning: AI endpoint is called when tracks are identified,
+//  not at prewarm time, eliminating network latency during playback.
+//
 
 import AVFoundation
 import Foundation
@@ -33,9 +36,14 @@ protocol DJMixPlaybackEngineDelegate: AnyObject {
 final class DJMixPlaybackEngine {
     weak var delegate: DJMixPlaybackEngineDelegate?
 
-    var crossfadeSeconds: Double = 6
+    var crossfadeSeconds: Double = 6 {
+        didSet { updatePrePlannerSettings() }
+    }
+
     var prewarmSeconds: Double = 15
-    var fadeCurve: FadeCurve = .equalPower
+    var fadeCurve: FadeCurve = .equalPower {
+        didSet { updatePrePlannerSettings() }
+    }
 
     var isPlaying: Bool { isIntendedToPlay && state != .stopped }
 
@@ -66,7 +74,7 @@ final class DJMixPlaybackEngine {
 
     private var engine: DJMixerEngine?
     private var activeDeck: DJDeck = .a
-    private var nextDeck: DJDeck? = nil
+    private var nextDeck: DJDeck?
 
     private var currentContext: PlaybackContext?
     private var nextContext: PlaybackContext?
@@ -85,7 +93,7 @@ final class DJMixPlaybackEngine {
     private let queueManager = QueueManager.shared
     private let downloadManager = DownloadManager.shared
     private let analysisManager = DJAnalysisManager.shared
-    private let aiPlannerProvider = AIDJPlannerProvider.shared
+    private let prePlanner = AIDJPrePlanner.shared
 
     private struct MixScheduleInfo {
         let effectiveCrossfade: Double
@@ -122,6 +130,9 @@ final class DJMixPlaybackEngine {
             state = .singlePlaying
 
             startTicking()
+
+            // Pre-plan the next transition early
+            Task { await preplanNextTransition() }
         } catch {
             logError(.dj, "DJMixPlaybackEngine: failed to start: \(error)")
             abortMixTransition(reason: "start_failed", shouldFallbackToNext: false)
@@ -226,6 +237,56 @@ final class DJMixPlaybackEngine {
             nextDurationSeconds = 0
             state = .singlePlaying
         }
+
+        // Pre-plan the new next transition
+        Task { await preplanNextTransition() }
+    }
+
+    // MARK: - Pre-Planning
+
+    private func updatePrePlannerSettings() {
+        prePlanner.configure(
+            fadeDuration: crossfadeSeconds,
+            curve: AIDJCrossfadeCurve(from: fadeCurve)
+        )
+    }
+
+    /// Pre-plan the transition to the next track in queue.
+    /// Called when playback starts or queue changes.
+    private func preplanNextTransition() async {
+        guard let currentCtx = currentContext,
+              let currentAnalysis else { return }
+
+        // Get next track from queue
+        guard let nextItem = queueManager.queue.peek() else { return }
+
+        let nextTrack = nextItem.track
+
+        // Get analysis for next track (from prep service or analyze)
+        guard let fileURL = await downloadManager.getLocalFileURL(trackId: nextTrack.id) else {
+            logDebug(.dj, "DJMixPlaybackEngine: next track not downloaded, skipping pre-plan")
+            return
+        }
+
+        let nextAnalysis: DJAnalysisResult
+        if let prepped = DJPrepService.shared.getAnalysis(trackId: nextTrack.id) {
+            nextAnalysis = prepped
+        } else {
+            do {
+                nextAnalysis = try await analysisManager.analyze(url: fileURL, trackId: nextTrack.id)
+            } catch {
+                logWarning(.dj, "DJMixPlaybackEngine: analysis failed for pre-plan: \(error)")
+                return
+            }
+        }
+
+        // Pre-plan the transition (runs in background, caches result)
+        await prePlanner.preplan(
+            outgoing: currentCtx.track,
+            outgoingAnalysis: currentAnalysis,
+            incoming: nextTrack,
+            incomingAnalysis: nextAnalysis
+        )
     }
 
     // MARK: - Tick Loop
@@ -249,7 +310,7 @@ final class DJMixPlaybackEngine {
 
         // Start prewarm when we're close enough.
         if let schedule, state == .singlePlaying {
-            if t >= schedule.prewarmStartTime && schedule.isCrossfadeEnabled {
+            if t >= schedule.prewarmStartTime, schedule.isCrossfadeEnabled {
                 state = .prewarmingNext
                 Task { [weak self] in
                     guard let self else { return }
@@ -313,7 +374,7 @@ final class DJMixPlaybackEngine {
         )
     }
 
-    private func prewarmNextIfNeeded(force: Bool) async {
+    private func prewarmNextIfNeeded(force _: Bool) async {
         guard let currentCtx = currentContext, let schedule else { return }
 
         // Get next track (queue.peek) — current track is never in queue.
@@ -359,7 +420,7 @@ final class DJMixPlaybackEngine {
                 crossfadeSeconds: crossfadeSeconds
             ))
 
-            // Schedule transition immediately (before fadeStart) so beat-aligned scheduling is correct.
+            // Schedule transition using cached plan (instant, no network wait)
             await scheduleTransition(schedule: schedule, isManualSkip: false)
         } catch {
             logError(.dj, "DJMixPlaybackEngine: prewarm failed: \(error)")
@@ -367,35 +428,50 @@ final class DJMixPlaybackEngine {
         }
     }
 
-    private func scheduleTransition(schedule: MixScheduleInfo, isManualSkip: Bool) async {
+    private func scheduleTransition(schedule _: MixScheduleInfo, isManualSkip _: Bool) async {
         guard let engine,
               let currentCtx = currentContext,
               let nextCtx = nextContext,
               let currentAnalysis,
-              let nextAnalysis else {
+              let nextAnalysis
+        else {
             abortMixTransition(reason: "not_ready", shouldFallbackToNext: false)
             return
         }
 
-        let plan = await planTransition(
-            schedule: schedule,
-            outgoingContext: currentCtx,
-            incomingContext: nextCtx,
+        // Get plan from cache (instant) or generate fallback
+        let cachedPlan = await prePlanner.getPlanOrFallback(
+            outgoingId: currentCtx.track.id,
+            outgoingDuration: currentDurationSeconds,
             outgoingAnalysis: currentAnalysis,
-            incomingAnalysis: nextAnalysis,
-            isManualSkip: isManualSkip
+            incomingId: nextCtx.track.id,
+            incomingDuration: nextDurationSeconds,
+            incomingAnalysis: nextAnalysis
         )
 
+        // Validate and clamp the plan to current schedule
+        let clampedPlan = cachedPlan.plan.clamped(
+            outgoingDuration: currentDurationSeconds,
+            incomingDuration: nextDurationSeconds
+        )
+
+        let djPlan = clampedPlan.toDJTransitionPlan()
+
+        logInfo(.dj, "DJMixPlaybackEngine: using \(cachedPlan.isFallback ? "fallback" : "AI") plan, age=\(String(format: "%.1f", cachedPlan.age))s")
+
         guard currentContext?.track.id == currentCtx.track.id,
-              nextContext?.track.id == nextCtx.track.id else {
+              nextContext?.track.id == nextCtx.track.id
+        else {
             return
         }
 
-        logInfo(.dj, "DJMixPlaybackEngine: scheduling transition - fadeStart=\(schedule.fadeStartTime)s, duration=\(schedule.effectiveCrossfade)s, currentTime=\(currentTime)s")
-        logInfo(.dj, "DJMixPlaybackEngine: outgoing BPM=\(currentAnalysis.bpm), incoming BPM=\(nextAnalysis.bpm), tempoMatch=\(plan.tempoMatch.enabled ? String(format: "%.2f", plan.tempoMatch.targetBPM) : "disabled")")
+        let fadeEnd = djPlan.fadeStartSeconds + djPlan.fadeDurationSeconds
+        logInfo(.dj, "DJMixPlaybackEngine: scheduling transition - fadeStart=\(String(format: "%.2f", djPlan.fadeStartSeconds))s, fadeEnd=\(String(format: "%.2f", fadeEnd))s, duration=\(String(format: "%.2f", djPlan.fadeDurationSeconds))s, currentTime=\(String(format: "%.2f", currentTime))s")
+        logInfo(.dj, "DJMixPlaybackEngine: outgoing BPM=\(String(format: "%.2f", currentAnalysis.bpm)), incoming BPM=\(String(format: "%.2f", nextAnalysis.bpm)), tempoMatch=\(djPlan.tempoMatch.enabled ? String(format: "%.2f", djPlan.tempoMatch.targetBPM) : "disabled"), beatAlign=\(djPlan.beatAlignment)")
+        logPlanDetails(djPlan, fadeDuration: djPlan.fadeDurationSeconds, incomingBPM: nextAnalysis.bpm)
 
         do {
-            try engine.executeTransition(plan: plan)
+            try engine.executeTransition(plan: djPlan)
             state = .scheduledTransition
             logInfo(.dj, "DJMixPlaybackEngine: transition scheduled successfully, activeDeck=\(activeDeck), nextDeck=\(String(describing: nextDeck))")
             delegate?.djEngine(self, didEmit: .fadeScheduled(
@@ -422,131 +498,32 @@ final class DJMixPlaybackEngine {
         await scheduleTransition(schedule: instant, isManualSkip: isManualSkip)
     }
 
-    private func planTransition(
-        schedule: MixScheduleInfo,
-        outgoingContext: PlaybackContext,
-        incomingContext: PlaybackContext,
-        outgoingAnalysis: DJAnalysisResult,
-        incomingAnalysis: DJAnalysisResult,
-        isManualSkip: Bool
-    ) async -> DJTransitionPlan {
-        if let request = buildAIDJRequest(
-            schedule: schedule,
-            outgoingContext: outgoingContext,
-            incomingContext: incomingContext,
-            outgoingAnalysis: outgoingAnalysis,
-            incomingAnalysis: incomingAnalysis,
-            isManualSkip: isManualSkip
-        ) {
-            do {
-                let response = try await aiPlannerProvider.planner.plan(request: request)
-                let validation = response.plan.validated(
-                    outgoingTiming: outgoingAnalysis.toTrackTiming(),
-                    incomingTiming: incomingAnalysis.toTrackTiming()
-                )
-                return validation.validatedPlan
-            } catch {
-                logWarning(.dj, "DJMixPlaybackEngine: AI plan failed, using local planner: \(error)")
+    private func logPlanDetails(_ plan: DJTransitionPlan, fadeDuration: Double, incomingBPM: Double) {
+        if plan.tempoMatch.enabled {
+            let rate = plan.tempoMatch.computeRate(incomingBPM: incomingBPM)
+            logDebug(.dj, "DJMixPlaybackEngine: plan curve=\(plan.crossfadeCurve), beatAlignment=\(plan.beatAlignment), tempoMatch=enabled, targetBPM=\(String(format: "%.2f", plan.tempoMatch.targetBPM)), rate=\(String(format: "%.3f", rate)), maxRateAdj=\(String(format: "%.3f", plan.tempoMatch.maxRateAdjustment))")
+        } else {
+            logDebug(.dj, "DJMixPlaybackEngine: plan curve=\(plan.crossfadeCurve), beatAlignment=\(plan.beatAlignment), tempoMatch=disabled, maxRateAdj=\(String(format: "%.3f", plan.tempoMatch.maxRateAdjustment))")
+        }
+        logEQCurves(plan.outgoingEQCurves, label: "outgoing", fadeDuration: fadeDuration)
+        logEQCurves(plan.incomingEQCurves, label: "incoming", fadeDuration: fadeDuration)
+    }
+
+    private func logEQCurves(_ curves: [DJEQCurve], label: String, fadeDuration: Double) {
+        guard !curves.isEmpty else {
+            logDebug(.dj, "DJMixPlaybackEngine: \(label) EQ: none")
+            return
+        }
+
+        let formatted = curves.map { curve -> String in
+            let points = curve.keyframes.map { keyframe -> String in
+                let time = keyframe.progress * fadeDuration
+                return "\(String(format: "%.2f", time))s:\(String(format: "%.1f", keyframe.gainDB))dB"
             }
-        }
+            return "\(curve.band)=[" + points.joined(separator: ", ") + "]"
+        }.joined(separator: " | ")
 
-        return makeLocalPlan(
-            schedule: schedule,
-            outgoingAnalysis: outgoingAnalysis,
-            incomingAnalysis: incomingAnalysis
-        )
-    }
-
-    private func makeLocalPlan(
-        schedule: MixScheduleInfo,
-        outgoingAnalysis: DJAnalysisResult,
-        incomingAnalysis: DJAnalysisResult
-    ) -> DJTransitionPlan {
-        let settings = DJTransitionPlannerSettings(
-            crossfadeSeconds: crossfadeSeconds,
-            fadeCurve: fadeCurve,
-            beatSyncEnabled: true,
-            tempoMatchEnabled: true,
-            eqPolishEnabled: true,
-            preferBarSync: true,
-            confidenceThreshold: 0.6
-        )
-
-        return DJTransitionPlanner.makePlan(
-            outgoing: outgoingAnalysis,
-            incoming: incomingAnalysis,
-            fadeStartSeconds: schedule.fadeStartTime,
-            fadeDurationSeconds: schedule.effectiveCrossfade,
-            settings: settings
-        )
-    }
-
-    private func buildAIDJRequest(
-        schedule: MixScheduleInfo,
-        outgoingContext: PlaybackContext,
-        incomingContext: PlaybackContext,
-        outgoingAnalysis: DJAnalysisResult,
-        incomingAnalysis: DJAnalysisResult,
-        isManualSkip: Bool
-    ) -> AIDJMixPlanRequest? {
-        let outgoing = AIDJTrackContext.from(
-            track: outgoingContext.track,
-            soundCloudTrack: outgoingContext.soundCloudTrack,
-            analysis: outgoingAnalysis
-        )
-
-        let incoming = AIDJTrackContext.from(
-            track: incomingContext.track,
-            soundCloudTrack: incomingContext.soundCloudTrack,
-            analysis: incomingAnalysis
-        )
-
-        let context = AIDJMixContext(
-            currentTimeSeconds: currentTime,
-            remainingTimeSeconds: max(0, currentDurationSeconds - currentTime),
-            userCrossfadeSeconds: crossfadeSeconds,
-            suggestedFadeStartSeconds: schedule.fadeStartTime,
-            suggestedFadeDurationSeconds: schedule.effectiveCrossfade,
-            fadeCurve: aiFadeCurve(from: fadeCurve),
-            preferBarSync: true,
-            allowBeatSync: true,
-            allowTempoMatch: true,
-            allowEQPolish: true,
-            isManualSkip: isManualSkip,
-            autoplayEnabled: true,
-            metadata: nil
-        )
-
-        let constraints = AIDJMixConstraints.fromValidator(.default)
-        let preferences = AIDJMixPreferences(
-            preferEqualPower: fadeCurve == .equalPower,
-            preferBassSwap: true,
-            avoidVocalOverlap: nil,
-            styleTags: nil,
-            metadata: nil
-        )
-
-        return AIDJMixPlanRequest(
-            outgoing: outgoing,
-            incoming: incoming,
-            context: context,
-            constraints: constraints,
-            preferences: preferences,
-            extensions: nil
-        )
-    }
-
-    private func aiFadeCurve(from fadeCurve: FadeCurve) -> AIDJCrossfadeCurve {
-        switch fadeCurve {
-        case .linear:
-            return .linear
-        case .equalPower:
-            return .equalPower
-        case .sCurve:
-            return .constantPower
-        case .exponential:
-            return .linear
-        }
+        logDebug(.dj, "DJMixPlaybackEngine: \(label) EQ: \(formatted)")
     }
 
     private func snapToNextIfPossible() -> Bool {
@@ -584,6 +561,9 @@ final class DJMixPlaybackEngine {
         schedule = computeSchedule(durationSeconds: currentDurationSeconds)
 
         delegate?.djEngine(self, didCompleteTransitionTo: nextCtx.track, context: nextCtx)
+
+        // Pre-plan the next transition
+        Task { await preplanNextTransition() }
     }
 
     private func abortMixTransition(reason: String, shouldFallbackToNext: Bool) {
