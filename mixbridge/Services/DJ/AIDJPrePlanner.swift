@@ -49,7 +49,11 @@ final class AIDJPrePlanner {
             preferredCurve: curve,
             allowTempoMatch: settings.allowTempoMatch,
             allowBeatSync: settings.allowBeatSync,
-            allowEQPolish: settings.allowEQPolish
+            allowEQPolish: settings.allowEQPolish,
+            maxRateAdjustment: settings.maxRateAdjustment,
+            bassSwapDepth: settings.bassSwapDepth,
+            midsSwapDepth: settings.midsSwapDepth,
+            highsSwapDepth: settings.highsSwapDepth
         )
     }
 
@@ -136,7 +140,12 @@ final class AIDJPrePlanner {
             for _ in 0 ..< 10 {
                 try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
                 if let cached = cache[key] {
-                    return cached
+                    let adjusted = applyUserSettings(
+                        to: cached.plan,
+                        outgoingDuration: outgoingDuration,
+                        outgoingAnalysis: outgoingAnalysis
+                    )
+                    return CachedPlan(plan: adjusted, createdAt: cached.createdAt, isFallback: cached.isFallback)
                 }
                 if !pendingRequests.contains(key) {
                     break
@@ -146,7 +155,12 @@ final class AIDJPrePlanner {
 
         // Return cached if available
         if let cached = cache[key], !cached.isStale {
-            return cached
+            let adjusted = applyUserSettings(
+                to: cached.plan,
+                outgoingDuration: outgoingDuration,
+                outgoingAnalysis: outgoingAnalysis
+            )
+            return CachedPlan(plan: adjusted, createdAt: cached.createdAt, isFallback: cached.isFallback)
         }
 
         // Generate fallback
@@ -157,7 +171,12 @@ final class AIDJPrePlanner {
             incomingAnalysis: incomingAnalysis
         )
 
-        return CachedPlan(plan: fallbackPlan, createdAt: Date(), isFallback: true)
+        let adjusted = applyUserSettings(
+            to: fallbackPlan,
+            outgoingDuration: outgoingDuration,
+            outgoingAnalysis: outgoingAnalysis
+        )
+        return CachedPlan(plan: adjusted, createdAt: Date(), isFallback: true)
     }
 
     // MARK: - Fallback Planning
@@ -198,6 +217,79 @@ final class AIDJPrePlanner {
             beatAlignment: plan.beatAlignment,
             isFallback: true
         )
+    }
+
+    private func applyUserSettings(
+        to plan: DJTransitionPlan,
+        outgoingDuration: Double,
+        outgoingAnalysis: DJAnalysisResult
+    ) -> DJTransitionPlan {
+        let clampedFadeDuration = min(max(2.0, settings.preferredFadeDurationSeconds), 20.0)
+        let fadeDuration = min(clampedFadeDuration, outgoingDuration)
+        let fadeStart = max(0, outgoingDuration - fadeDuration)
+
+        let curve = settings.preferredCurve ?? plan.crossfadeCurve
+
+        let tempoMatch: DJTempoMatchConfig
+        if settings.allowTempoMatch {
+            tempoMatch = DJTempoMatchConfig(
+                enabled: true,
+                targetBPM: outgoingAnalysis.bpm,
+                maxRateAdjustment: settings.maxRateAdjustment,
+                preservePitch: true
+            )
+        } else {
+            tempoMatch = .disabled
+        }
+
+        let (outgoingEQ, incomingEQ) = makeSwapCurves()
+        let beatAlignment = settings.allowBeatSync ? plan.beatAlignment : .none
+
+        return DJTransitionPlan(
+            fadeDurationSeconds: fadeDuration,
+            fadeStartSeconds: fadeStart,
+            crossfadeCurve: curve,
+            outgoingEQCurves: outgoingEQ,
+            incomingEQCurves: incomingEQ,
+            tempoMatch: tempoMatch,
+            beatAlignment: beatAlignment,
+            isFallback: plan.isFallback
+        )
+    }
+
+    private func makeSwapCurves() -> (outgoing: [DJEQCurve], incoming: [DJEQCurve]) {
+        guard settings.allowEQPolish else { return ([], []) }
+
+        let lowDepth = max(0.0, min(1.0, settings.bassSwapDepth))
+        let midDepth = max(0.0, min(1.0, settings.midsSwapDepth))
+        let highDepth = max(0.0, min(1.0, settings.highsSwapDepth))
+
+        var outgoing: [DJEQCurve] = []
+        var incoming: [DJEQCurve] = []
+
+        func appendCurves(band: DJEQBand, depth: Double) {
+            guard depth > 0.001 else { return }
+            let maxCut = -24.0 * depth
+            let swapPoint = 0.5
+
+            outgoing.append(DJEQCurve(band: band, keyframes: [
+                DJEQKeyframe(progress: 0.0, gainDB: 0.0),
+                DJEQKeyframe(progress: swapPoint, gainDB: maxCut),
+                DJEQKeyframe(progress: 1.0, gainDB: maxCut),
+            ]))
+
+            incoming.append(DJEQCurve(band: band, keyframes: [
+                DJEQKeyframe(progress: 0.0, gainDB: maxCut),
+                DJEQKeyframe(progress: swapPoint, gainDB: 0.0),
+                DJEQKeyframe(progress: 1.0, gainDB: 0.0),
+            ]))
+        }
+
+        appendCurves(band: .low, depth: lowDepth)
+        appendCurves(band: .mid, depth: midDepth)
+        appendCurves(band: .high, depth: highDepth)
+
+        return (outgoing, incoming)
     }
 
     // MARK: - Cache Management

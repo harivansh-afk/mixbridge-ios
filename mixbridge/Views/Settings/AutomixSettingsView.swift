@@ -12,6 +12,8 @@ struct AutomixSettingsView: View {
     @Environment(PlayerState.self) private var playerState
     @Environment(\.dismiss) private var dismiss
 
+    private let maxAdjustOptions: [Double] = [0.04, 0.06, 0.08]
+
     // Binding to convert crossfadeSeconds (Double 1-20, step 0.5) to Int selection (0-38)
     private var crossfadeSelection: Binding<Int> {
         Binding(
@@ -28,6 +30,19 @@ struct AutomixSettingsView: View {
         )
     }
 
+    private var maxAdjustSelection: Binding<Int> {
+        Binding(
+            get: {
+                let value = playerState.mixControls.clampedMaxRateAdjustment()
+                return maxAdjustOptions.firstIndex(of: value) ?? (maxAdjustOptions.count - 1)
+            },
+            set: { index in
+                let safeIndex = max(0, min(maxAdjustOptions.count - 1, index))
+                playerState.mixControls.maxRateAdjustment = maxAdjustOptions[safeIndex]
+            }
+        )
+    }
+
     var body: some View {
         @Bindable var playerState = playerState
 
@@ -38,6 +53,12 @@ struct AutomixSettingsView: View {
                     Text("Automix")
                 }
                 .tint(.blue)
+
+                Toggle(isOn: $playerState.mixControls.bpmMatchEnabled) {
+                    Text("Sync (BPM)")
+                }
+                .tint(.blue)
+                .disabled(!playerState.djEnabled)
 
                 Toggle(isOn: $playerState.djEnabled) {
                     Text("DJ Mode")
@@ -75,6 +96,38 @@ struct AutomixSettingsView: View {
             } header: {
                 Text("Duration")
             }
+
+            // BPM Match Cap Section
+            Section {
+                VStack(spacing: 8) {
+                    TickPicker(
+                        count: maxAdjustOptions.count - 1,
+                        config: TickConfig(
+                            tickWidth: 2,
+                            tickHeight: 30,
+                            inActiveHeightProgress: 0.43,
+                            activeTint: .blue,
+                            inActiveTint: .secondary,
+                            alignment: .center
+                        ),
+                        selection: maxAdjustSelection
+                    )
+
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("±\(Int(playerState.mixControls.clampedMaxRateAdjustment() * 100))")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .monospacedDigit()
+                        Text("%")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .listRowInsets(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 0))
+            } header: {
+                Text("BPM Match Cap")
+            }
+            .disabled(!playerState.djEnabled)
 
             // Prewarm Time Section
             Section {

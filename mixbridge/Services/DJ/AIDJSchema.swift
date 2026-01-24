@@ -23,13 +23,21 @@ struct AIDJMixSettings: Codable, Sendable, Equatable {
     let allowTempoMatch: Bool
     let allowBeatSync: Bool
     let allowEQPolish: Bool
+    let maxRateAdjustment: Double
+    let bassSwapDepth: Double
+    let midsSwapDepth: Double
+    let highsSwapDepth: Double
 
     static let `default` = AIDJMixSettings(
-        preferredFadeDurationSeconds: 6.0,
+        preferredFadeDurationSeconds: 8.0,
         preferredCurve: .equalPower,
         allowTempoMatch: true,
         allowBeatSync: true,
-        allowEQPolish: true
+        allowEQPolish: true,
+        maxRateAdjustment: 0.08,
+        bassSwapDepth: 0.65,
+        midsSwapDepth: 0.50,
+        highsSwapDepth: 0.40
     )
 }
 

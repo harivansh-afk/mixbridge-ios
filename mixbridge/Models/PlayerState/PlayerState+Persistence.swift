@@ -43,12 +43,17 @@ extension PlayerState {
         if defaults.object(forKey: kDJAutoDownloadAhead) != nil {
             djAutoDownloadAhead = defaults.bool(forKey: kDJAutoDownloadAhead)
         }
+        if let mixControlsData = defaults.data(forKey: kMixControlsSettings),
+           let decoded = try? JSONDecoder().decode(MixControlsSettings.self, from: mixControlsData) {
+            mixControls = decoded
+        }
 
         // Sync to coordinator
         playbackCoordinator.mixEnabled = mixEnabled
         playbackCoordinator.crossfadeSeconds = crossfadeSeconds
         playbackCoordinator.prewarmSeconds = prewarmSeconds
         playbackCoordinator.fadeCurve = fadeCurve
+        playbackCoordinator.mixControlsSettings = mixControls
     }
 
     func scheduleSavePlaybackState(immediate: Bool = false) {

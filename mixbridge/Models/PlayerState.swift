@@ -5,6 +5,7 @@
 //  Created by Harivansh Rathi on 11/15/25.
 //
 
+import Foundation
 import SwiftUI
 import AVFoundation
 import MediaPlayer
@@ -173,6 +174,16 @@ final class PlayerState: NSObject {
             playbackCoordinator.fadeCurve = fadeCurve
         }
     }
+
+    /// DJ mix controls used for AVAudioEngine transitions.
+    var mixControls: MixControlsSettings = .default {
+        didSet {
+            if let encoded = try? JSONEncoder().encode(mixControls) {
+                UserDefaults.standard.set(encoded, forKey: kMixControlsSettings)
+            }
+            playbackCoordinator.mixControlsSettings = mixControls
+        }
+    }
     
     /// Returns true if there's an active track (not idle and has valid duration)
     var hasActiveTrack: Bool {
@@ -247,6 +258,7 @@ final class PlayerState: NSObject {
     let kDJEnabled = "mixbridge.djEnabled"
     let kDJDownloadAheadCount = "mixbridge.djDownloadAheadCount"
     let kDJAutoDownloadAhead = "mixbridge.djAutoDownloadAhead"
+    let kMixControlsSettings = "mixbridge.mixControlsSettings"
 
     private override init() {
         // Initialize with placeholder initially

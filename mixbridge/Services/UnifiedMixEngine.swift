@@ -51,6 +51,12 @@ final class UnifiedMixEngine {
         }
     }
 
+    var mixControlsSettings: MixControlsSettings = .default {
+        didSet {
+            djEngine.mixControlsSettings = mixControlsSettings
+        }
+    }
+
     private(set) var backend: UnifiedMixBackend = .streaming
 
     var isPlaying: Bool {
@@ -94,6 +100,7 @@ final class UnifiedMixEngine {
     init() {
         streamingEngine.delegate = self
         djEngine.delegate = self
+        djEngine.mixControlsSettings = mixControlsSettings
     }
 
     func play(
@@ -1067,6 +1074,10 @@ fileprivate final class DJMixPlaybackEngine {
         didSet { updatePrePlannerSettings() }
     }
 
+    var mixControlsSettings: MixControlsSettings = .default {
+        didSet { updatePrePlannerSettings() }
+    }
+
     var isPlaying: Bool { isIntendedToPlay && state != .stopped }
 
     var currentTime: Double { engine?.currentTime(for: activeDeck) ?? 0 }
@@ -1123,6 +1134,10 @@ fileprivate final class DJMixPlaybackEngine {
         let prewarmStartTime: Double
         let duration: Double
         let isCrossfadeEnabled: Bool
+    }
+
+    private var activeCrossfadeSeconds: Double {
+        mixControlsSettings.clampedBlendLength()
     }
 
     // MARK: - Public API
@@ -1267,10 +1282,18 @@ fileprivate final class DJMixPlaybackEngine {
     // MARK: - Pre-Planning
 
     private func updatePrePlannerSettings() {
-        prePlanner.configure(
-            fadeDuration: crossfadeSeconds,
-            curve: fadeCurve
-        )
+        let blendLength = mixControlsSettings.clampedBlendLength()
+        prePlanner.configure(settings: AIDJMixSettings(
+            preferredFadeDurationSeconds: blendLength,
+            preferredCurve: fadeCurve,
+            allowTempoMatch: mixControlsSettings.bpmMatchEnabled,
+            allowBeatSync: true,
+            allowEQPolish: mixControlsSettings.hasAnyEQSwap,
+            maxRateAdjustment: mixControlsSettings.clampedMaxRateAdjustment(),
+            bassSwapDepth: mixControlsSettings.clampedSwapDepth(mixControlsSettings.bassSwapDepth),
+            midsSwapDepth: mixControlsSettings.clampedSwapDepth(mixControlsSettings.midsSwapDepth),
+            highsSwapDepth: mixControlsSettings.clampedSwapDepth(mixControlsSettings.highsSwapDepth)
+        ))
     }
 
     /// Pre-plan the transition to the next track in queue.
@@ -1353,7 +1376,7 @@ fileprivate final class DJMixPlaybackEngine {
                     delegate?.djEngine(self, didEmit: .fadeStart(
                         trackId: currentCtx.track.id,
                         nextTrackId: next.track.id,
-                        crossfadeSeconds: crossfadeSeconds
+                        crossfadeSeconds: activeCrossfadeSeconds
                     ))
                 }
             }
@@ -1380,7 +1403,7 @@ fileprivate final class DJMixPlaybackEngine {
     // MARK: - Prewarm / Plan / Transition
 
     private func computeSchedule(durationSeconds: Double) -> MixScheduleInfo? {
-        let clampedCrossfade = max(0, min(20, crossfadeSeconds))
+        let clampedCrossfade = max(0, min(20, activeCrossfadeSeconds))
         let clampedPrewarm = max(0, min(60, prewarmSeconds))
         let effectiveCrossfade = min(clampedCrossfade, durationSeconds)
         let prewarmLeadTime = max(clampedPrewarm, effectiveCrossfade)
@@ -1412,7 +1435,7 @@ fileprivate final class DJMixPlaybackEngine {
         delegate?.djEngine(self, didEmit: .prewarmStart(
             trackId: currentCtx.track.id,
             nextTrackId: nextTrack.id,
-            crossfadeSeconds: crossfadeSeconds
+            crossfadeSeconds: activeCrossfadeSeconds
         ))
 
         guard let fileURL = await downloadManager.getLocalFileURL(trackId: nextTrack.id) else {
@@ -1436,11 +1459,11 @@ fileprivate final class DJMixPlaybackEngine {
             guard let engine, let nextDeck else { return }
             try engine.loadTrack(url: fileURL, deck: nextDeck, timing: analysis.toTrackTiming())
 
-            delegate?.djEngine(self, didEmit: .prewarmReady(
-                trackId: currentCtx.track.id,
-                nextTrackId: nextTrack.id,
-                crossfadeSeconds: crossfadeSeconds
-            ))
+        delegate?.djEngine(self, didEmit: .prewarmReady(
+            trackId: currentCtx.track.id,
+            nextTrackId: nextTrack.id,
+            crossfadeSeconds: activeCrossfadeSeconds
+        ))
 
             // Schedule transition using cached plan (instant, no network wait)
             await scheduleTransition(schedule: schedule, isManualSkip: false)
@@ -1494,7 +1517,7 @@ fileprivate final class DJMixPlaybackEngine {
             delegate?.djEngine(self, didEmit: .fadeScheduled(
                 trackId: currentCtx.track.id,
                 nextTrackId: nextCtx.track.id,
-                crossfadeSeconds: crossfadeSeconds
+                crossfadeSeconds: activeCrossfadeSeconds
             ))
         } catch {
             logError(.dj, "DJMixPlaybackEngine: failed to schedule transition: \(error)")
@@ -1550,7 +1573,7 @@ fileprivate final class DJMixPlaybackEngine {
         delegate?.djEngine(self, didEmit: .fadeComplete(
             trackId: currentContext?.track.id ?? "",
             nextTrackId: nextCtx.track.id,
-            crossfadeSeconds: crossfadeSeconds
+            crossfadeSeconds: activeCrossfadeSeconds
         ))
         return true
     }
@@ -1590,7 +1613,7 @@ fileprivate final class DJMixPlaybackEngine {
         delegate?.djEngine(self, didEmit: .fadeAbort(
             trackId: current?.track.id ?? "",
             nextTrackId: next?.track.id,
-            crossfadeSeconds: crossfadeSeconds,
+            crossfadeSeconds: activeCrossfadeSeconds,
             reason: reason
         ))
 

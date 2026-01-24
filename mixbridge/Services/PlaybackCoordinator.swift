@@ -67,6 +67,13 @@ final class PlaybackCoordinator: NSObject {
     /// Fade curve type for crossfade transitions
     var fadeCurve: DJCrossfadeCurve = .equalPower
 
+    /// DJ mix controls (AVAudioEngine backend only)
+    var mixControlsSettings: MixControlsSettings = .default {
+        didSet {
+            mixEngine.mixControlsSettings = mixControlsSettings
+        }
+    }
+
     private let queueManager = QueueManager.shared
     private let keychain = KeychainManager.shared
     private let convexService = ConvexService.shared
@@ -545,6 +552,7 @@ final class PlaybackCoordinator: NSObject {
                         mixEngine.crossfadeSeconds = crossfadeSeconds
                         mixEngine.prewarmSeconds = prewarmSeconds
                         mixEngine.fadeCurve = fadeCurve
+                        mixEngine.mixControlsSettings = mixControlsSettings
 
                         guard isIntendedToPlay else {
                             status = .paused
@@ -614,6 +622,7 @@ final class PlaybackCoordinator: NSObject {
                 mixEngine.crossfadeSeconds = crossfadeSeconds
                 mixEngine.prewarmSeconds = prewarmSeconds
                 mixEngine.fadeCurve = fadeCurve
+                mixEngine.mixControlsSettings = mixControlsSettings
 
                 guard isIntendedToPlay else {
                     status = .paused
@@ -702,6 +711,7 @@ final class PlaybackCoordinator: NSObject {
             mixEngine.crossfadeSeconds = crossfadeSeconds
             mixEngine.prewarmSeconds = prewarmSeconds
             mixEngine.fadeCurve = fadeCurve
+            mixEngine.mixControlsSettings = mixControlsSettings
 
             // Only start audio if the user still intends to play (e.g., they didn’t pause mid-load).
             guard isIntendedToPlay else {

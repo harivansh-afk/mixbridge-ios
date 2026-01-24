@@ -182,7 +182,9 @@ struct ExpandedPlayerView: View {
     @State private var dragOffset: CGFloat = 0
     @State private var isDraggingArtwork = false
     @State private var showQueueSheet: Bool
+    @State private var showMixSheet: Bool
     @State private var queueExpansion: CGFloat // How much queue pushes content up
+    @State private var mixExpansion: CGFloat // How much mix sheet pushes content up
 
     // Crossfade-safe background handoff (never swap to an unready image).
     @State private var backgroundStableArtwork: String
@@ -224,7 +226,9 @@ struct ExpandedPlayerView: View {
         _displayedNext = State(initialValue: nextTrack)
         _displayedPrevious = State(initialValue: previousTrack)
         _showQueueSheet = State(initialValue: false)
+        _showMixSheet = State(initialValue: false)
         _queueExpansion = State(initialValue: 0) // Queue visible but no displacement
+        _mixExpansion = State(initialValue: 0)
         _backgroundStableArtwork = State(initialValue: currentTrack.artwork)
     }
 
@@ -244,6 +248,8 @@ struct ExpandedPlayerView: View {
             let queueTopFadeHeight: CGFloat = 30
             let queueListTopInset: CGFloat = 1 
             let queueSectionVisualLift: CGFloat = 44
+            let mixSectionVisualLift: CGFloat = queueSectionVisualLift + 100
+            let mixTopOffsetLift: CGFloat = mixSectionVisualLift - queueSectionVisualLift
             // If SwiftUI carousel state lags behind playback state, prefer playback-derived values
             // so we never briefly show the previous track at the end of a crossfade.
             let shouldPreferPlaybackTrack = !isDraggingArtwork && abs(dragOffset) < 0.5 && displayedTrack.id != currentTrack.id
@@ -474,7 +480,7 @@ struct ExpandedPlayerView: View {
                         }
                     }
                     // Apply offset to entire top section (artwork + controls) when queue expands
-                    .offset(y: showQueueSheet ? -queueExpansion : 0)
+                    .offset(y: (showQueueSheet ? -queueExpansion : (showMixSheet ? -(mixExpansion + mixTopOffsetLift) : 0)))
                     .ignoresSafeArea(.all, edges: .top) // Flush artwork to top, applied to whole group
                     .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.8), value: queueExpansion)
 
@@ -491,6 +497,20 @@ struct ExpandedPlayerView: View {
                             queueSectionVisualLift: queueSectionVisualLift,
                             onMove: moveQueueItem,
                             onRemove: removeFromQueue
+                        )
+                    } else if showMixSheet {
+                        let nextMixTrack = playerState.crossfadeNextTrack ?? queueManager.queue.peek()?.track
+                        ExpandedPlayerMixSheet(
+                            isVisible: $showMixSheet,
+                            expansion: $mixExpansion,
+                            currentTrack: currentTrack,
+                            nextTrack: nextMixTrack,
+                            isDJEnabled: playerState.djEnabled,
+                            handleTopPadding: queueHandleTopPadding,
+                            handleBottomPadding: queueHandleBottomPadding,
+                            listTopInset: queueListTopInset,
+                            sectionVisualLift: mixSectionVisualLift,
+                            topFadeHeight: queueTopFadeHeight
                         )
                     } else {
                         Spacer()
@@ -532,13 +552,17 @@ struct ExpandedPlayerView: View {
                         if queueManager.hasQueue {
                             GlassEffectContainer {
                                 HStack(spacing: 12) {
-                                    // Mix Mode toggle
+                                    // Mix Mode sheet
                                     Button {
-                                        playerState.mixEnabled.toggle()
                                         HapticManager.selection()
-                                        // Reset then show to ensure onChange fires
-                                        showAutomixToast = false
-                                        showAutomixToast = true
+                                        if showQueueSheet {
+                                            showQueueSheet = false
+                                            queueExpansion = 0
+                                        }
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                            showMixSheet.toggle()
+                                            mixExpansion = showMixSheet ? 200 : 0
+                                        }
                                     } label: {
                                         Image("wave-sine")
                                             .renderingMode(.template)
@@ -556,6 +580,10 @@ struct ExpandedPlayerView: View {
                                     Button {
                                         HapticManager.selection()
                                         confirmDeleteQueue = false
+                                        if showMixSheet {
+                                            showMixSheet = false
+                                            mixExpansion = 0
+                                        }
                                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                             showQueueSheet = true
                                             queueExpansion = 200
@@ -593,16 +621,30 @@ struct ExpandedPlayerView: View {
                 message: playerState.mixEnabled ? "Automix is turned on" : "Automix is turned off"
             )
         )
+        .onChange(of: playerState.mixEnabled) { _, _ in
+            showAutomixToast = false
+            showAutomixToast = true
+        }
         .onChange(of: showQueueSheet) { _, newValue in
             // Reset delete confirmation when queue sheet state changes
             if newValue {
                 confirmDeleteQueue = false
+                if showMixSheet {
+                    showMixSheet = false
+                    mixExpansion = 0
+                }
+            }
+        }
+        .onChange(of: showMixSheet) { _, newValue in
+            if newValue {
+                showQueueSheet = false
+                queueExpansion = 0
             }
         }
         .onChange(of: queueManager.hasQueue) { _, hasQueue in
             if hasQueue {
                 // Auto-open queue sheet when queue loads with items
-                if !showQueueSheet {
+                if !showQueueSheet && !showMixSheet {
                     showQueueSheet = true
                 }
             } else {
