@@ -48,6 +48,39 @@ struct ConnectSoundCloudScreen: View {
                                 .padding(.horizontal, 24)
                         }
 
+                        // Apple Music Button
+                        Button {
+                            HapticManager.heavy()
+                            loginStartTime = Date()
+                            Analytics.shared.track("login_tapped", properties: ["provider": "applemusic"])
+                            withAnimation(.easeOut(duration: buttonFadeDuration)) {
+                                authenticatingProvider = .applemusic
+                            }
+                            startAppleMusicAuthentication()
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image("applemusic")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .frame(width: 20, height: 20)
+                                // Use SoundCloud text width as reference, overlay Apple Music
+                                Text("Login with SoundCloud")
+                                    .font(.callout)
+                                    .hidden()
+                                    .overlay(alignment: .leading) {
+                                        Text("Login with Apple Music")
+                                            .font(.callout)
+                                    }
+                            }
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .contentShape(Capsule())
+                            .glassEffect(.regular, in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                        .opacity(authenticatingProvider == nil || authenticatingProvider == .applemusic ? 1 : 0)
+
                         // Spotify Button
                         if featureFlags.spotifyLoginEnabled {
                             Button {
@@ -246,6 +279,9 @@ struct ConnectSoundCloudScreen: View {
                     await authManager.handleCallback(url: callbackURL)
                 case .spotify:
                     await authManager.handleSpotifyCallback(url: callbackURL)
+                case .applemusic:
+                    // Apple Music uses native authorization, not web callback
+                    break
                 }
             }
         }
@@ -259,6 +295,32 @@ struct ConnectSoundCloudScreen: View {
             authManager.errorMessage = "Authentication session failed to start"
             withAnimation(.easeOut(duration: buttonFadeDuration)) {
                 authenticatingProvider = nil
+            }
+        }
+    }
+
+    private func startAppleMusicAuthentication() {
+        let startTime = loginStartTime ?? Date()
+
+        Task {
+            await authManager.handleAppleMusicAuthorization()
+
+            let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
+            let result = authManager.isAuthenticated ? "success" : "fail"
+
+            Analytics.shared.track(
+                "login_result",
+                properties: [
+                    "result": result,
+                    "provider": "applemusic",
+                    "latency_ms": latencyMs
+                ]
+            )
+
+            if !authManager.isAuthenticated {
+                withAnimation(.easeOut(duration: buttonFadeDuration)) {
+                    authenticatingProvider = nil
+                }
             }
         }
     }

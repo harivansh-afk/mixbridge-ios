@@ -23,8 +23,11 @@ enum SearchSource: CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .provider:
-            let isSpotify = AuthManager.shared.currentProvider == .spotify
-            return isSpotify ? "Spotify" : "SoundCloud"
+            switch AuthManager.shared.currentProvider {
+            case .spotify: return "Spotify"
+            case .applemusic: return "Apple Music"
+            case .soundcloud, nil: return "SoundCloud"
+            }
         case .library:
             return "Library"
         }
@@ -33,8 +36,11 @@ enum SearchSource: CaseIterable, Identifiable {
     var placeholder: String {
         switch self {
         case .provider:
-            let isSpotify = AuthManager.shared.currentProvider == .spotify
-            return isSpotify ? "Search Spotify" : "Search SoundCloud"
+            switch AuthManager.shared.currentProvider {
+            case .spotify: return "Search Spotify"
+            case .applemusic: return "Search Apple Music"
+            case .soundcloud, nil: return "Search SoundCloud"
+            }
         case .library:
             return "Search your library"
         }
