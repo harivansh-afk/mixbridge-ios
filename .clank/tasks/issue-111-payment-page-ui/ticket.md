@@ -1,8 +1,7 @@
 # GitHub Issue
 
-- Repo: https://github.com/harivansh-afk/mixbridge-ios
+- Repo: harivansh-afk/mixbridge-ios
 - Issue: #111
-- URL: https://github.com/harivansh-afk/mixbridge-ios/issues/111
 - Branch: clanker/issue-111-payment-page-ui
 
 ## Title
