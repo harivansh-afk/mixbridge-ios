@@ -61,6 +61,19 @@ extension PlayerState {
             return .success
         }
 
+        // Repeat mode (CarPlay / external controllers)
+        commandCenter.changeRepeatModeCommand.currentRepeatType = repeatMode.mpRepeatType
+        remoteCommandTargets.changeRepeatMode = commandCenter.changeRepeatModeCommand.addTarget { [weak self] event in
+            guard let repeatEvent = event as? MPChangeRepeatModeCommandEvent else {
+                return .commandFailed
+            }
+
+            Task { @MainActor in
+                self?.repeatMode = RepeatMode(mpRepeatType: repeatEvent.repeatType)
+            }
+            return .success
+        }
+
         // Disable skip commands so iOS shows next/previous track buttons instead
         // (Skip buttons are for podcast-style apps, not music players)
         commandCenter.skipForwardCommand.isEnabled = false
@@ -83,6 +96,9 @@ extension PlayerState {
         if let target = remoteCommandTargets.changePlaybackPosition {
             commandCenter.changePlaybackPositionCommand.removeTarget(target)
         }
+        if let target = remoteCommandTargets.changeRepeatMode {
+            commandCenter.changeRepeatModeCommand.removeTarget(target)
+        }
 
         remoteCommandTargets = RemoteCommandTargets()
     }
@@ -94,6 +110,7 @@ extension PlayerState {
         commandCenter.nextTrackCommand.isEnabled = canPlayNext
         commandCenter.previousTrackCommand.isEnabled = canPlayPrevious
         commandCenter.changePlaybackPositionCommand.isEnabled = duration > 0
+        commandCenter.changeRepeatModeCommand.isEnabled = true
     }
 
     struct RemoteCommandTargets {
@@ -103,6 +120,7 @@ extension PlayerState {
         var nextTrack: Any?
         var previousTrack: Any?
         var changePlaybackPosition: Any?
+        var changeRepeatMode: Any?
     }
 }
 

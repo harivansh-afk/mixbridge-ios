@@ -35,7 +35,7 @@ nonisolated(unsafe) struct SpotifyStreamResponse: Codable, Sendable {
 actor SpotifyStreamService {
     static let shared = SpotifyStreamService()
 
-    private let apiURL = "https://exemplary-mindfulness-production.up.railway.app"
+    private let apiURL = StreamAPI.baseURL
 
     private init() {}
 
@@ -69,6 +69,9 @@ actor SpotifyStreamService {
             logError(.network, "Spotify stream request failed: HTTP \(httpResponse.statusCode)")
             if let errorBody = String(data: data, encoding: .utf8) {
                 logError(.network, "Error body: \(errorBody)")
+            }
+            if let detail = StreamAPI.serverDetail(from: data) {
+                throw SpotifyStreamError.serverMessage(detail)
             }
             throw SpotifyStreamError.serverError(httpResponse.statusCode)
         }
@@ -126,6 +129,7 @@ enum SpotifyStreamError: LocalizedError {
     case invalidURL
     case networkError
     case serverError(Int)
+    case serverMessage(String)
     case emptyResponse
 
     var errorDescription: String? {
@@ -136,6 +140,8 @@ enum SpotifyStreamError: LocalizedError {
             return "Network error"
         case .serverError(let code):
             return "Server error (\(code))"
+        case .serverMessage(let message):
+            return message
         case .emptyResponse:
             return "Empty response from server"
         }

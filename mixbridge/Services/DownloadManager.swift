@@ -66,48 +66,43 @@ final class DownloadManager: ObservableObject {
 
     /// Download multiple tracks with throttled concurrency
     func downloadTracks(_ tracks: [SoundCloudTrack]) {
-
         let maxConcurrent = 3
+
+        let pending = tracks.filter { track in
+            let trackId = String(track.id)
+            return downloadStatuses[trackId] != .downloaded && !isDownloading(trackId: trackId)
+        }
+
+        // Mark all as queued up front so the UI reflects the batch immediately
+        for track in pending {
+            downloadStatuses[String(track.id)] = .downloading(progress: 0)
+        }
 
         Task {
             await withTaskGroup(of: Void.self) { group in
-                var activeCount = 0
-                var trackIndex = 0
+                var nextIndex = 0
 
-                while trackIndex < tracks.count {
-                    while activeCount < maxConcurrent && trackIndex < tracks.count {
-                        let track = tracks[trackIndex]
-                        let trackId = String(track.id)
+                func startNext() {
+                    guard nextIndex < pending.count else { return }
+                    let track = pending[nextIndex]
+                    nextIndex += 1
 
-                        if downloadStatuses[trackId] == .downloaded || isDownloading(trackId: trackId) {
-                            trackIndex += 1
-                            continue
-                        }
-
-                        downloadStatuses[trackId] = .downloading(progress: 0)
-                        
-                        let capturedTrack = track
-                        let capturedTrackId = trackId
-                        let taskForGroup = Task {
-                            await self.performDownload(track: capturedTrack)
-                        }
-                        downloadTasks[capturedTrackId] = taskForGroup
-
-                        group.addTask {
-                            _ = await taskForGroup.value
-                        }
-
-                        activeCount += 1
-                        trackIndex += 1
+                    let task = Task {
+                        await self.performDownload(track: track)
                     }
+                    downloadTasks[String(track.id)] = task
 
-                    if activeCount >= maxConcurrent {
-                        await group.next()
-                        activeCount -= 1
+                    group.addTask {
+                        _ = await task.value
                     }
                 }
 
-                await group.waitForAll()
+                for _ in 0..<maxConcurrent { startNext() }
+
+                // Start one new download for each one that finishes
+                while await group.next() != nil {
+                    startNext()
+                }
             }
         }
     }
@@ -456,16 +451,14 @@ final class DownloadManager: ObservableObject {
         }
     }
 
-    private static let ytdlpAPIURL = "https://exemplary-mindfulness-production.up.railway.app"
-
-    /// Get stream URL directly from Railway yt-dlp API
+    /// Get stream URL from the yt-dlp API
     private func getStreamURL(soundcloudUrl: String) async throws -> StreamURLResponse {
         // Validate it's a SoundCloud URL
         guard soundcloudUrl.contains("soundcloud.com") else {
             throw DownloadError.invalidURL
         }
 
-        guard let url = URL(string: "\(Self.ytdlpAPIURL)/stream") else {
+        guard let url = URL(string: "\(StreamAPI.baseURL)/stream") else {
             throw DownloadError.invalidURL
         }
 
@@ -482,8 +475,9 @@ final class DownloadManager: ObservableObject {
         }
 
         guard httpResponse.statusCode == 200 else {
-            logError(.downloads, "Stream URL request failed: HTTP \(httpResponse.statusCode)")
-            throw DownloadError.networkError
+            let detail = StreamAPI.serverDetail(from: data) ?? "Extraction failed (HTTP \(httpResponse.statusCode))"
+            logError(.downloads, "Stream URL request failed: HTTP \(httpResponse.statusCode) - \(detail)")
+            throw DownloadError.serverMessage(detail)
         }
 
         let decoded = try JSONDecoder().decode(StreamURLResponse.self, from: data)
@@ -492,48 +486,101 @@ final class DownloadManager: ObservableObject {
     }
 
     private func downloadDirectFile(from url: URL, to destinationURL: URL, trackId: String) async throws {
-        let (tempURL, response) = try await URLSession.shared.download(from: url)
-        
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw DownloadError.networkError
-        }
-        
-        // Move downloaded file to destination
-        try FileManager.default.moveItem(at: tempURL, to: destinationURL)
-        
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 120
+        try await streamToFile(request: request, destinationURL: destinationURL, trackId: trackId)
         logInfo(.downloads, "Direct download complete: \(destinationURL.lastPathComponent)")
     }
-    
+
     private func downloadViaServer(soundcloudUrl: String, to destinationURL: URL, trackId: String) async throws {
-        guard let url = URL(string: "\(Self.ytdlpAPIURL)/download") else {
+        guard let url = URL(string: "\(StreamAPI.baseURL)/download") else {
             throw DownloadError.invalidURL
         }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(["url": soundcloudUrl])
-        request.timeoutInterval = 120 // HLS download can take time
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
+        request.timeoutInterval = 120 // Server-side HLS download + transcode can take time
+
+        try await streamToFile(request: request, destinationURL: destinationURL, trackId: trackId)
+        logInfo(.downloads, "Server download complete: \(destinationURL.lastPathComponent)")
+    }
+
+    /// Stream an HTTP response body to disk, reporting real progress to `downloadStatuses`.
+    /// Runs off the main actor - the byte loop is hot.
+    nonisolated private func streamToFile(request: URLRequest, destinationURL: URL, trackId: String) async throws {
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw DownloadError.networkError
         }
-        
+
         guard httpResponse.statusCode == 200 else {
-            logError(.downloads, "Server download failed: HTTP \(httpResponse.statusCode)")
-            throw DownloadError.networkError
+            // Collect a bounded amount of the error body for the FastAPI detail message
+            var errorBody = Data()
+            for try await byte in bytes {
+                errorBody.append(byte)
+                if errorBody.count >= 4096 { break }
+            }
+            let detail = StreamAPI.serverDetail(from: errorBody) ?? "Download failed (HTTP \(httpResponse.statusCode))"
+            logError(.downloads, "Download request failed: HTTP \(httpResponse.statusCode) - \(detail)")
+            throw DownloadError.serverMessage(detail)
         }
-        
-        guard !data.isEmpty else {
-            throw DownloadError.saveFailed
+
+        let expectedLength = httpResponse.expectedContentLength
+
+        FileManager.default.createFile(atPath: destinationURL.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: destinationURL)
+
+        do {
+            var buffer = Data()
+            buffer.reserveCapacity(128 * 1024)
+            var received: Int64 = 0
+            var lastReportedProgress: Double = 0
+
+            for try await byte in bytes {
+                buffer.append(byte)
+
+                if buffer.count >= 128 * 1024 {
+                    try Task.checkCancellation()
+                    try handle.write(contentsOf: buffer)
+                    received += Int64(buffer.count)
+                    buffer.removeAll(keepingCapacity: true)
+
+                    if expectedLength > 0 {
+                        let progress = min(Double(received) / Double(expectedLength), 1)
+                        if progress - lastReportedProgress >= 0.01 {
+                            lastReportedProgress = progress
+                            await setProgress(trackId: trackId, progress: progress)
+                        }
+                    }
+                }
+            }
+
+            if !buffer.isEmpty {
+                try handle.write(contentsOf: buffer)
+                received += Int64(buffer.count)
+            }
+
+            try handle.close()
+
+            guard received > 0 else {
+                try? FileManager.default.removeItem(at: destinationURL)
+                throw DownloadError.saveFailed
+            }
+        } catch {
+            try? handle.close()
+            try? FileManager.default.removeItem(at: destinationURL)
+            throw error
         }
-        
-        // Write MP3 data directly (server already converts to MP3)
-        try data.write(to: destinationURL)
-        
-        logInfo(.downloads, "Server download complete: \(destinationURL.lastPathComponent)")
+    }
+
+    /// Update progress for an in-flight download without clobbering a terminal state
+    private func setProgress(trackId: String, progress: Double) {
+        if case .downloading = downloadStatuses[trackId] {
+            downloadStatuses[trackId] = .downloading(progress: progress)
+        }
     }
     
     private func getDownloadsDirectory() throws -> URL {
@@ -735,6 +782,7 @@ enum DownloadError: LocalizedError {
     case saveFailed
     case insufficientStorage
     case networkError
+    case serverMessage(String)
 
     var errorDescription: String? {
         switch self {
@@ -743,6 +791,7 @@ enum DownloadError: LocalizedError {
         case .saveFailed: return "Failed to save file"
         case .insufficientStorage: return "Not enough storage space"
         case .networkError: return "Network error"
+        case .serverMessage(let message): return message
         }
     }
 }
