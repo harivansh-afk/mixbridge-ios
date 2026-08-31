@@ -187,11 +187,17 @@ struct TrackRow: View {
     @ViewBuilder
     private var downloadContextMenuItems: some View {
         switch downloadStatus {
-        case .notDownloaded, .failed:
+        case .notDownloaded:
             Button {
                 handleDownload()
             } label: {
                 Label("Download", systemImage: "arrow.down.circle")
+            }
+        case .failed:
+            Button {
+                handleDownload()
+            } label: {
+                Label("Retry Download", systemImage: "arrow.clockwise.circle")
             }
         case .downloading:
             Button {
@@ -292,10 +298,25 @@ struct TrackRow: View {
     @ViewBuilder
     private var trailingActions: some View {
         HStack(spacing: 8) {
-            if downloadStatus == .downloaded {
+            switch downloadStatus {
+            case .downloaded:
                 Image(systemName: "arrow.down.circle.fill")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+            case .downloading(let progress):
+                downloadProgressRing(progress: progress)
+            case .failed(let error):
+                Button {
+                    errorMessage = error.localizedDescription
+                    showError = true
+                } label: {
+                    Image(systemName: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90")
+                        .font(.subheadline)
+                        .foregroundStyle(.orange)
+                }
+                .buttonStyle(.plain)
+            case .notDownloaded:
+                EmptyView()
             }
 
             if isQueueContext {
@@ -304,6 +325,19 @@ struct TrackRow: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private func downloadProgressRing(progress: Double) -> some View {
+        ZStack {
+            Circle()
+                .stroke(.quaternary, lineWidth: 2)
+            Circle()
+                .trim(from: 0, to: max(progress, 0.03))
+                .stroke(.secondary, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 14, height: 14)
+        .animation(.linear(duration: 0.2), value: progress)
     }
 
     // MARK: - Action Handlers

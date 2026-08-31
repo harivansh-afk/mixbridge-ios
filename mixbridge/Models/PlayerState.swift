@@ -157,6 +157,28 @@ final class PlayerState: NSObject {
 
         var isEnabled: Bool { self != .off }
 
+        var mpRepeatType: MPRepeatType {
+            switch self {
+            case .off:
+                return .off
+            case .all:
+                return .all
+            case .one:
+                return .one
+            }
+        }
+
+        init(mpRepeatType: MPRepeatType) {
+            switch mpRepeatType {
+            case .one:
+                self = .one
+            case .all:
+                self = .all
+            default:
+                self = .off
+            }
+        }
+
         func next() -> RepeatMode {
             switch self {
             case .off:
@@ -173,6 +195,8 @@ final class PlayerState: NSObject {
         didSet {
             UserDefaults.standard.set(repeatMode.rawValue, forKey: kRepeatMode)
             playbackCoordinator.repeatMode = repeatMode
+            // Reflect mode on the system repeat control (CarPlay, external controllers)
+            commandCenter.changeRepeatModeCommand.currentRepeatType = repeatMode.mpRepeatType
         }
     }
     
