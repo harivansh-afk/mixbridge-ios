@@ -82,29 +82,32 @@ final class DownloadManager: ObservableObject {
             await withTaskGroup(of: Void.self) { group in
                 var nextIndex = 0
 
-                func startNext() {
-                    guard nextIndex < pending.count else { return }
+                while nextIndex < min(maxConcurrent, pending.count) {
                     let track = pending[nextIndex]
                     nextIndex += 1
-
-                    let task = Task {
-                        await self.performDownload(track: track)
-                    }
-                    downloadTasks[String(track.id)] = task
-
-                    group.addTask {
-                        _ = await task.value
-                    }
+                    let task = await self.registerDownloadTask(for: track)
+                    group.addTask { _ = await task.value }
                 }
-
-                for _ in 0..<maxConcurrent { startNext() }
 
                 // Start one new download for each one that finishes
                 while await group.next() != nil {
-                    startNext()
+                    guard nextIndex < pending.count else { continue }
+                    let track = pending[nextIndex]
+                    nextIndex += 1
+                    let task = await self.registerDownloadTask(for: track)
+                    group.addTask { _ = await task.value }
                 }
             }
         }
+    }
+
+    /// Create and track the download task for a track (main-actor state)
+    private func registerDownloadTask(for track: SoundCloudTrack) -> Task<Void, Never> {
+        let task = Task {
+            await self.performDownload(track: track)
+        }
+        downloadTasks[String(track.id)] = task
+        return task
     }
 
     /// Cancel a download in progress
