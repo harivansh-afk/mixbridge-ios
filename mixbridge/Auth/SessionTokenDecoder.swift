@@ -3,6 +3,12 @@ import Foundation
 /// Decode JWT session token to extract user information
 struct SessionTokenDecoder {
 
+    /// Read expiry for local session UX; the server verifies the signature.
+    static func getExpiry(from token: String) -> Date? {
+        guard let expiry = decodeJWT(token: token)?["exp"] as? TimeInterval else { return nil }
+        return Date(timeIntervalSince1970: expiry)
+    }
+
     /// Decode JWT and extract userId
     static func getUserId(from token: String) -> String? {
         let payload = decodeJWT(token: token)

@@ -42,7 +42,8 @@ class AuthManager {
 
     func checkAuthStatus() {
         if let token = keychain.getAccessToken(),
-           let expiry = keychain.getTokenExpiry(),
+           !token.hasPrefix("spotify:"),
+           let expiry = SessionTokenDecoder.getExpiry(from: token),
            expiry > Date() {
             isAuthenticated = true
             currentUserId = keychain.getUserId()
@@ -116,6 +117,9 @@ class AuthManager {
 
         // Save session token
         do {
+            guard let expiry = SessionTokenDecoder.getExpiry(from: token), expiry > Date() else {
+                throw StreamAuthorizationError.signInExpired
+            }
             try keychain.saveAccessToken(token)
 
             // Extract and save userId from JWT
@@ -134,8 +138,6 @@ class AuthManager {
                 try keychain.saveProvider(provider)
             }
 
-            // Set long expiry for session token (30 days)
-            let expiry = Date().addingTimeInterval(30 * 24 * 60 * 60)
             try keychain.saveTokenExpiry(expiry)
 
             isAuthenticated = true
@@ -154,13 +156,13 @@ class AuthManager {
         }
     }
 
-    /// Handle Spotify OAuth callback - exchanges code via Convex
+    /// Handle Spotify OAuth callback - exchanges code via the backend
     func handleSpotifyCallback(url: URL) async {
         isLoading = true
         errorMessage = nil
 
         do {
-            // SpotifyAuthManager handles PKCE exchange via Convex
+            // SpotifyAuthManager handles PKCE exchange via the backend
             let result = try await SpotifyAuthManager.shared.handleCallback(url: url)
             try SpotifyAuthManager.shared.saveAuthResult(result)
 
