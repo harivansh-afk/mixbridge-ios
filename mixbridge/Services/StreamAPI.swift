@@ -33,8 +33,10 @@ enum StreamAPI {
         if response.statusCode == 401 || response.statusCode == 403 {
             throw StreamAuthorizationError.signInExpired
         }
-        guard (200...299).contains(response.statusCode),
-              let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard (200...299).contains(response.statusCode) else {
+            throw DownloadFailure.response(response, data: data)
+        }
+        guard let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let token = body["access_token"] as? String, !token.isEmpty,
               body["token_type"] as? String == "Bearer" else {
             throw StreamAuthorizationError.unavailable

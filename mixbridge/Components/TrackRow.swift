@@ -193,11 +193,20 @@ struct TrackRow: View {
             } label: {
                 Label("Download", systemImage: "arrow.down.circle")
             }
-        case .failed:
-            Button {
-                handleDownload()
-            } label: {
-                Label("Retry Download", systemImage: "arrow.clockwise.circle")
+        case .failed(let error):
+            if DownloadFailure.canRetryManually(error) {
+                Button {
+                    handleDownload()
+                } label: {
+                    Label("Retry Download", systemImage: "arrow.clockwise.circle")
+                }
+            } else {
+                Button {
+                    errorMessage = DownloadFailure.message(error)
+                    showError = true
+                } label: {
+                    Label("Download Unavailable", systemImage: "info.circle")
+                }
             }
         case .downloading:
             Button {
@@ -307,10 +316,10 @@ struct TrackRow: View {
                 downloadProgressRing(progress: progress)
             case .failed(let error):
                 Button {
-                    errorMessage = error.localizedDescription
+                    errorMessage = DownloadFailure.message(error)
                     showError = true
                 } label: {
-                    Image(systemName: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90")
+                    Image(systemName: "exclamationmark.circle")
                         .font(.subheadline)
                         .foregroundStyle(.orange)
                 }

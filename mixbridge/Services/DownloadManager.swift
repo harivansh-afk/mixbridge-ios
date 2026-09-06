@@ -40,7 +40,7 @@ final class DownloadManager: ObservableObject {
 
     private let db = MixBridgeDB.shared
 
-    private var downloadTasks: [String: Task<Void, Never>] = [:]
+    private let scheduler = DownloadScheduler()
 
     private init() {
         Task {
@@ -50,79 +50,25 @@ final class DownloadManager: ObservableObject {
 
     // MARK: - Public API
 
-    /// Download a track for offline playback
+    /// All taps and batches share a single three-job scheduler.
     func downloadTrack(_ track: SoundCloudTrack) {
         let trackId = String(track.id)
-
-        guard !isDownloading(trackId: trackId) else { return }
-
+        guard !scheduler.contains(trackId), !isDownloaded(trackId: trackId) else { return }
         downloadStatuses[trackId] = .downloading(progress: 0)
-
-        let task = Task {
-            await performDownload(track: track)
-        }
-        downloadTasks[trackId] = task
-    }
-
-    /// Download multiple tracks with throttled concurrency
-    func downloadTracks(_ tracks: [SoundCloudTrack]) {
-        let maxConcurrent = 3
-
-        let pending = tracks.filter { track in
-            let trackId = String(track.id)
-            return downloadStatuses[trackId] != .downloaded && !isDownloading(trackId: trackId)
-        }
-
-        // Mark all as queued up front so the UI reflects the batch immediately
-        for track in pending {
-            downloadStatuses[String(track.id)] = .downloading(progress: 0)
-        }
-
-        Task {
-            await withTaskGroup(of: Void.self) { group in
-                var nextIndex = 0
-
-                while nextIndex < min(maxConcurrent, pending.count) {
-                    let track = pending[nextIndex]
-                    nextIndex += 1
-                    let task = await self.registerDownloadTask(for: track)
-                    group.addTask { _ = await task.value }
-                }
-
-                // Start one new download for each one that finishes
-                while await group.next() != nil {
-                    guard nextIndex < pending.count else { continue }
-                    let track = pending[nextIndex]
-                    nextIndex += 1
-                    let task = await self.registerDownloadTask(for: track)
-                    group.addTask { _ = await task.value }
-                }
-            }
-        }
-    }
-
-    /// Create and track the download task for a track (main-actor state)
-    private func registerDownloadTask(for track: SoundCloudTrack) -> Task<Void, Never> {
-        let task = Task {
+        scheduler.enqueue(trackId) {
             await self.performDownload(track: track)
         }
-        downloadTasks[String(track.id)] = task
-        return task
     }
 
-    /// Cancel a download in progress
+    func downloadTracks(_ tracks: [SoundCloudTrack]) {
+        for track in tracks { downloadTrack(track) }
+    }
+
     func cancelDownload(trackId: String) {
-        downloadTasks[trackId]?.cancel()
-        downloadTasks.removeValue(forKey: trackId)
-        downloadStatuses[trackId] = .notDownloaded
-        
-        // Clean up any partial files (could be .mp3 or .m4a)
-        Task {
-            if let downloadsDir = try? getDownloadsDirectory() {
-                try? FileManager.default.removeItem(at: downloadsDir.appendingPathComponent("\(trackId).mp3"))
-                try? FileManager.default.removeItem(at: downloadsDir.appendingPathComponent("\(trackId).m4a"))
-            }
+        if scheduler.cancel(trackId) {
+            downloadStatuses[trackId] = .notDownloaded
         }
+        // Active work owns its partials until its cancellation catch finishes.
     }
 
     /// Delete a downloaded track
@@ -314,6 +260,7 @@ final class DownloadManager: ObservableObject {
         let permalinkUrl = track.permalink_url
 
         do {
+            try Task.checkCancellation()
             logInfo(.downloads, "Starting download for: \(track.title)")
 
             guard let permalinkUrl else {
@@ -352,7 +299,6 @@ final class DownloadManager: ObservableObject {
             guard !Task.isCancelled else {
                 try? FileManager.default.removeItem(at: finalPath)
                 downloadStatuses[trackId] = .notDownloaded
-                downloadTasks.removeValue(forKey: trackId)
                 return
             }
 
@@ -370,6 +316,8 @@ final class DownloadManager: ObservableObject {
             // Persist track metadata if needed
             try await persistTrackIfNeeded(track)
 
+            try Task.checkCancellation()
+
             // Save download record
             let downloadRecord = DownloadedTrack(
                 trackId: trackId,
@@ -381,14 +329,20 @@ final class DownloadManager: ObservableObject {
             _ = try await db.writer.write { db in
                 try downloadRecord.save(db)
             }
+            if Task.isCancelled {
+                // Cancellation can arrive while the database write is suspended.
+                _ = try await db.writer.write { db in
+                    try DownloadedTrack.deleteOne(db, key: trackId)
+                }
+                throw CancellationError()
+            }
 
             downloadStatuses[trackId] = .downloaded
-            downloadTasks.removeValue(forKey: trackId)
             await loadDownloadedTracks()
 
             logInfo(.downloads, "Download complete: \(track.title) (\(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)))")
         } catch {
-            logError(.downloads, "Download failed for \(track.title): \(error)")
+            logError(.downloads, "Download failed: \(DownloadFailure.message(error))")
 
             // Clean up partial files on failure
             if let downloadsDir = try? getDownloadsDirectory() {
@@ -396,8 +350,14 @@ final class DownloadManager: ObservableObject {
                 try? FileManager.default.removeItem(at: downloadsDir.appendingPathComponent("\(trackId).m4a"))
             }
 
-            downloadStatuses[trackId] = .failed(error)
-            downloadTasks.removeValue(forKey: trackId)
+            let presentedError: Error
+            if case StreamAuthorizationError.signInExpired = error {
+                presentedError = DownloadFailure(code: "auth_required", retryable: false, retryAfter: nil)
+            } else {
+                presentedError = error
+            }
+            downloadStatuses[trackId] = Task.isCancelled || error is CancellationError
+                || (error as? URLError)?.code == .cancelled ? .notDownloaded : .failed(presentedError)
         }
     }
 
@@ -470,12 +430,7 @@ final class DownloadManager: ObservableObject {
         }
 
         guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-                throw StreamAuthorizationError.signInExpired
-            }
-            let detail = StreamAPI.serverDetail(from: data) ?? "Extraction failed (HTTP \(httpResponse.statusCode))"
-            logError(.downloads, "Stream URL request failed: HTTP \(httpResponse.statusCode) - \(detail)")
-            throw DownloadError.serverMessage(detail)
+            throw DownloadFailure.response(httpResponse, data: data)
         }
 
         let decoded = try JSONDecoder().decode(StreamURLResponse.self, from: data)
@@ -486,7 +441,10 @@ final class DownloadManager: ObservableObject {
     private func downloadDirectFile(from url: URL, to destinationURL: URL, trackId: String) async throws {
         var request = URLRequest(url: url)
         request.timeoutInterval = 120
-        try await streamToFile(request: request, destinationURL: destinationURL, trackId: trackId)
+        try await DirectDownloadRetry.run {
+            self.setProgress(trackId: trackId, progress: 0)
+            try await self.streamToFile(request: request, destinationURL: destinationURL, trackId: trackId)
+        }
         logInfo(.downloads, "Direct download complete: \(destinationURL.lastPathComponent)")
     }
 
@@ -507,66 +465,22 @@ final class DownloadManager: ObservableObject {
         }
 
         guard httpResponse.statusCode == 200 else {
-            if request.value(forHTTPHeaderField: "Authorization") != nil,
-               httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-                throw StreamAuthorizationError.signInExpired
-            }
-            // Collect a bounded amount of the error body for the FastAPI detail message
+            // Read only a bounded error envelope, never display its raw text.
             var errorBody = Data()
-            for try await byte in bytes {
-                errorBody.append(byte)
-                if errorBody.count >= 4096 { break }
+            do {
+                for try await byte in bytes {
+                    errorBody.append(byte)
+                    if errorBody.count >= 4096 { break }
+                }
+            } catch {
+                try Task.checkCancellation()
+                // Preserve the HTTP failure even if its body is interrupted.
             }
-            let detail = StreamAPI.serverDetail(from: errorBody) ?? "Download failed (HTTP \(httpResponse.statusCode))"
-            logError(.downloads, "Download request failed: HTTP \(httpResponse.statusCode) - \(detail)")
-            throw DownloadError.serverMessage(detail)
+            throw DownloadFailure.response(httpResponse, data: errorBody)
         }
 
-        let expectedLength = httpResponse.expectedContentLength
-
-        FileManager.default.createFile(atPath: destinationURL.path, contents: nil)
-        let handle = try FileHandle(forWritingTo: destinationURL)
-
-        do {
-            var buffer = Data()
-            buffer.reserveCapacity(128 * 1024)
-            var received: Int64 = 0
-            var lastReportedProgress: Double = 0
-
-            for try await byte in bytes {
-                buffer.append(byte)
-
-                if buffer.count >= 128 * 1024 {
-                    try Task.checkCancellation()
-                    try handle.write(contentsOf: buffer)
-                    received += Int64(buffer.count)
-                    buffer.removeAll(keepingCapacity: true)
-
-                    if expectedLength > 0 {
-                        let progress = min(Double(received) / Double(expectedLength), 1)
-                        if progress - lastReportedProgress >= 0.01 {
-                            lastReportedProgress = progress
-                            await setProgress(trackId: trackId, progress: progress)
-                        }
-                    }
-                }
-            }
-
-            if !buffer.isEmpty {
-                try handle.write(contentsOf: buffer)
-                received += Int64(buffer.count)
-            }
-
-            try handle.close()
-
-            guard received > 0 else {
-                try? FileManager.default.removeItem(at: destinationURL)
-                throw DownloadError.saveFailed
-            }
-        } catch {
-            try? handle.close()
-            try? FileManager.default.removeItem(at: destinationURL)
-            throw error
+        try await DownloadFileWriter.write(bytes, to: destinationURL, expectedLength: httpResponse.expectedContentLength) { progress in
+            await self.setProgress(trackId: trackId, progress: progress)
         }
     }
 
