@@ -461,15 +461,7 @@ final class DownloadManager: ObservableObject {
             throw DownloadError.invalidURL
         }
 
-        guard let url = URL(string: "\(StreamAPI.baseURL)/stream") else {
-            throw DownloadError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(["url": soundcloudUrl])
-        request.timeoutInterval = 30
+        let request = try await StreamAPI.authorizedRequest(path: "/stream", sourceURL: soundcloudUrl, timeout: 30)
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -478,6 +470,9 @@ final class DownloadManager: ObservableObject {
         }
 
         guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                throw StreamAuthorizationError.signInExpired
+            }
             let detail = StreamAPI.serverDetail(from: data) ?? "Extraction failed (HTTP \(httpResponse.statusCode))"
             logError(.downloads, "Stream URL request failed: HTTP \(httpResponse.statusCode) - \(detail)")
             throw DownloadError.serverMessage(detail)
@@ -496,15 +491,7 @@ final class DownloadManager: ObservableObject {
     }
 
     private func downloadViaServer(soundcloudUrl: String, to destinationURL: URL, trackId: String) async throws {
-        guard let url = URL(string: "\(StreamAPI.baseURL)/download") else {
-            throw DownloadError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(["url": soundcloudUrl])
-        request.timeoutInterval = 120 // Server-side HLS download + transcode can take time
+        let request = try await StreamAPI.authorizedRequest(path: "/download", sourceURL: soundcloudUrl, timeout: 120)
 
         try await streamToFile(request: request, destinationURL: destinationURL, trackId: trackId)
         logInfo(.downloads, "Server download complete: \(destinationURL.lastPathComponent)")
@@ -520,6 +507,10 @@ final class DownloadManager: ObservableObject {
         }
 
         guard httpResponse.statusCode == 200 else {
+            if request.value(forHTTPHeaderField: "Authorization") != nil,
+               httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                throw StreamAuthorizationError.signInExpired
+            }
             // Collect a bounded amount of the error body for the FastAPI detail message
             var errorBody = Data()
             for try await byte in bytes {

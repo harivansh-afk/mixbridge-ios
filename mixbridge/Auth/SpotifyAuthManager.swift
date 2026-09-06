@@ -2,13 +2,12 @@ import Foundation
 import CryptoKit
 
 /// Manages Spotify OAuth with client-side PKCE
-/// Unlike SoundCloud (which returns a JWT), Spotify returns a code that must be exchanged via Convex
+/// Exchanges the authorization code through the backend for a signed app session.
 @MainActor
 final class SpotifyAuthManager {
     static let shared = SpotifyAuthManager()
 
     private let backendUrl = "https://mixbridge.app"
-    private let convexUrl = "https://avid-falcon-471.convex.cloud"
     private let keychain = KeychainManager.shared
 
     /// PKCE code verifier - stored in memory during auth flow
@@ -84,27 +83,20 @@ final class SpotifyAuthManager {
         // Clear verifier after use
         defer { self.codeVerifier = nil }
 
-        // Exchange code for tokens via Convex
+        // Exchange code for tokens via the backend
         return try await exchangeCode(code: code, codeVerifier: verifier)
     }
 
-    // MARK: - Token Exchange via Convex
+    // MARK: - Token Exchange via the backend
 
     private func exchangeCode(code: String, codeVerifier: String) async throws -> SpotifyAuthResult {
-        let url = URL(string: "\(convexUrl)/api/action")!
+        let url = URL(string: "\(backendUrl)/api/auth/spotify/exchange")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 30
 
-        let body: [String: Any] = [
-            "path": "actions/spotify/exchangeCode:exchangeCode",
-            "args": [
-                "code": code,
-                "codeVerifier": codeVerifier
-            ],
-            "format": "json"
-        ]
+        let body = ["code": code, "codeVerifier": codeVerifier]
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -124,7 +116,8 @@ final class SpotifyAuthManager {
         guard convexResponse.status == "success",
               let value = convexResponse.value,
               value.success,
-              let user = value.user else {
+              let user = value.user,
+              let sessionToken = value.sessionToken else {
             // Check for beta not approved error
             if convexResponse.value?.errorCode == "beta_not_approved" {
                 throw SpotifyAuthError.betaNotApproved
@@ -138,23 +131,21 @@ final class SpotifyAuthManager {
             userId: user.id,
             username: user.username,
             avatarUrl: user.avatarUrl,
-            provider: user.provider
+            provider: user.provider,
+            sessionToken: sessionToken
         )
     }
 
     /// Save auth result to keychain
     func saveAuthResult(_ result: SpotifyAuthResult) throws {
+        guard let expiry = SessionTokenDecoder.getExpiry(from: result.sessionToken), expiry > Date() else {
+            throw StreamAuthorizationError.signInExpired
+        }
         try keychain.saveUserId(result.userId)
         try keychain.saveUsername(result.username)
         try keychain.saveProvider(result.provider)
-
-        // Set long expiry (30 days) - Convex manages actual token refresh
-        let expiry = Date().addingTimeInterval(30 * 24 * 60 * 60)
         try keychain.saveTokenExpiry(expiry)
-
-        // Store a marker token for isAuthenticated checks
-        // Actual Spotify tokens are managed server-side by Convex
-        try keychain.saveAccessToken("spotify:\(result.userId)")
+        try keychain.saveAccessToken(result.sessionToken)
     }
 }
 
@@ -165,6 +156,7 @@ struct SpotifyAuthResult {
     let username: String
     let avatarUrl: String?
     let provider: String
+    let sessionToken: String
 }
 
 struct SpotifyExchangeResponse: Codable {
@@ -178,8 +170,7 @@ struct SpotifyExchangeValue: Codable {
     let error: String?
     let errorCode: String?
     let user: SpotifyUser?
-    let accessToken: String?
-    let expiresAt: Int?
+    let sessionToken: String?
 }
 
 struct SpotifyUser: Codable {

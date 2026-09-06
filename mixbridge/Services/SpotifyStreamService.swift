@@ -35,8 +35,6 @@ nonisolated(unsafe) struct SpotifyStreamResponse: Codable, Sendable {
 actor SpotifyStreamService {
     static let shared = SpotifyStreamService()
 
-    private let apiURL = StreamAPI.baseURL
-
     private init() {}
 
     /// Get stream URL for a Spotify track
@@ -47,15 +45,7 @@ actor SpotifyStreamService {
             throw SpotifyStreamError.invalidURL
         }
 
-        guard let url = URL(string: "\(apiURL)/spotify/stream") else {
-            throw SpotifyStreamError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(["url": spotifyUrl])
-        request.timeoutInterval = 60
+        let request = try await StreamAPI.authorizedRequest(path: "/spotify/stream", sourceURL: spotifyUrl, timeout: 60)
 
         logInfo(.network, "Fetching Spotify stream URL for: \(spotifyUrl)")
 
@@ -66,6 +56,9 @@ actor SpotifyStreamService {
         }
 
         guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                throw StreamAuthorizationError.signInExpired
+            }
             logError(.network, "Spotify stream request failed: HTTP \(httpResponse.statusCode)")
             if let errorBody = String(data: data, encoding: .utf8) {
                 logError(.network, "Error body: \(errorBody)")
@@ -89,15 +82,7 @@ actor SpotifyStreamService {
             throw SpotifyStreamError.invalidURL
         }
 
-        guard let url = URL(string: "\(apiURL)/spotify/download") else {
-            throw SpotifyStreamError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(["url": spotifyUrl])
-        request.timeoutInterval = 120
+        let request = try await StreamAPI.authorizedRequest(path: "/spotify/download", sourceURL: spotifyUrl, timeout: 120)
 
         logInfo(.downloads, "Downloading Spotify track: \(spotifyUrl)")
 
@@ -108,6 +93,9 @@ actor SpotifyStreamService {
         }
 
         guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                throw StreamAuthorizationError.signInExpired
+            }
             logError(.downloads, "Spotify download failed: HTTP \(httpResponse.statusCode)")
             throw SpotifyStreamError.serverError(httpResponse.statusCode)
         }
